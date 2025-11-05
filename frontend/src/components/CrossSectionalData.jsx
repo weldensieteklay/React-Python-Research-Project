@@ -83,17 +83,24 @@ const CrossSectionalData = () => {
         outliers;
 
     const handlePredict = async () => {
-        const X = parsedData.map(row => parseFloat(row[independentVar])).filter(val => !isNaN(val));
-        const y = parsedData.map(row => parseFloat(row[categoricalVar])).filter(val => !isNaN(val));
+        
+        const X = parsedData.map(row =>
+            independentVar.map(col => parseFloat(row[col])).filter(val => !isNaN(val))
+        );
+
+        
+        const y = parsedData
+            .map(row => parseFloat(row[dependentVar]))
+            .filter(val => !isNaN(val));
 
         const payload = {
             method,
             id_column: idColumn,
-            dependent_variable: dependentVar,
-            independent_variable: independentVar,
-            categorical_variable: categoricalVar,
+            dependent_variable: dependentVar,         
+            independent_variable: independentVar,     
+            categorical_variable: categoricalVar,     
             outliers,
-            X: X.map(val => [val]),
+            X,
             y,
         };
 
@@ -104,6 +111,7 @@ const CrossSectionalData = () => {
             console.error("Prediction error:", error.response?.data || error.message);
         }
     };
+
     const handleClear = () => {
         setMethod("");
         setIdColumn("");
