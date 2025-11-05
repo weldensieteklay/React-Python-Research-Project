@@ -1,4 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
+import axios from "axios";
+import Select from "react-select";
 import { parseCsvFile } from "../constants/constants";
 
 
@@ -7,7 +9,27 @@ const CrossSectionalData = () => {
     const [parsedData, setParsedData] = useState([]);
     const [columns, setColumns] = useState([]);
     const [summaryStats, setSummaryStats] = useState([]);
+    const [fileUploaded, setFileUploaded] = useState(false);
+    const [method, setMethod] = useState("");
+    const [idColumn, setIdColumn] = useState("");
+    const [dependentVar, setDependentVar] = useState("");
+    const [independentVar, setIndependentVar] = useState([]);
+    const [categoricalVar, setCategoricalVar] = useState([]);
+    const [outliers, setOutliers] = useState("");
+    const fileInputRef = useRef(null);
 
+
+    const columnOptions = columns.map(col => ({ value: col, label: col }));
+
+    const methodOptions = [
+        { value: "ols", label: "OLS" },
+        { value: "lasso", label: "LASSO" },
+    ];
+
+    const outlierOptions = [
+        { value: "yes", label: "Yes" },
+        { value: "no", label: "No" },
+    ];
 
     const onDataParsed = (data) => {
         setParsedData(data);
@@ -51,6 +73,62 @@ const CrossSectionalData = () => {
         setSummaryStats(stats);
     };
 
+    const isReadyToPredict =
+        fileUploaded &&
+        method &&
+        idColumn &&
+        dependentVar &&
+        independentVar &&
+        categoricalVar &&
+        outliers;
+
+    const handlePredict = async () => {
+        
+        const X = parsedData.map(row =>
+            independentVar.map(col => parseFloat(row[col])).filter(val => !isNaN(val))
+        );
+
+        
+        const y = parsedData
+            .map(row => parseFloat(row[dependentVar]))
+            .filter(val => !isNaN(val));
+
+        const payload = {
+            method,
+            id_column: idColumn,
+            dependent_variable: dependentVar,         
+            independent_variable: independentVar,     
+            categorical_variable: categoricalVar,     
+            outliers,
+            X,
+            y,
+        };
+
+        try {
+            const response = await axios.post("http://localhost:5000/api/ols", payload);
+            console.log("Prediction result:", response.data);
+        } catch (error) {
+            console.error("Prediction error:", error.response?.data || error.message);
+        }
+    };
+
+    const handleClear = () => {
+        setMethod("");
+        setIdColumn("");
+        setDependentVar("");
+        setIndependentVar([]);
+        setCategoricalVar([]);
+        setOutliers("");
+        setFileUploaded(false);
+        setParsedData([]);
+        setColumns([]);
+        setSummaryStats([]);
+
+        if (fileInputRef.current) {
+            fileInputRef.current.value = null;
+        };
+    };
+
     return (
         <>
             <div className="w-full px-4 my-6">
@@ -64,82 +142,100 @@ const CrossSectionalData = () => {
 
                         <div className="flex flex-col w-48">
                             <label className="text-sm text-gray-700 mb-1">Upload File</label>
-                            <input type="file" className="p-2 border border-gray-300 rounded"
+                            <input type="file" className="px-2 py-[5px] border border-gray-300 rounded bg-white text-sm text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 hover:border-gray-400"
                                 accept=".csv"
-                                onChange={(e) => parseCsvFile(e.target.files[0], onDataParsed)} />
+                                ref={fileInputRef}
+                                onChange={(e) => {
+                                    const file = e.target.files[0];
+                                    if (file) {
+                                        setFileUploaded(true);
+                                        parseCsvFile(file, onDataParsed);
+                                    }
+                                }} />
                         </div>
 
                         <div className="flex flex-col w-48">
                             <label className="text-sm text-gray-700 mb-1">Methods</label>
-                            <select className="p-2 border border-gray-300 rounded">
-                                <option value="">Select Method</option>
-                                <option value="method1">Method 1</option>
-                                <option value="method2">Method 2</option>
-                            </select>
+                            <Select
+                                options={methodOptions}
+                                value={method ? methodOptions.find(opt => opt.value === method) : null}
+                                onChange={(selected) => setMethod(selected.value)}
+                                classNamePrefix="react-select"
+                                className="text-sm"
+                            />
                         </div>
 
                         <div className="flex flex-col w-48">
                             <label className="text-sm text-gray-700 mb-1">Id of the Data</label>
-                            <select className="p-2 border border-gray-300 rounded">
-                                <option value="">Select Id of the Data</option>
-                                <option value="id1">ID 1</option>
-                                <option value="id2">ID 2</option>
-                            </select>
+                            <Select
+                                options={columnOptions}
+                                onChange={(selected) => setIdColumn(selected.value)}
+                                value={idColumn ? columnOptions.find(opt => opt.value === idColumn) : null}
+                                classNamePrefix="react-select"
+                                className="text-sm"
+                            />
                         </div>
 
                         <div className="flex flex-col w-48">
                             <label className="text-sm text-gray-700 mb-1">Dependent Variables</label>
-                            <select className="p-2 border border-gray-300 rounded">
-                                <option value="">Select Dependent Variable</option>
-                                {columns.map((col) => (
-                                    <option key={col} value={col}>
-                                        {col}
-                                    </option>
-                                ))}
-                            </select>
+                            <Select
+                                options={columnOptions}
+                                value={dependentVar ? columnOptions.find(opt => opt.value === dependentVar) : null}
+                                onChange={(selected) => setDependentVar(selected.value)}
+                                classNamePrefix="react-select"
+                                className="text-sm"
+                            />
                         </div>
 
                         <div className="flex flex-col w-48">
                             <label className="text-sm text-gray-700 mb-1">Independent Variables</label>
-                            <select className="p-2 border border-gray-300 rounded">
-                                <option value="">Select Independent Variables</option>
-                                {columns.map((col) => (
-                                    <option key={col} value={col}>
-                                        {col}
-                                    </option>
-                                ))}
-                            </select>
+                            <Select
+                                isMulti
+                                options={columnOptions}
+                                value={columnOptions.filter(opt => independentVar.includes(opt.value))}
+                                onChange={(selected) => setIndependentVar(selected.map(opt => opt.value))}
+                                classNamePrefix="react-select"
+                                className="text-sm"
+                            />
                         </div>
 
                         <div className="flex flex-col w-48">
                             <label className="text-sm text-gray-700 mb-1">Categorical Variables</label>
-                            <select className="p-2 border border-gray-300 rounded">
-                                <option value="">Select Categorical Variables</option>
-                                {columns.map((col) => (
-                                    <option key={col} value={col}>
-                                        {col}
-                                    </option>
-                                ))}
-                            </select>
+                            <Select
+                                isMulti
+                                options={columnOptions}
+                                value={columnOptions.filter(opt => categoricalVar.includes(opt.value))}
+                                onChange={(selected) => setCategoricalVar(selected.map(opt => opt.value))}
+                                className="text-sm"
+                                classNamePrefix="react-select"
+                            />
                         </div>
+
 
                         <div className="flex flex-col w-48">
                             <label className="text-sm text-gray-700 mb-1">Outliers</label>
-                            <select className="p-2 border border-gray-300 rounded">
-                                <option value="">Select Outliers</option>
-                                <option value="yes">Yes</option>
-                                <option value="no">No</option>
-                            </select>
+                            <Select
+                                options={outlierOptions}
+                                value={outliers ? outlierOptions.find(opt => opt.value === outliers) : null}
+                                onChange={(selected) => setOutliers(selected.value)}
+                                classNamePrefix="react-select"
+                                className="text-sm"
+                            />
                         </div>
 
                         <div className="w-full flex flex-wrap justify-center gap-4 mt-6">
                             <button className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600" onClick={handleSummaryStatistics}>
                                 Summary Statistics
                             </button>
-                            <button className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+                            <button className={`w-40 px-4 py-2 rounded ${isReadyToPredict
+                                ? "bg-blue-500 text-white hover:bg-blue-600"
+                                : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                                }`}
+                                disabled={!isReadyToPredict}
+                                onClick={handlePredict}>
                                 Predict
                             </button>
-                            <button className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+                            <button className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600" onClick={handleClear}>
                                 Clear
                             </button>
                         </div>
