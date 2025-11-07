@@ -2,6 +2,8 @@ import React, { useState, useRef } from "react";
 import axios from "axios";
 import Select from "react-select";
 import { parseCsvFile } from "../constants/constants";
+import { computeSummaryStatistics } from '../constants/constants';
+import SummaryStatisticsTable from "./SummaryStatisticsTable";
 
 
 
@@ -41,35 +43,7 @@ const CrossSectionalData = () => {
     };
 
     const handleSummaryStatistics = () => {
-        if (parsedData.length === 0) return;
-
-        const numericColumns = columns.filter(col => {
-            const sample = parsedData[0][col];
-            const isNumeric = !isNaN(parseFloat(sample));
-            const isExcluded = col.toLowerCase().includes("id") || col.toLowerCase().includes("date");
-            return isNumeric && !isExcluded;
-        });
-
-        const stats = numericColumns.map(col => {
-            const values = parsedData
-                .map(row => parseFloat(row[col]))
-                .filter(val => !isNaN(val));
-
-            const mean =
-                values.reduce((sum, val) => sum + val, 0) / values.length;
-
-            const stdErr =
-                Math.sqrt(
-                    values.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / values.length
-                ) / Math.sqrt(values.length);
-
-            return {
-                column: col,
-                mean: mean.toFixed(2),
-                standardError: stdErr.toFixed(2),
-            };
-        });
-
+        const stats = computeSummaryStatistics(parsedData, columns);
         setSummaryStats(stats);
     };
 
@@ -83,25 +57,22 @@ const CrossSectionalData = () => {
         outliers;
 
     const handlePredict = async () => {
-        
         const X = parsedData.map(row =>
             independentVar.map(col => parseFloat(row[col])).filter(val => !isNaN(val))
         );
 
-        
         const y = parsedData
             .map(row => parseFloat(row[dependentVar]))
             .filter(val => !isNaN(val));
 
         const payload = {
+            data: parsedData,
             method,
             id_column: idColumn,
-            dependent_variable: dependentVar,         
-            independent_variable: independentVar,     
-            categorical_variable: categoricalVar,     
+            dependent_variable: dependentVar,
+            independent_variable: independentVar,
+            categorical_variable: categoricalVar,
             outliers,
-            X,
-            y,
         };
 
         try {
@@ -240,27 +211,7 @@ const CrossSectionalData = () => {
                             </button>
                         </div>
                         {summaryStats.length > 0 && (
-                            <div className="w-full mt-6">
-                                <h3 className="text-lg font-semibold mb-2 text-center">Summary Statistics</h3>
-                                <table className="w-full border border-gray-300 rounded">
-                                    <thead className="bg-gray-100">
-                                        <tr>
-                                            <th className="p-2 border">Column</th>
-                                            <th className="p-2 border">Mean</th>
-                                            <th className="p-2 border">Standard Error</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {summaryStats.map(stat => (
-                                            <tr key={stat.column}>
-                                                <td className="p-2 border text-center">{stat.column}</td>
-                                                <td className="p-2 border text-center">{stat.mean}</td>
-                                                <td className="p-2 border text-center">{stat.standardError}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
+                            <SummaryStatisticsTable stats={summaryStats} />
                         )}
                     </div>
                 </div>
