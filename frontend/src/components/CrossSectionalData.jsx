@@ -1,9 +1,9 @@
-import React, { useState, useRef } from "react";
-import axios from "axios";
-import Select from "react-select";
-import { parseCsvFile } from "../constants/constants";
+import React, { useState, useRef } from 'react';
+import axios from 'axios';
+import Select from 'react-select';
+import { parseCsvFile } from '../constants/constants';
 import { computeSummaryStatistics } from '../constants/constants';
-import SummaryStatisticsTable from "./SummaryStatisticsTable";
+import SummaryStatisticsTable from './SummaryStatisticsTable';
 
 
 
@@ -12,25 +12,25 @@ const CrossSectionalData = () => {
     const [columns, setColumns] = useState([]);
     const [summaryStats, setSummaryStats] = useState([]);
     const [fileUploaded, setFileUploaded] = useState(false);
-    const [method, setMethod] = useState("");
-    const [idColumn, setIdColumn] = useState("");
-    const [dependentVar, setDependentVar] = useState("");
+    const [method, setMethod] = useState('');
+    const [idColumn, setIdColumn] = useState('');
+    const [dependentVar, setDependentVar] = useState('');
     const [independentVar, setIndependentVar] = useState([]);
     const [categoricalVar, setCategoricalVar] = useState([]);
-    const [outliers, setOutliers] = useState("");
+    const [outliers, setOutliers] = useState('');
     const fileInputRef = useRef(null);
 
 
     const columnOptions = columns.map(col => ({ value: col, label: col }));
 
     const methodOptions = [
-        { value: "ols", label: "OLS" },
-        { value: "lasso", label: "LASSO" },
+        { value: 'ols', label: 'OLS' },
+        { value: 'lasso', label: 'LASSO' },
     ];
 
     const outlierOptions = [
-        { value: "yes", label: "Yes" },
-        { value: "no", label: "No" },
+        { value: 'yes', label: 'Yes' },
+        { value: 'no', label: 'No' },
     ];
 
     const onDataParsed = (data) => {
@@ -76,10 +76,10 @@ const CrossSectionalData = () => {
         };
 
         try {
-            const response = await axios.post("http://localhost:5000/api/ols", payload);
-            console.log("Prediction result:", response.data);
+            const response = await axios.post('http://localhost:5000/api/ols', payload);
+            console.log('Prediction result:', response.data);
         } catch (error) {
-            console.error("Prediction error:", error.response?.data || error.message);
+            console.error('Prediction error:', error.response?.data || error.message);
         }
     };
 
