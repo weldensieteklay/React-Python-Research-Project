@@ -3,6 +3,7 @@ import { parseCsvFile } from '../constants/constants';
 import { computeSummaryStatistics } from '../constants/constants';
 import SummaryStatisticsTable from './SummaryStatisticsTable';
 import Select from 'react-select';
+import { usePrediction } from "../hooks/usePrediction";
 
 const TimeSeriesData = () => {
     const [parsedData, setParsedData] = useState([]);
@@ -13,9 +14,12 @@ const TimeSeriesData = () => {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [selectedEndogenousVar, setSelectedEndogenousVar] = useState('');
+    const [selectedExogenousVar, setSelectedExogenousVar] = useState('');
     const [summaryStats, setSummaryStats] = useState([]);
     const [isValidDateColumn, setIsValidDateColumn] = useState(null);
     const fileInputRef = useRef(null);
+
+    const { data, loading, error, handlePredict } = usePrediction();
 
     const onDataParsed = (data) => {
         setParsedData(data);
@@ -97,6 +101,27 @@ const TimeSeriesData = () => {
         !startDate ||
         !endDate ||
         !selectedEndogenousVar;
+
+        const onClickPredict = async () => {
+            const payload =
+                {
+                    data: parsedData,
+                    date_variable: selectedDateColumn,
+                    start_date: startDate,
+                    end_date: endDate,
+                    target_variable: selectedEndogenousVar,
+                    exogenous_variable: Array.isArray(selectedExogenousVar)
+                     ? selectedExogenousVar
+                      : [selectedExogenousVar],
+                }
+            
+            try {
+              const result = await handlePredict(payload, method);
+              console.log("Prediction Result:", result);
+            } catch (err) {
+              console.error("Prediction Failed:", err);
+            }
+          };
 
     return (
 
@@ -185,6 +210,17 @@ const TimeSeriesData = () => {
                             />
                         </div>
 
+                        <div className="flex flex-col w-48">
+                            <label className="text-sm text-gray-700 mb-1">Exogenouse Variables</label>
+                            <Select
+                                options={columnOptions}
+                                value={selectedExogenousVar ? columnOptions.find(opt => opt.value === selectedExogenousVar) : null}
+                                onChange={(selected) => setSelectedExogenousVar(selected?.value || "")}
+                                classNamePrefix="react-select"
+                                className="text-sm"
+                            />
+                        </div>
+
                         <div className="w-full flex flex-wrap justify-center gap-4 mt-6">
 
                             <button className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600" onClick={handleSummaryStatistics}>
@@ -194,6 +230,7 @@ const TimeSeriesData = () => {
                                 Line Graph
                             </button>
                             <button
+                            onClick={onClickPredict}
                                 className={`w-40 px-4 py-2 rounded ${isPredictDisabled
                                     ? "bg-gray-300 text-gray-500 cursor-not-allowed"
                                     : "bg-blue-500 text-white hover:bg-blue-600"

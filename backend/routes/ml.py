@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from controller.ml import run_ols_prediction
+from controller.ols import run_ols_prediction
 
 ml_bp = Blueprint('ml_bp', __name__)
 
