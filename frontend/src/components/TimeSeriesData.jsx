@@ -55,8 +55,9 @@ const TimeSeriesData = () => {
     };
 
     const methodOptions = [
-        { value: 'ols', label: 'OLS' },
         { value: 'lasso', label: 'LASSO' },
+        { value: 'ols', label: 'OLS' },
+        { value: 'arima', label: 'ARIMA' },
     ];
 
     const columnOptions = columns.map(col => ({ value: col, label: col }));
@@ -103,18 +104,39 @@ const TimeSeriesData = () => {
         !selectedEndogenousVar;
 
         const onClickPredict = async () => {
-            const payload =
-                {
-                    data: parsedData,
-                    date_variable: selectedDateColumn,
-                    start_date: startDate,
-                    end_date: endDate,
-                    target_variable: selectedEndogenousVar,
-                    exogenous_variable: Array.isArray(selectedExogenousVar)
-                     ? selectedExogenousVar
-                      : [selectedExogenousVar],
-                }
-            
+            // Filter the data and include only the required fields
+const selectedData = parsedData
+.filter(row => {
+  const dateValue = new Date(row[selectedDateColumn]);
+  return dateValue >= new Date(startDate) && dateValue <= new Date(endDate);
+})
+.map(row => {
+  // Create a new object with only relevant keys
+  const filteredRow = {
+    [selectedDateColumn]: row[selectedDateColumn],
+    [selectedEndogenousVar]: row[selectedEndogenousVar],
+  };
+
+  // Add each exogenous variable if it exists in the row
+  (Array.isArray(selectedExogenousVar) ? selectedExogenousVar : [selectedExogenousVar])
+    .forEach(exog => {
+      if (row.hasOwnProperty(exog)) {
+        filteredRow[exog] = row[exog];
+      }
+    });
+
+  return filteredRow;
+});
+
+         // Build the final payload
+           const payload = {
+         data: selectedData, 
+         date_variable: selectedDateColumn,
+         target_variable: selectedEndogenousVar,
+         exogenous_variable: Array.isArray(selectedExogenousVar)
+         ? selectedExogenousVar
+           : [selectedExogenousVar],
+            };
             try {
               const result = await handlePredict(payload, method);
               console.log("Prediction Result:", result);
