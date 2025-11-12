@@ -4,7 +4,7 @@ import Select from 'react-select';
 import { parseCsvFile } from '../constants/constants';
 import { computeSummaryStatistics } from '../constants/constants';
 import SummaryStatisticsTable from './SummaryStatisticsTable';
-
+import { usePrediction } from '../hooks/usePrediction'
 
 
 const CrossSectionalData = () => {
@@ -19,6 +19,7 @@ const CrossSectionalData = () => {
     const [categoricalVar, setCategoricalVar] = useState([]);
     const [outliers, setOutliers] = useState('');
     const fileInputRef = useRef(null);
+    const { data, loading, error, handlePredict: runPrediction } = usePrediction();
 
 
     const columnOptions = columns.map(col => ({ value: col, label: col }));
@@ -58,15 +59,10 @@ const CrossSectionalData = () => {
 
     const handlePredict = async () => {
         const X = parsedData.map(row =>
-            independentVar.map(col => parseFloat(row[col])).filter(val => !isNaN(val))
-        );
-
-        const y = parsedData
-            .map(row => parseFloat(row[dependentVar]))
-            .filter(val => !isNaN(val));
-
+            independentVar.map(col => parseFloat(row[col])).filter(val => !isNaN(val)));
+        const y = parsedData.map(row => parseFloat(row[dependentVar])).filter(val => !isNaN(val));
         const payload = {
-            data: parsedData,
+            data: { X, y },
             method,
             id_column: idColumn,
             dependent_variable: dependentVar,
@@ -75,12 +71,7 @@ const CrossSectionalData = () => {
             outliers,
         };
 
-        try {
-            const response = await axios.post('http://localhost:5000/api/ols', payload);
-            console.log('Prediction result:', response.data);
-        } catch (error) {
-            console.error('Prediction error:', error.response?.data || error.message);
-        }
+        await runPrediction(payload, method);
     };
 
     const handleClear = () => {

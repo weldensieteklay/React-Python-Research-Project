@@ -103,47 +103,47 @@ const TimeSeriesData = () => {
         !endDate ||
         !selectedEndogenousVar;
 
-        const onClickPredict = async () => {
-            // Filter the data and include only the required fields
-const selectedData = parsedData
-.filter(row => {
-  const dateValue = new Date(row[selectedDateColumn]);
-  return dateValue >= new Date(startDate) && dateValue <= new Date(endDate);
-})
-.map(row => {
-  // Create a new object with only relevant keys
-  const filteredRow = {
-    [selectedDateColumn]: row[selectedDateColumn],
-    [selectedEndogenousVar]: row[selectedEndogenousVar],
-  };
+    const onClickPredict = async () => {
+        
+        const selectedData = parsedData
+            .filter(row => {
+                const dateValue = new Date(row[selectedDateColumn]);
+                return dateValue >= new Date(startDate) && dateValue <= new Date(endDate);
+            })
+            .map(row => {
+                
+                const filteredRow = {
+                    [selectedDateColumn]: row[selectedDateColumn],
+                    [selectedEndogenousVar]: row[selectedEndogenousVar],
+                };
 
-  // Add each exogenous variable if it exists in the row
-  (Array.isArray(selectedExogenousVar) ? selectedExogenousVar : [selectedExogenousVar])
-    .forEach(exog => {
-      if (row.hasOwnProperty(exog)) {
-        filteredRow[exog] = row[exog];
-      }
-    });
+                
+                (Array.isArray(selectedExogenousVar) ? selectedExogenousVar : [selectedExogenousVar])
+                    .forEach(exog => {
+                        if (row.hasOwnProperty(exog)) {
+                            filteredRow[exog] = row[exog];
+                        }
+                    });
 
-  return filteredRow;
-});
+                return filteredRow;
+            });
 
-         // Build the final payload
-           const payload = {
-         data: selectedData, 
-         date_variable: selectedDateColumn,
-         target_variable: selectedEndogenousVar,
-         exogenous_variable: Array.isArray(selectedExogenousVar)
-         ? selectedExogenousVar
-           : [selectedExogenousVar],
-            };
-            try {
-              const result = await handlePredict(payload, method);
-              console.log("Prediction Result:", result);
-            } catch (err) {
-              console.error("Prediction Failed:", err);
-            }
-          };
+       
+        const payload = {
+            data: selectedData,
+            date_variable: selectedDateColumn,
+            target_variable: selectedEndogenousVar,
+            exogenous_variable: Array.isArray(selectedExogenousVar)
+                ? selectedExogenousVar
+                : [selectedExogenousVar],
+        };
+        try {
+            const result = await handlePredict(payload, method);
+            console.log("Prediction Result:", result);
+        } catch (err) {
+            console.error("Prediction Failed:", err);
+        }
+    };
 
     return (
 
@@ -252,7 +252,7 @@ const selectedData = parsedData
                                 Line Graph
                             </button>
                             <button
-                            onClick={onClickPredict}
+                                onClick={onClickPredict}
                                 className={`w-40 px-4 py-2 rounded ${isPredictDisabled
                                     ? "bg-gray-300 text-gray-500 cursor-not-allowed"
                                     : "bg-blue-500 text-white hover:bg-blue-600"

@@ -4,9 +4,6 @@ import { jwtDecode } from "jwt-decode";
 import { useNavigate } from "react-router-dom";
 import { useUser } from "../context/UserContext";
 
-
-
-
 const Home = () => {
     const navigate = useNavigate();
     const { setUser } = useUser();
