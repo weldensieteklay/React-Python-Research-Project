@@ -47,3 +47,17 @@ def arima_prediction():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+        # -----------------------------
+# ARIMA (classic) endpoint
+# -----------------------------
+@routes.route("/lasso", methods=["POST"])
+def predict_price_lasso():
+    """
+    Endpoint for LASSO prediction logic.
+    Delegates to the existing `predict_price()` function.
+    """
+    try:
+        return predict_price()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
