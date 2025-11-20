@@ -1,9 +1,12 @@
 import React, { useState, useRef } from 'react';
-import { parseCsvFile } from '../constants/constants';
-import { computeSummaryStatistics } from '../constants/constants';
+import { parseCsvFile, computeSummaryStatistics } from '../utils/utils';
 import SummaryStatisticsTable from './SummaryStatisticsTable';
 import Select from 'react-select';
 import { usePrediction } from "../hooks/usePrediction";
+import PredictionTable from './PredictionTable';
+
+
+
 
 const TimeSeriesData = () => {
     const [parsedData, setParsedData] = useState([]);
@@ -19,7 +22,8 @@ const TimeSeriesData = () => {
     const [isValidDateColumn, setIsValidDateColumn] = useState(null);
     const fileInputRef = useRef(null);
 
-    const { data, loading, error, handlePredict } = usePrediction();
+    const { data: result, setData, loading, error, handlePredict } = usePrediction();
+
 
     const onDataParsed = (data) => {
         setParsedData(data);
@@ -56,27 +60,26 @@ const TimeSeriesData = () => {
 
     const methodOptions = [
         { value: 'lasso', label: 'LASSO' },
-        { value: 'ols', label: 'OLS' },
         { value: 'arima', label: 'ARIMA' },
     ];
 
     const columnOptions = columns.map(col => ({ value: col, label: col }));
 
-    const dateOptions = [];
-    if (selectedDateColumn) {
-        const dateSet = new Set(
-            parsedData
-                .map(row => row[selectedDateColumn])
-                .filter(value => {
-                    const date = new Date(value);
-                    return !isNaN(date.getTime());
-                })
-        );
-        const sortedDates = Array.from(dateSet).sort((a, b) => new Date(a) - new Date(b));
-        sortedDates.forEach(dateStr => {
-            dateOptions.push({ value: dateStr, label: dateStr });
-        });
-    }
+    const dateOptions = selectedDateColumn
+        ? Array.from(
+            new Set(
+                parsedData
+                    .map(row => row[selectedDateColumn])
+                    .filter(value => {
+                        const date = new Date(value);
+                        return !isNaN(date.getTime());
+                    })
+            )
+        )
+            .sort((a, b) => new Date(a) - new Date(b))
+            .map(dateStr => ({ value: dateStr, label: dateStr }))
+        : [];
+
 
     const handleClear = () => {
         setParsedData([]);
@@ -89,6 +92,7 @@ const TimeSeriesData = () => {
         setSummaryStats([]);
         setIsValidDateColumn(null);
         setFileUploaded(false);
+        setData(null);
         if (fileInputRef.current) {
             fileInputRef.current.value = null;
         }
@@ -104,20 +108,21 @@ const TimeSeriesData = () => {
         !selectedEndogenousVar;
 
     const onClickPredict = async () => {
-        
+        setData(null);
         const selectedData = parsedData
             .filter(row => {
                 const dateValue = new Date(row[selectedDateColumn]);
                 return dateValue >= new Date(startDate) && dateValue <= new Date(endDate);
             })
+
             .map(row => {
-                
+
                 const filteredRow = {
                     [selectedDateColumn]: row[selectedDateColumn],
                     [selectedEndogenousVar]: row[selectedEndogenousVar],
                 };
 
-                
+
                 (Array.isArray(selectedExogenousVar) ? selectedExogenousVar : [selectedExogenousVar])
                     .forEach(exog => {
                         if (row.hasOwnProperty(exog)) {
@@ -128,7 +133,7 @@ const TimeSeriesData = () => {
                 return filteredRow;
             });
 
-       
+
         const payload = {
             data: selectedData,
             date_variable: selectedDateColumn,
@@ -136,7 +141,9 @@ const TimeSeriesData = () => {
             exogenous_variable: Array.isArray(selectedExogenousVar)
                 ? selectedExogenousVar
                 : [selectedExogenousVar],
+
         };
+
         try {
             const result = await handlePredict(payload, method);
             console.log("Prediction Result:", result);
@@ -144,7 +151,7 @@ const TimeSeriesData = () => {
             console.error("Prediction Failed:", err);
         }
     };
-
+    
     return (
 
         <>
@@ -268,6 +275,9 @@ const TimeSeriesData = () => {
                         {summaryStats.length > 0 && (
                             <SummaryStatisticsTable stats={summaryStats} />
                         )}
+
+
+                        {result && <PredictionTable result={result} title="ARIMA Model Diagnostics" />}
                     </div>
                 </div>
             </div>

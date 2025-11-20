@@ -1,11 +1,9 @@
 import React, { useState, useRef } from 'react';
 import axios from 'axios';
 import Select from 'react-select';
-import { parseCsvFile } from '../constants/constants';
-import { computeSummaryStatistics } from '../constants/constants';
+import { parseCsvFile, computeSummaryStatistics } from '../utils/utils';
 import SummaryStatisticsTable from './SummaryStatisticsTable';
 import { usePrediction } from '../hooks/usePrediction'
-
 
 const CrossSectionalData = () => {
     const [parsedData, setParsedData] = useState([]);
@@ -58,11 +56,9 @@ const CrossSectionalData = () => {
         outliers;
 
     const handlePredict = async () => {
-        const X = parsedData.map(row =>
-            independentVar.map(col => parseFloat(row[col])).filter(val => !isNaN(val)));
-        const y = parsedData.map(row => parseFloat(row[dependentVar])).filter(val => !isNaN(val));
+    
         const payload = {
-            data: { X, y },
+            data: parsedData,
             method,
             id_column: idColumn,
             dependent_variable: dependentVar,

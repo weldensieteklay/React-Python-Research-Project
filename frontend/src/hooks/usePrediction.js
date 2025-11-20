@@ -25,5 +25,5 @@ export const usePrediction = () => {
     }
   };
 
-  return { data, loading, error, handlePredict };
+  return { data, setData, loading, error, handlePredict };
 };
