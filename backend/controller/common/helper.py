@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
-from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+import statsmodels.api as sm
 
 
 def is_valid_date(date_str):
@@ -93,15 +94,22 @@ def preprocess_exog(df, exog_cols):
     exog_df.fillna(0, inplace=True)
     return exog_df
 
-
 def compute_lasso_metrics(model, X_test, y_test, feature_names):
-    """Compute regression metrics and coefficient summary."""
+    """Compute regression metrics and coefficient summary formatted like OLS."""
+    
+    # Predictions
     preds = model.predict(X_test)
     mse = mean_squared_error(y_test, preds)
     r2 = r2_score(y_test, preds)
 
+    # Coefficient summary formatted like OLS response
     coef_summary = [
-        {"feature": name, "coefficient": round(coef, 4)}
+        {
+            "field_name": name,
+            "mean": round(coef, 4),
+            "standard_error": "",
+            "p_value": ""
+        }
         for name, coef in zip(feature_names, model.coef_)
     ]
 
@@ -109,5 +117,49 @@ def compute_lasso_metrics(model, X_test, y_test, feature_names):
         "mse": round(mse, 3),
         "r2": round(r2, 3),
         "alpha": round(model.alpha_, 4),
+        "data": coef_summary
+    }
+
+
+def create_lag_features(df, target_col, num_lags=3):
+    """Create lag features for time series modeling."""
+    for lag in range(1, num_lags + 1):
+        df[f'{target_col}_lag_{lag}'] = df[target_col].shift(lag)
+    df.dropna(inplace=True)
+    return df
+
+
+
+def compute_ridge_metrics(model, X_test, y_test, feature_names):
+    """
+    Compute evaluation metrics and feature coefficients for a trained Ridge model,
+    formatted like OLS (empty standard_error and p_value).
+    """
+
+    # Predictions
+    y_pred = model.predict(X_test)
+
+    # Evaluation metrics
+    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+    mae = mean_absolute_error(y_test, y_pred)
+    r2 = r2_score(y_test, y_pred)
+
+    # Coefficient summary formatted like OLS
+    coef_summary = [
+        {
+            "field_name": feature,
+            "mean": round(float(coef), 4),
+            "standard_error": "",
+            "p_value": ""
+        }
+        for feature, coef in zip(feature_names, model.coef_)
+    ]
+
+    return {
+        "model": "ridge",
+        "alpha": float(model.alpha_) if hasattr(model, "alpha_") else None,
+        "rmse": round(rmse, 3),
+        "mae": round(mae, 3),
+        "r2": round(r2, 3),
         "data": coef_summary
     }

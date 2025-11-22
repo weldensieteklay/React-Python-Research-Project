@@ -1,7 +1,8 @@
 from flask import Blueprint, request, jsonify
 from controller.ols.ols import run_ols_prediction
 from controller.arima.ARIMA import predict_price
-
+from controller.lasso.LASSO import predict_price_lasso
+from controller.ridge.RIDGE import predict_price_ridge
 
 # -----------------------------
 # Initialize blueprints
@@ -48,16 +49,29 @@ def arima_prediction():
         return jsonify({"error": str(e)}), 500
 
         # -----------------------------
-# ARIMA (classic) endpoint
+# LASSO (classic) endpoint
 # -----------------------------
 @routes.route("/lasso", methods=["POST"])
-def predict_price_lasso():
+def lass_prediction():
     """
     Endpoint for LASSO prediction logic.
-    Delegates to the existing `predict_price()` function.
+    Delegates to the existing `predict_price_lasso()` function.
     """
     try:
-        return predict_price()
+        return predict_price_lasso()
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# -----------------------------
+# RIDGE
+# -----------------------------
+@routes.route("/ridge", methods=["POST"])
+def ridge_prediction():
+    """
+    Endpoint for RIDGE prediction logic.
+    Delegates to the existing `predict_price_ridge()` function.
+    """
+    try:
+        return predict_price_ridge()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500

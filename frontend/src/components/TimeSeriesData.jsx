@@ -59,8 +59,13 @@ const TimeSeriesData = () => {
     };
 
     const methodOptions = [
-        { value: 'lasso', label: 'LASSO' },
         { value: 'arima', label: 'ARIMA' },
+        { value: 'lasso', label: 'LASSO' },
+        { value: 'ridge', label: 'RIDGE' },
+        { value: 'forest', label: 'RANDOM FOREST' },
+        { value: 'boosting', label: 'BOOSTING' },
+        { value: 'bagging', label: 'BAGGING' },
+
     ];
 
     const columnOptions = columns.map(col => ({ value: col, label: col }));
