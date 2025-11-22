@@ -62,7 +62,7 @@ const TimeSeriesData = () => {
         { value: 'arima', label: 'ARIMA' },
         { value: 'lasso', label: 'LASSO' },
         { value: 'ridge', label: 'RIDGE' },
-        { value: 'forest', label: 'RANDOM FOREST' },
+        { value: 'forest', label: 'FOREST' },
         { value: 'boosting', label: 'BOOSTING' },
         { value: 'bagging', label: 'BAGGING' },
 

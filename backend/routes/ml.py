@@ -3,6 +3,7 @@ from controller.ols.ols import run_ols_prediction
 from controller.arima.ARIMA import predict_price
 from controller.lasso.LASSO import predict_price_lasso
 from controller.ridge.RIDGE import predict_price_ridge
+from controller.forest.FOREST import predict_price_random_forest
 
 # -----------------------------
 # Initialize blueprints
@@ -73,5 +74,20 @@ def ridge_prediction():
     """
     try:
         return predict_price_ridge()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# -----------------------------
+# Forest
+# -----------------------------
+@routes.route("/forest", methods=["POST"])
+def forest_prediction():
+    """
+    Endpoint for FOREST prediction logic.
+    Delegates to the existing `predict_price_random_forest()` function.
+    """
+    try:
+        return predict_price_random_forest()
     except Exception as e:
         return jsonify({"error": str(e)}), 500

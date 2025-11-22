@@ -163,3 +163,40 @@ def compute_ridge_metrics(model, X_test, y_test, feature_names):
         "r2": round(r2, 3),
         "data": coef_summary
     }
+
+def compute_rf_metrics(model, X_test, y_test, feature_names):
+    """
+    Compute evaluation metrics and feature importances for a trained Random Forest model.
+    Ensures all numeric values are formatted to 3 decimal places.
+    """
+
+    y_pred = model.predict(X_test)
+
+    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+    mae = mean_absolute_error(y_test, y_pred)
+    r2 = r2_score(y_test, y_pred)
+
+    # Format helper for consistent 3-decimal output
+    def fmt(value):
+        return float(f"{value:.3f}")
+
+    # Feature importance summary with 3-decimal values
+    importance_summary = [
+        {
+            "field_name": name,
+            "importance": fmt(imp),
+            "mean": fmt(imp),          # keeping your OLS-style naming
+            "standard_error": "",
+            "p_value": ""
+        }
+        for name, imp in zip(feature_names, model.feature_importances_)
+    ]
+
+    return {
+        "model": "random_forest",
+        "n_estimators": model.n_estimators,
+        "rmse": fmt(rmse),
+        "mae": fmt(mae),
+        "r2": fmt(r2),
+        "data": importance_summary
+    }
