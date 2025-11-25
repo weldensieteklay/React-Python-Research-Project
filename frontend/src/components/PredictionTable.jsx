@@ -1,13 +1,13 @@
 import React from "react";
 
-const PredictionTable = ({ result, title = "Model Summary" }) => {
+const PredictionTable = ({ result }) => {
   if (!result || !result.data || !Array.isArray(result.data)) {
     return <p className="text-red-500">No model summary available.</p>;
   }
 
   return (
     <div className="mt-6 w-full max-w-5xl mx-auto">
-      <h2 className="text-xl font-semibold text-gray-800 mb-4">{title}</h2>
+      <h2 className="text-xl font-semibold text-gray-800 mb-4">{`${result.model} Results`}</h2>
 
       <div className="grid grid-cols-2 gap-4 text-sm text-gray-700 mb-6">
         <div><strong>Stationary:</strong> {result.stationary ? "Yes" : "No"}</div>

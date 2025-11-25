@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 import statsmodels.api as sm
-
+from sklearn.inspection import permutation_importance
 
 def is_valid_date(date_str):
     try:
@@ -198,5 +198,90 @@ def compute_rf_metrics(model, X_test, y_test, feature_names):
         "rmse": fmt(rmse),
         "mae": fmt(mae),
         "r2": fmt(r2),
+        "data": importance_summary
+    }
+
+
+def compute_bagging_metrics(model, X_test, y_test, feature_names):
+    """
+    Compute evaluation metrics and permutation-based feature importances
+    for a trained Bagging Regressor.
+    All numbers are returned with 3-decimal formatting.
+    """
+
+    y_pred = model.predict(X_test)
+
+    # Helper for clean formatting
+    fmt = lambda x: float(f"{x:.3f}")
+
+    # Metrics
+    rmse = fmt(np.sqrt(mean_squared_error(y_test, y_pred)))
+    mae = fmt(mean_absolute_error(y_test, y_pred))
+    r2 = fmt(r2_score(y_test, y_pred))
+
+    # Permutation importance (Bagging has no native importances)
+    perm = permutation_importance(
+        model,
+        X_test,
+        y_test,
+        n_repeats=10,
+        random_state=42
+    )
+
+    importance_summary = []
+    for name, imp in zip(feature_names, perm.importances_mean):
+        importance_summary.append({
+            "field_name": name,
+            "importance": fmt(imp),
+            "mean": fmt(imp),
+            "standard_error": "",
+            "p_value": ""
+        })
+
+    return {
+        "model": "bagging",
+        "n_estimators": model.n_estimators,
+        "rmse": rmse,
+        "mae": mae,
+        "r2": r2,
+        "data": importance_summary
+    }
+
+
+
+
+def compute_boosting_metrics(model, X_test, y_test, feature_names):
+    """
+    Compute evaluation metrics and feature importances for a Gradient Boosting model.
+    Ensures all numeric values have 3-decimal formatting.
+    """
+
+    y_pred = model.predict(X_test)
+
+    fmt = lambda val: float(f"{val:.3f}")
+
+    rmse = fmt(np.sqrt(mean_squared_error(y_test, y_pred)))
+    mae = fmt(mean_absolute_error(y_test, y_pred))
+    r2 = fmt(r2_score(y_test, y_pred))
+
+    # Feature importances (Gradient Boosting provides native importance)
+    importance_summary = [
+        {
+            "field_name": name,
+            "importance": fmt(imp),
+            "mean": fmt(imp),
+            "standard_error": "",
+            "p_value": ""
+        }
+        for name, imp in zip(feature_names, model.feature_importances_)
+    ]
+
+    return {
+        "model": "gradient_boosting",
+        "n_estimators": model.n_estimators,
+        "learning_rate": fmt(model.learning_rate),
+        "rmse": rmse,
+        "mae": mae,
+        "r2": r2,
         "data": importance_summary
     }

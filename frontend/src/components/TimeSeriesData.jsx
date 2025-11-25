@@ -2,8 +2,9 @@ import React, { useState, useRef } from 'react';
 import { parseCsvFile, computeSummaryStatistics } from '../utils/utils';
 import SummaryStatisticsTable from './SummaryStatisticsTable';
 import Select from 'react-select';
-import { usePrediction } from "../hooks/usePrediction";
+import { usePrediction } from '../hooks/usePrediction';
 import PredictionTable from './PredictionTable';
+import LineGraph from './LineGraph';
 
 
 
@@ -20,6 +21,7 @@ const TimeSeriesData = () => {
     const [selectedExogenousVar, setSelectedExogenousVar] = useState('');
     const [summaryStats, setSummaryStats] = useState([]);
     const [isValidDateColumn, setIsValidDateColumn] = useState(null);
+    const [showLineGraph, setShowLineGraph] = useState(false);
     const fileInputRef = useRef(null);
 
     const { data: result, setData, loading, error, handlePredict } = usePrediction();
@@ -98,6 +100,7 @@ const TimeSeriesData = () => {
         setIsValidDateColumn(null);
         setFileUploaded(false);
         setData(null);
+        setShowLineGraph(false);
         if (fileInputRef.current) {
             fileInputRef.current.value = null;
         }
@@ -156,7 +159,7 @@ const TimeSeriesData = () => {
             console.error("Prediction Failed:", err);
         }
     };
-    
+
     return (
 
         <>
@@ -260,7 +263,7 @@ const TimeSeriesData = () => {
                             <button className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600" onClick={handleSummaryStatistics}>
                                 Summary Statistics
                             </button>
-                            <button className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+                            <button className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600" onClick={() => setShowLineGraph(true)}>
                                 Line Graph
                             </button>
                             <button
@@ -282,7 +285,15 @@ const TimeSeriesData = () => {
                         )}
 
 
-                        {result && <PredictionTable result={result} title="ARIMA Model Diagnostics" />}
+                        {result && <PredictionTable result={result} />}
+
+                        {showLineGraph && selectedDateColumn && selectedEndogenousVar && (
+                            <LineGraph
+                                data={parsedData}
+                                dateColumn={selectedDateColumn}
+                                endogenousColumn={selectedEndogenousVar}
+                            />
+                        )}
                     </div>
                 </div>
             </div>

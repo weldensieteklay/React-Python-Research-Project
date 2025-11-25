@@ -4,6 +4,8 @@ from controller.arima.ARIMA import predict_price
 from controller.lasso.LASSO import predict_price_lasso
 from controller.ridge.RIDGE import predict_price_ridge
 from controller.forest.FOREST import predict_price_random_forest
+from controller.bagging.BAGGING import predict_price_bagging
+from controller.boosting.BOOSTING import predict_price_boosting
 
 # -----------------------------
 # Initialize blueprints
@@ -89,5 +91,35 @@ def forest_prediction():
     """
     try:
         return predict_price_random_forest()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# -----------------------------
+# Bagging
+# -----------------------------
+@routes.route("/bagging", methods=["POST"])
+def bagging_prediction():
+    """
+    Endpoint for BAGGING prediction logic.
+    Delegates to the existing `predict_price_bagging()` function.
+    """
+    try:
+        return predict_price_bagging()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# -----------------------------
+# Boosting
+# -----------------------------
+@routes.route("/boosting", methods=["POST"])
+def boosting_prediction():
+    """
+    Endpoint for BOOSTING prediction logic.
+    Delegates to the existing `predict_price_boosting()` function.
+    """
+    try:
+        return predict_price_boosting()
     except Exception as e:
         return jsonify({"error": str(e)}), 500

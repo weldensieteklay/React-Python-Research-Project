@@ -1,22 +1,36 @@
 import Papa from "papaparse";
 
 export const parseCsvFile = (file, callback) => {
-  if (!file) return;
-
-  Papa.parse(file, {
-    header: true,
-    skipEmptyLines: true,
-    complete: (results) => {
-      const cleaned = results.data.filter(row =>
-        Object.values(row).every(value => value !== null && value !== "")
-      );
-      callback(cleaned);
-    },
-    error: (err) => {
-      console.error("CSV parsing error:", err);
-    }
-  });
-};
+    if (!file) return;
+  
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+        const cleaned = results.data
+          .filter(row =>
+            Object.values(row).every(value => value !== null && value !== "")
+          )
+          .map(row => {
+            const transformed = {};
+            for (const [key, value] of Object.entries(row)) {
+              const newKey = key.replace(/_/g, " ");
+              const newValue = typeof value === "string"
+                ? value.replace(/_/g, " ")
+                : value;
+              transformed[newKey] = newValue;
+            }
+            return transformed;
+          });
+  
+        callback(cleaned);
+      },
+      error: (err) => {
+        console.error("CSV parsing error:", err);
+      }
+    });
+  };
+  ;
 
 export const computeSummaryStatistics = (data, columns) =>{
     if (!data || data.length === 0 || !columns || columns.length === 0) return [];
