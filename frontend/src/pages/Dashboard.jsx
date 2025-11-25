@@ -1,15 +1,16 @@
 import React from "react";
 import { dashboardRoute } from "../constants/constants";
 import { useNavigate } from "react-router-dom";
-import { useUser } from "../context/UserContext";
+import { useUser }  from "../hooks/useUser";
 
 
 const Dashboard = () => {
     const navigate = useNavigate();
-    const { user, handleLogout } = useUser();
+    const { user, clearUser } = useUser();
+
 
     const onLogoutClick = () => {
-        handleLogout();      
+        clearUser();       
         navigate("/");  
       };
    

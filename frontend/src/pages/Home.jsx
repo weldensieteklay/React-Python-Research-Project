@@ -2,10 +2,7 @@ import React from "react";
 import { GoogleLogin } from "@react-oauth/google";
 import { jwtDecode } from "jwt-decode";
 import { useNavigate } from "react-router-dom";
-import { useUser } from "../context/UserContext";
-
-
-
+import { useUser } from "../hooks/useUser";
 
 const Home = () => {
     const navigate = useNavigate();

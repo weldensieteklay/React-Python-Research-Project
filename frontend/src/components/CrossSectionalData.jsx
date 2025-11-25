@@ -1,36 +1,35 @@
-import React, { useState, useRef } from "react";
-import axios from "axios";
-import Select from "react-select";
-import { parseCsvFile } from "../constants/constants";
-import { computeSummaryStatistics } from '../constants/constants';
-import SummaryStatisticsTable from "./SummaryStatisticsTable";
-
-
+import React, { useState, useRef } from 'react';
+import axios from 'axios';
+import Select from 'react-select';
+import { parseCsvFile, computeSummaryStatistics } from '../utils/utils';
+import SummaryStatisticsTable from './SummaryStatisticsTable';
+import { usePrediction } from '../hooks/usePrediction'
 
 const CrossSectionalData = () => {
     const [parsedData, setParsedData] = useState([]);
     const [columns, setColumns] = useState([]);
     const [summaryStats, setSummaryStats] = useState([]);
     const [fileUploaded, setFileUploaded] = useState(false);
-    const [method, setMethod] = useState("");
-    const [idColumn, setIdColumn] = useState("");
-    const [dependentVar, setDependentVar] = useState("");
+    const [method, setMethod] = useState('');
+    const [idColumn, setIdColumn] = useState('');
+    const [dependentVar, setDependentVar] = useState('');
     const [independentVar, setIndependentVar] = useState([]);
     const [categoricalVar, setCategoricalVar] = useState([]);
-    const [outliers, setOutliers] = useState("");
+    const [outliers, setOutliers] = useState('');
     const fileInputRef = useRef(null);
+    const { data, loading, error, handlePredict: runPrediction } = usePrediction();
 
 
     const columnOptions = columns.map(col => ({ value: col, label: col }));
 
     const methodOptions = [
-        { value: "ols", label: "OLS" },
-        { value: "lasso", label: "LASSO" },
+        { value: 'ols', label: 'OLS' },
+        { value: 'lasso', label: 'LASSO' },
     ];
 
     const outlierOptions = [
-        { value: "yes", label: "Yes" },
-        { value: "no", label: "No" },
+        { value: 'yes', label: 'Yes' },
+        { value: 'no', label: 'No' },
     ];
 
     const onDataParsed = (data) => {
@@ -57,14 +56,7 @@ const CrossSectionalData = () => {
         outliers;
 
     const handlePredict = async () => {
-        const X = parsedData.map(row =>
-            independentVar.map(col => parseFloat(row[col])).filter(val => !isNaN(val))
-        );
-
-        const y = parsedData
-            .map(row => parseFloat(row[dependentVar]))
-            .filter(val => !isNaN(val));
-
+    
         const payload = {
             data: parsedData,
             method,
@@ -75,12 +67,7 @@ const CrossSectionalData = () => {
             outliers,
         };
 
-        try {
-            const response = await axios.post("http://localhost:5000/api/ols", payload);
-            console.log("Prediction result:", response.data);
-        } catch (error) {
-            console.error("Prediction error:", error.response?.data || error.message);
-        }
+        await runPrediction(payload, method);
     };
 
     const handleClear = () => {
