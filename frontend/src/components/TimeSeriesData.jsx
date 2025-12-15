@@ -9,6 +9,7 @@ import LineGraph from './LineGraph';
 
 
 
+
 const TimeSeriesData = () => {
     const [parsedData, setParsedData] = useState([]);
     const [columns, setColumns] = useState([]);
@@ -22,6 +23,7 @@ const TimeSeriesData = () => {
     const [summaryStats, setSummaryStats] = useState([]);
     const [isValidDateColumn, setIsValidDateColumn] = useState(null);
     const [showLineGraph, setShowLineGraph] = useState(false);
+
     const fileInputRef = useRef(null);
 
     const { data: result, setData, loading, error, handlePredict } = usePrediction();
@@ -67,6 +69,7 @@ const TimeSeriesData = () => {
         { value: 'forest', label: 'FOREST' },
         { value: 'boosting', label: 'BOOSTING' },
         { value: 'bagging', label: 'BAGGING' },
+        { value: 'hybrid-forest', label: 'HYBRID FOREST' },
 
     ];
 
@@ -105,6 +108,9 @@ const TimeSeriesData = () => {
             fileInputRef.current.value = null;
         }
     };
+
+   
+
 
     const isPredictDisabled =
         !fileUploaded ||
@@ -260,6 +266,7 @@ const TimeSeriesData = () => {
 
                         <div className="w-full flex flex-wrap justify-center gap-4 mt-6">
 
+                            
                             <button className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600" onClick={handleSummaryStatistics}>
                                 Summary Statistics
                             </button>
@@ -281,7 +288,7 @@ const TimeSeriesData = () => {
                             </button>
                         </div>
                         {summaryStats.length > 0 && (
-                            <SummaryStatisticsTable stats={summaryStats} />
+                            <SummaryStatisticsTable stats={summaryStats} showExtended={false} />
                         )}
 
 

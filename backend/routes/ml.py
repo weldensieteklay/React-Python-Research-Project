@@ -6,6 +6,7 @@ from controller.ridge.RIDGE import predict_price_ridge
 from controller.forest.FOREST import predict_price_random_forest
 from controller.bagging.BAGGING import predict_price_bagging
 from controller.boosting.BOOSTING import predict_price_boosting
+from controller.hybridForest.FOREST import predict_price_hybrid_forest
 
 # -----------------------------
 # Initialize blueprints
@@ -121,5 +122,19 @@ def boosting_prediction():
     """
     try:
         return predict_price_boosting()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# Hybrid
+# -----------------------------
+@routes.route("/hybrid-forest", methods=["POST"])
+def hybrid_forest_prediction():
+    """
+    Endpoint for hybrid forest prediction logic.
+    Delegates to the existing `predict_price_hybrid_forest()` function.
+    """
+    try:
+        return predict_price_hybrid_forest()
     except Exception as e:
         return jsonify({"error": str(e)}), 500

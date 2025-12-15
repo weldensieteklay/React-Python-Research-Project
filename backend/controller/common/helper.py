@@ -32,9 +32,12 @@ def compute_metrics(results, test_data, target_var, exog_test=None):
     actual = test_data[target_var].reset_index(drop=True)
     
     mse = float(np.mean((actual - forecast) ** 2))
+    rmse = np.sqrt(np.mean((actual - forecast) ** 2))
+
         
     return {
         'mse': round(mse, 3),
+        'rmse': round(rmse, 3),
         'aic': round(results.aic, 3),
         'bic': round(results.bic, 3)
     }
