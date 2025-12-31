@@ -19,7 +19,7 @@ const TimeSeriesData = () => {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [selectedEndogenousVar, setSelectedEndogenousVar] = useState('');
-    const [selectedExogenousVar, setSelectedExogenousVar] = useState('');
+    const [selectedExogenousVar, setSelectedExogenousVar] = useState([]);
     const [summaryStats, setSummaryStats] = useState([]);
     const [isValidDateColumn, setIsValidDateColumn] = useState(null);
     const [showLineGraph, setShowLineGraph] = useState(false);
@@ -27,7 +27,6 @@ const TimeSeriesData = () => {
     const fileInputRef = useRef(null);
 
     const { data: result, setData, loading, error, handlePredict } = usePrediction();
-
 
     const onDataParsed = (data) => {
         setParsedData(data);
@@ -243,7 +242,7 @@ const TimeSeriesData = () => {
 
 
                         <div className="flex flex-col w-48">
-                            <label className="text-sm text-gray-700 mb-1">Endogenous Variables</label>
+                            <label className="text-sm text-gray-700 mb-1">Endogenous Variable</label>
                             <Select
                                 options={columnOptions}
                                 value={selectedEndogenousVar ? columnOptions.find(opt => opt.value === selectedEndogenousVar) : null}
@@ -257,8 +256,15 @@ const TimeSeriesData = () => {
                             <label className="text-sm text-gray-700 mb-1">Exogenouse Variables</label>
                             <Select
                                 options={columnOptions}
-                                value={selectedExogenousVar ? columnOptions.find(opt => opt.value === selectedExogenousVar) : null}
-                                onChange={(selected) => setSelectedExogenousVar(selected?.value || "")}
+                                isMulti
+                                value={columnOptions.filter(opt =>
+                                    selectedExogenousVar.includes(opt.value)
+                                )}
+                                onChange={(selectedOptions) =>
+                                    setSelectedExogenousVar(
+                                        selectedOptions ? selectedOptions.map(opt => opt.value) : []
+                                    )
+                                }
                                 classNamePrefix="react-select"
                                 className="text-sm"
                             />

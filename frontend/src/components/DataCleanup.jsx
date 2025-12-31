@@ -176,6 +176,12 @@ const DataCleanup = () => {
         { value: "fill-between", label: "Fill Missing with Interpolated Average" },
     ];
 
+    const isDisabled =
+    !fileUploaded ||
+    !selectedAction
+    !selectedColumn;
+  
+
     return (
         <>
             <div className="w-full px-4 my-6">
@@ -235,8 +241,12 @@ const DataCleanup = () => {
                                 Summary Statistics
                             </button>
                             <button
-                                className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                                 className={`w-40 px-4 py-2 rounded ${isDisabled
+                                    ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                                    : "bg-blue-500 text-white hover:bg-blue-600"
+                                    }`}
                                 onClick={handleApplyCleanup}
+                                disabled={isDisabled}
                             >
                                 Apply Cleanup
                             </button>

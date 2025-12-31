@@ -31,9 +31,8 @@ def compute_metrics(results, test_data, target_var, exog_test=None):
     forecast = pd.Series(forecast).reset_index(drop=True)
     actual = test_data[target_var].reset_index(drop=True)
     
-    mse = float(np.mean((actual - forecast) ** 2))
-    rmse = np.sqrt(np.mean((actual - forecast) ** 2))
-
+   mse = float(np.mean((actual - forecast) ** 2))
+   rmse = float(np.sqrt(mse)) 
         
     return {
         'mse': round(mse, 3),

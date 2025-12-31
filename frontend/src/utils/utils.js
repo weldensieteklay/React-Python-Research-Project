@@ -8,9 +8,9 @@ export const parseCsvFile = (file, callback) => {
     skipEmptyLines: true,
     complete: (results) => {
       const cleaned = results.data
-        .filter(row =>
-          Object.values(row).every(value => value !== null && value !== "")
-        )
+        // .filter(row =>
+        //   Object.values(row).every(value => value !== null && value !== "")
+        // )
         .map(row => {
           const transformed = {};
           for (const [key, value] of Object.entries(row)) {
