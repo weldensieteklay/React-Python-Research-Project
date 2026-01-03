@@ -69,6 +69,11 @@ const TimeSeriesData = () => {
         { value: 'boosting', label: 'BOOSTING' },
         { value: 'bagging', label: 'BAGGING' },
         { value: 'hybrid-forest', label: 'HYBRID FOREST' },
+        { value: 'hybrid-lasso', label: 'HYBRID LASSO' },
+        { value: 'hybrid-ridge', label: 'HYBRID RIDGE' },
+        { value: 'hybrid-boosting', label: 'HYBRID BOOSTING' },
+        { value: 'hybrid-bagging', label: 'HYBRID BAGGING' },
+
 
     ];
 

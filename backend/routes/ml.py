@@ -7,6 +7,11 @@ from controller.forest.FOREST import predict_price_random_forest
 from controller.bagging.BAGGING import predict_price_bagging
 from controller.boosting.BOOSTING import predict_price_boosting
 from controller.hybridForest.FOREST import predict_price_hybrid_forest
+from controller.arima.HYBRIDLASSO import predict_price_hybrid_lasso
+from controller.arima.HYBRIDRIDGE import predict_price_hybrid_ridge
+from controller.arima.HYBRIDFOREST import predict_price_hybrid_forest
+from controller.arima.HYBRIDBOOSTING import predict_price_hybrid_boosting
+from controller.arima.HYBRIDBAGGING import predict_price_hybrid_bagging 
 
 # -----------------------------
 # Initialize blueprints
@@ -129,7 +134,7 @@ def boosting_prediction():
 # Hybrid
 # -----------------------------
 @routes.route("/hybrid-forest", methods=["POST"])
-def hybrid_forest_prediction():
+def hybridForest_prediction():
     """
     Endpoint for hybrid forest prediction logic.
     Delegates to the existing `predict_price_hybrid_forest()` function.
@@ -138,3 +143,47 @@ def hybrid_forest_prediction():
         return predict_price_hybrid_forest()
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+        # -----------------------------
+# ARIMA-LASSO (classic) endpoint
+# -----------------------------
+@routes.route("/hybrid-lasso", methods=["POST"])
+def hybridLasso_prediction():
+    try:
+        return predict_price_hybrid_lasso()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+        # -----------------------------
+# ARIMA-RIGHE (classic) endpoint
+# -----------------------------
+@routes.route("/hybrid-ridge", methods=["POST"])
+def hybridRidge_prediction():
+    try:
+        return predict_price_hybrid_ridge()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+        # -----------------------------
+# ARIMA-BOOSTING (classic) endpoint
+# -----------------------------
+@routes.route("/hybrid-boosting", methods=["POST"])
+def hybridBoosting_prediction():
+    try:
+        return predict_price_hybrid_boosting()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+        # -----------------------------
+# ARIMA-BAGGING (classic) endpoint
+# -----------------------------
+@routes.route("/hybrid-bagging", methods=["POST"])
+def hybridBagging_prediction():
+    try:
+        return predict_price_hybrid_bagging()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+

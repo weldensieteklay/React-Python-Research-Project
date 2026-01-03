@@ -13,12 +13,13 @@ export const parseCsvFile = (file, callback) => {
         // )
         .map(row => {
           const transformed = {};
+          console.log(row, 'rowrow')
           for (const [key, value] of Object.entries(row)) {
             const newKey = key.replace(/_/g, " ");
             const newValue = typeof value === "string"
               ? value.replace(/_/g, " ")
               : value;
-            transformed[newKey] = newValue;
+            transformed[key] = newValue;
           }
           return transformed;
         });

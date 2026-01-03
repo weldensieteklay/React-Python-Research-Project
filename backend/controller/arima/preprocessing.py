@@ -4,12 +4,16 @@ from .helpers import is_valid_date
 import pandas as pd
 import numpy as np
 
+
+
 def clean_input_data(raw_data):
     """Remove empty strings, NaN, or None values."""
     df = pd.DataFrame(raw_data)
     df.replace('', np.nan, inplace=True)
     df.dropna(inplace=True)
     return df
+
+    
 
 def detect_columns(first_object):
     """Automatically detect date and target columns."""
