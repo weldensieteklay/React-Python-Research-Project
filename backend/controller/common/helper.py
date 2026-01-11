@@ -97,6 +97,8 @@ def compute_lasso_metrics(model, X_test, y_test, feature_names):
     preds = model.predict(X_test)
 
     mse = mean_squared_error(y_test, preds)
+    mae = mean_absolute_error(y_test, preds)
+
     rmse = np.sqrt(mse)
     r2 = r2_score(y_test, preds)
 
@@ -111,7 +113,7 @@ def compute_lasso_metrics(model, X_test, y_test, feature_names):
     ]
 
     return {
-        "mse": round(mse, 3),
+        "mae": round(mae, 3),
         "rmse": round(rmse, 3),
         "r2": round(r2, 3),
         "alpha": round(model.alpha_, 4),
