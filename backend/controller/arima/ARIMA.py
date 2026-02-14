@@ -1,4 +1,5 @@
-from flask import jsonify, request
+from fastapi import Request
+from fastapi.responses import JSONResponse
 import pandas as pd
 
 from .preprocessing import clean_input_data
@@ -6,10 +7,9 @@ from .helpers import preprocess_exog, compute_metrics, to_serializable
 from .model_utils import fit_arima_model
 from .summary_utils import extract_model_summary
 
-
-def predict_price():
+async def predict_price(request: Request):
     try:
-        payload = request.get_json(force=True)
+        payload = await request.json()  # FastAPI way
 
         raw_data = payload.get("data", [])
         date_col = payload.get("date_variable")
@@ -17,9 +17,9 @@ def predict_price():
         exog_cols = payload.get("exogenous_variable", [])
 
         if not raw_data or not date_col or not target_col:
-            return jsonify({
+            return JSONResponse({
                 "error": "data, date_variable, and target_variable are required"
-            }), 400
+            }, status_code=400)
 
         # -------------------------
         # Load & clean
@@ -75,10 +75,10 @@ def predict_price():
             "data": extract_model_summary(results, target_col)
         }
 
-        return jsonify(to_serializable(response))
+        return JSONResponse(to_serializable(response))
 
     except Exception as e:
-        return jsonify({
+        return JSONResponse({
             "error": "Model execution failed",
             "details": repr(e)
-        }), 500
+        }, status_code=500)
