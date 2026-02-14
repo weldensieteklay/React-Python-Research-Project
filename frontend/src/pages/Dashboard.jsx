@@ -19,11 +19,7 @@ const Dashboard = () => {
         <>
 
             <aside className="absolute top-13 right-0 w-64 bg-white shadow-md p-4 flex flex-col items-center space-y-2 rounded-lg z-10">
-               {user?.picture && (<img
-               src={user?.picture}
-               alt="Profile"
-               className="w-12 h-12 rounded-full border border-gray-200 shadow-sm"
-                /> )}
+               
                 <h2 className="text-lg font-semibold text-gray-800 text-center">
                     Hello, {user?.given_name}
                 </h2>

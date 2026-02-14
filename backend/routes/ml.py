@@ -1,4 +1,6 @@
-from flask import Blueprint, request, jsonify
+from fastapi import APIRouter, Request, HTTPException
+from fastapi.responses import JSONResponse
+
 from controller.ols.ols import run_ols_prediction
 from controller.arima.ARIMA import predict_price
 from controller.lasso.LASSO import predict_price_lasso
@@ -6,120 +8,89 @@ from controller.ridge.RIDGE import predict_price_ridge
 from controller.forest.FOREST import predict_price_random_forest
 from controller.bagging.BAGGING import predict_price_bagging
 from controller.boosting.BOOSTING import predict_price_boosting
+from controller.hybridForest.FOREST import predict_price_hybrid_forest
+from controller.arima.HYBRIDLASSO import predict_price_hybrid_lasso
+from controller.arima.HYBRIDRIDGE import predict_price_hybrid_ridge
+from controller.arima.HYBRIDFOREST import predict_price_hybrid_forest
+from controller.arima.HYBRIDBOOSTING import predict_price_hybrid_boosting
+from controller.arima.HYBRIDBAGGING import predict_price_hybrid_bagging
 
 # -----------------------------
-# Initialize blueprints
+# Initialize router
 # -----------------------------
-routes = Blueprint("routes", __name__)
+router = APIRouter()
 
-
 # -----------------------------
-# OLS / ARIMA (SARIMAX-based) endpoint
+# Helper to handle JSON request and errors
 # -----------------------------
-@routes.route("/ols", methods=["POST"])
-def ols_prediction():
-    """
-    Endpoint for OLS or ARIMA/SARIMAX predictions.
-    Expects JSON input matching the model requirements.
-    """
+async def handle_request(func, request: Request = None):
     try:
-        data = request.get_json(force=True)
-        if not data:
-            return jsonify({"error": "No JSON payload provided"}), 400
-
-        result = run_arima_model(data)
-        if "error" in result:
-            return jsonify(result), 400
-
-        return jsonify(result), 200
-
+        data = None
+        if request:
+            data = await request.json()
+        result = func(data) if data else func()
+        if isinstance(result, dict) and "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+        return JSONResponse(content=result)
+    except HTTPException as e:
+        raise e
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # -----------------------------
-# ARIMA (classic) endpoint
+# Endpoints
 # -----------------------------
-@routes.route("/arima", methods=["POST"])
-def arima_prediction():
-    """
-    Endpoint for ARIMA prediction logic.
-    Delegates to the existing `predict_price()` function.
-    """
-    try:
-        return predict_price()
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
-        # -----------------------------
-# LASSO (classic) endpoint
-# -----------------------------
-@routes.route("/lasso", methods=["POST"])
-def lass_prediction():
-    """
-    Endpoint for LASSO prediction logic.
-    Delegates to the existing `predict_price_lasso()` function.
-    """
-    try:
-        return predict_price_lasso()
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+@router.post("/ols")
+async def ols_prediction(request: Request):
+    return await handle_request(run_ols_prediction, request)
 
-# -----------------------------
-# RIDGE
-# -----------------------------
-@routes.route("/ridge", methods=["POST"])
-def ridge_prediction():
-    """
-    Endpoint for RIDGE prediction logic.
-    Delegates to the existing `predict_price_ridge()` function.
-    """
-    try:
-        return predict_price_ridge()
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+@router.post("/arima")
+async def arima_endpoint(request: Request):
+    # pass request to your function
+    return await predict_price(request)
 
+@router.post("/lasso")
+async def lasso_prediction():
+    return await handle_request(predict_price_lasso)
 
-# -----------------------------
-# Forest
-# -----------------------------
-@routes.route("/forest", methods=["POST"])
-def forest_prediction():
-    """
-    Endpoint for FOREST prediction logic.
-    Delegates to the existing `predict_price_random_forest()` function.
-    """
-    try:
-        return predict_price_random_forest()
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+@router.post("/ridge")
+async def ridge_prediction():
+    return await handle_request(predict_price_ridge)
 
+@router.post("/forest")
+async def forest_prediction():
+    return await handle_request(predict_price_random_forest)
 
-# -----------------------------
-# Bagging
-# -----------------------------
-@routes.route("/bagging", methods=["POST"])
-def bagging_prediction():
-    """
-    Endpoint for BAGGING prediction logic.
-    Delegates to the existing `predict_price_bagging()` function.
-    """
-    try:
-        return predict_price_bagging()
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+@router.post("/bagging")
+async def bagging_prediction():
+    return await handle_request(predict_price_bagging)
 
+@router.post("/boosting")
+async def boosting_prediction():
+    return await handle_request(predict_price_boosting)
 
-# -----------------------------
-# Boosting
-# -----------------------------
-@routes.route("/boosting", methods=["POST"])
-def boosting_prediction():
-    """
-    Endpoint for BOOSTING prediction logic.
-    Delegates to the existing `predict_price_boosting()` function.
-    """
-    try:
-        return predict_price_boosting()
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+@router.post("/hybrid-forest")
+async def hybrid_forest_prediction():
+    return await handle_request(predict_price_hybrid_forest)
+
+@router.post("/hybrid-lasso")
+async def hybrid_lasso_prediction():
+    return await handle_request(predict_price_hybrid_lasso)
+
+@router.post("/hybrid-ridge")
+async def hybrid_ridge_prediction():
+    return await handle_request(predict_price_hybrid_ridge)
+
+@router.post("/hybrid-boosting")
+async def hybrid_boosting_prediction():
+    return await handle_request(predict_price_hybrid_boosting)
+
+@router.post("/hybrid-bagging")
+async def hybrid_bagging_prediction():
+    return await handle_request(predict_price_hybrid_bagging)
+
+@router.post("/hybrid-forest-arima")
+async def hybrid_forest_arima_prediction():
+    return await handle_request(predict_price_hybrid_forest)

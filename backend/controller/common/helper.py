@@ -32,9 +32,11 @@ def compute_metrics(results, test_data, target_var, exog_test=None):
     actual = test_data[target_var].reset_index(drop=True)
     
     mse = float(np.mean((actual - forecast) ** 2))
+    rmse = float(np.sqrt(mse)) 
         
     return {
         'mse': round(mse, 3),
+        'rmse': round(rmse, 3),
         'aic': round(results.aic, 3),
         'bic': round(results.bic, 3)
     }
@@ -73,40 +75,37 @@ def prepare_dataframe(actual_data, date_column, target_column):
 
 def preprocess_exog(df, exog_cols):
     """
-    Handles numeric and categorical exogenous variables.
-    - Binary categorical (1/0) → kept as numeric
-    - Multi-class categorical → one-hot encoded
-    - Continuous → numeric
+    Preprocess continuous exogenous variables that may be stored as strings.
     """
+
     exog_df = df[exog_cols].copy()
 
+    # Convert all to numeric
     for col in exog_cols:
-        # Binary categorical (1 or 0)
-        if exog_df[col].nunique() <= 2:
-            exog_df[col] = pd.to_numeric(exog_df[col], errors='coerce')
-        # Multi-class categorical (e.g. 1–5 or strings)
-        elif exog_df[col].dtype == object or exog_df[col].nunique() > 2:
-            exog_df = pd.get_dummies(exog_df, columns=[col], drop_first=True)
-        # Continuous variable
-        else:
-            exog_df[col] = pd.to_numeric(exog_df[col], errors='coerce')
+        exog_df[col] = pd.to_numeric(exog_df[col], errors="coerce")
 
-    exog_df.fillna(0, inplace=True)
+    # Handle missing values (time-series safe)
+    exog_df = (
+        exog_df
+        .fillna(method="ffill")
+        .fillna(method="bfill")
+    )
+
     return exog_df
 
 def compute_lasso_metrics(model, X_test, y_test, feature_names):
-    """Compute regression metrics and coefficient summary formatted like OLS."""
-    
-    # Predictions
     preds = model.predict(X_test)
+
     mse = mean_squared_error(y_test, preds)
+    mae = mean_absolute_error(y_test, preds)
+
+    rmse = np.sqrt(mse)
     r2 = r2_score(y_test, preds)
 
-    # Coefficient summary formatted like OLS response
     coef_summary = [
         {
             "field_name": name,
-            "mean": round(coef, 4),
+            "mean": round(float(coef), 4),
             "standard_error": "",
             "p_value": ""
         }
@@ -114,11 +113,13 @@ def compute_lasso_metrics(model, X_test, y_test, feature_names):
     ]
 
     return {
-        "mse": round(mse, 3),
+        "mae": round(mae, 3),
+        "rmse": round(rmse, 3),
         "r2": round(r2, 3),
         "alpha": round(model.alpha_, 4),
         "data": coef_summary
     }
+
 
 
 def create_lag_features(df, target_col, num_lags=3):

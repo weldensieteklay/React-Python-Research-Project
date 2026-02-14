@@ -5,6 +5,7 @@ import Home from '../pages/Home';
 import Dashboard from '../pages/Dashboard';
 import CrossSectionalData from '../components/CrossSectionalData';
 import TimeSeriesData from '../components/TimeSeriesData';
+import DataCleanup from '../components/DataCleanup';
 import { useUser } from '../hooks/useUser'
 
 
@@ -19,6 +20,7 @@ const AppRoutes = () => {
                     <Route path="/dashboard" element={<Dashboard />} />
                     <Route path="/dashboard/cross-sectional" element={<CrossSectionalData />} />
                     <Route path="/dashboard/time-series" element={<TimeSeriesData />} />
+                    <Route path="/dashboard/data-cleaning" element={<DataCleanup />} />
                 </Route>
             </Routes>
         </BrowserRouter>

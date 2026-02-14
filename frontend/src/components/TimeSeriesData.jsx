@@ -9,6 +9,7 @@ import LineGraph from './LineGraph';
 
 
 
+
 const TimeSeriesData = () => {
     const [parsedData, setParsedData] = useState([]);
     const [columns, setColumns] = useState([]);
@@ -18,14 +19,14 @@ const TimeSeriesData = () => {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [selectedEndogenousVar, setSelectedEndogenousVar] = useState('');
-    const [selectedExogenousVar, setSelectedExogenousVar] = useState('');
+    const [selectedExogenousVar, setSelectedExogenousVar] = useState([]);
     const [summaryStats, setSummaryStats] = useState([]);
     const [isValidDateColumn, setIsValidDateColumn] = useState(null);
     const [showLineGraph, setShowLineGraph] = useState(false);
+
     const fileInputRef = useRef(null);
 
     const { data: result, setData, loading, error, handlePredict } = usePrediction();
-
 
     const onDataParsed = (data) => {
         setParsedData(data);
@@ -67,6 +68,12 @@ const TimeSeriesData = () => {
         { value: 'forest', label: 'FOREST' },
         { value: 'boosting', label: 'BOOSTING' },
         { value: 'bagging', label: 'BAGGING' },
+        { value: 'hybrid-forest', label: 'HYBRID FOREST' },
+        { value: 'hybrid-lasso', label: 'HYBRID LASSO' },
+        { value: 'hybrid-ridge', label: 'HYBRID RIDGE' },
+        { value: 'hybrid-boosting', label: 'HYBRID BOOSTING' },
+        { value: 'hybrid-bagging', label: 'HYBRID BAGGING' },
+
 
     ];
 
@@ -105,6 +112,9 @@ const TimeSeriesData = () => {
             fileInputRef.current.value = null;
         }
     };
+
+   
+
 
     const isPredictDisabled =
         !fileUploaded ||
@@ -237,7 +247,7 @@ const TimeSeriesData = () => {
 
 
                         <div className="flex flex-col w-48">
-                            <label className="text-sm text-gray-700 mb-1">Endogenous Variables</label>
+                            <label className="text-sm text-gray-700 mb-1">Endogenous Variable</label>
                             <Select
                                 options={columnOptions}
                                 value={selectedEndogenousVar ? columnOptions.find(opt => opt.value === selectedEndogenousVar) : null}
@@ -251,8 +261,15 @@ const TimeSeriesData = () => {
                             <label className="text-sm text-gray-700 mb-1">Exogenouse Variables</label>
                             <Select
                                 options={columnOptions}
-                                value={selectedExogenousVar ? columnOptions.find(opt => opt.value === selectedExogenousVar) : null}
-                                onChange={(selected) => setSelectedExogenousVar(selected?.value || "")}
+                                isMulti
+                                value={columnOptions.filter(opt =>
+                                    selectedExogenousVar.includes(opt.value)
+                                )}
+                                onChange={(selectedOptions) =>
+                                    setSelectedExogenousVar(
+                                        selectedOptions ? selectedOptions.map(opt => opt.value) : []
+                                    )
+                                }
                                 classNamePrefix="react-select"
                                 className="text-sm"
                             />
@@ -260,6 +277,7 @@ const TimeSeriesData = () => {
 
                         <div className="w-full flex flex-wrap justify-center gap-4 mt-6">
 
+                            
                             <button className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600" onClick={handleSummaryStatistics}>
                                 Summary Statistics
                             </button>
@@ -281,7 +299,7 @@ const TimeSeriesData = () => {
                             </button>
                         </div>
                         {summaryStats.length > 0 && (
-                            <SummaryStatisticsTable stats={summaryStats} />
+                            <SummaryStatisticsTable stats={summaryStats} showExtended={false} />
                         )}
 
 
