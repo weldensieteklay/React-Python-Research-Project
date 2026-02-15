@@ -52,45 +52,45 @@ async def arima_endpoint(request: Request):
     return await predict_price(request)
 
 @router.post("/lasso")
-async def lasso_prediction():
-    return await handle_request(predict_price_lasso)
+async def lasso_prediction(request: Request):
+    return await predict_price_lasso(request)
 
 @router.post("/ridge")
-async def ridge_prediction():
-    return await handle_request(predict_price_ridge)
+async def ridge_prediction(request: Request):
+    return await predict_price_ridge(request)
 
 @router.post("/forest")
-async def forest_prediction():
-    return await handle_request(predict_price_random_forest)
+async def forest_prediction(request: Request):
+    return await predict_price_random_forest(request)
 
 @router.post("/bagging")
-async def bagging_prediction():
-    return await handle_request(predict_price_bagging)
+async def bagging_prediction(request: Request):
+    return await predict_price_bagging(request)
 
 @router.post("/boosting")
-async def boosting_prediction():
-    return await handle_request(predict_price_boosting)
+async def boosting_prediction(request: Request):
+    return await predict_price_boosting(request)
 
 @router.post("/hybrid-forest")
-async def hybrid_forest_prediction():
-    return await handle_request(predict_price_hybrid_forest)
+async def hybrid_forest_prediction(request: Request):
+    return await predict_price_hybrid_forest(request)
 
 @router.post("/hybrid-lasso")
-async def hybrid_lasso_prediction():
-    return await handle_request(predict_price_hybrid_lasso)
+async def hybrid_lasso_prediction(request: Request):
+    return await predict_price_hybrid_lasso(request)
 
 @router.post("/hybrid-ridge")
-async def hybrid_ridge_prediction():
-    return await handle_request(predict_price_hybrid_ridge)
+async def hybrid_ridge_prediction(request: Request):
+    return await predict_price_hybrid_ridge(request)
 
 @router.post("/hybrid-boosting")
-async def hybrid_boosting_prediction():
-    return await handle_request(predict_price_hybrid_boosting)
+async def hybrid_boosting_prediction(request: Request):
+    return await predict_price_hybrid_boosting(request)
 
 @router.post("/hybrid-bagging")
-async def hybrid_bagging_prediction():
-    return await handle_request(predict_price_hybrid_bagging)
+async def hybrid_bagging_prediction(request: Request):
+    return await predict_price_hybrid_bagging(request)
 
 @router.post("/hybrid-forest-arima")
-async def hybrid_forest_arima_prediction():
-    return await handle_request(predict_price_hybrid_forest)
+async def hybrid_forest_arima_prediction(request: Request):
+    return await handle_request(request)
