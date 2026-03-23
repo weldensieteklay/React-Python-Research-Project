@@ -18,6 +18,7 @@ const CrossSectionalData = () => {
     const [outliers, setOutliers] = useState('');
     const fileInputRef = useRef(null);
     const { data, loading, error, handlePredict: runPrediction } = usePrediction();
+    const [activeView, setActiveView] = useState(null);
 
 
     const columnOptions = columns.map(col => ({ value: col, label: col }));
@@ -56,7 +57,7 @@ const CrossSectionalData = () => {
         outliers;
 
     const handlePredict = async () => {
-    
+
         const payload = {
             data: parsedData,
             method,
@@ -85,6 +86,7 @@ const CrossSectionalData = () => {
         if (fileInputRef.current) {
             fileInputRef.current.value = null;
         };
+        setActiveView(null);
     };
 
     return (
@@ -182,7 +184,7 @@ const CrossSectionalData = () => {
                         </div>
 
                         <div className="w-full flex flex-wrap justify-center gap-4 mt-6">
-                            <button className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600" onClick={handleSummaryStatistics}>
+                            <button className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600" onClick={() => { handleSummaryStatistics(); setActiveView('summary'); }}>
                                 Summary Statistics
                             </button>
                             <button className={`w-40 px-4 py-2 rounded ${isReadyToPredict
@@ -190,15 +192,15 @@ const CrossSectionalData = () => {
                                 : "bg-gray-300 text-gray-500 cursor-not-allowed"
                                 }`}
                                 disabled={!isReadyToPredict}
-                                onClick={handlePredict}>
+                                onClick={() => { handlePredict(); setActiveView('prediction'); }}>
                                 Predict
                             </button>
                             <button className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600" onClick={handleClear}>
                                 Clear
                             </button>
                         </div>
-                        {summaryStats.length > 0 && (
-                            <SummaryStatisticsTable stats={summaryStats} />
+                        {activeView === 'summary' && summaryStats.length > 0 && (
+                            <SummaryStatisticsTable stats={summaryStats} showExtended={false} />
                         )}
                     </div>
                 </div>

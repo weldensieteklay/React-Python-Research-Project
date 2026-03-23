@@ -23,6 +23,7 @@ const TimeSeriesData = () => {
     const [summaryStats, setSummaryStats] = useState([]);
     const [isValidDateColumn, setIsValidDateColumn] = useState(null);
     const [showLineGraph, setShowLineGraph] = useState(false);
+    const [activeView, setActiveView] = useState(null);
 
     const fileInputRef = useRef(null);
 
@@ -54,6 +55,15 @@ const TimeSeriesData = () => {
         });
 
         setIsValidDateColumn(isValid);
+
+        if (isValid) {
+            const sortedDates = columnValues
+                .filter(value => !isNaN(new Date(value).getTime()))
+                .sort((a, b) => new Date(a) - new Date(b));
+
+            setStartDate(sortedDates[0]);
+            setEndDate(sortedDates[sortedDates.length - 1]);
+        }
     };
 
     const handleSummaryStatistics = () => {
@@ -107,13 +117,13 @@ const TimeSeriesData = () => {
         setIsValidDateColumn(null);
         setFileUploaded(false);
         setData(null);
-        setShowLineGraph(false);
         if (fileInputRef.current) {
             fileInputRef.current.value = null;
         }
+        setActiveView(null);
     };
 
-   
+
 
 
     const isPredictDisabled =
@@ -277,15 +287,21 @@ const TimeSeriesData = () => {
 
                         <div className="w-full flex flex-wrap justify-center gap-4 mt-6">
 
-                            
-                            <button className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600" onClick={handleSummaryStatistics}>
+
+                            <button
+                                className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                                onClick={() => { handleSummaryStatistics(); setActiveView('summary'); }}
+                            >
                                 Summary Statistics
                             </button>
-                            <button className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600" onClick={() => setShowLineGraph(true)}>
+                            <button
+                                className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                                onClick={() => setActiveView('graph')}
+                            >
                                 Line Graph
                             </button>
                             <button
-                                onClick={onClickPredict}
+                                onClick={() => { onClickPredict(); setActiveView('prediction'); }}
                                 className={`w-40 px-4 py-2 rounded ${isPredictDisabled
                                     ? "bg-gray-300 text-gray-500 cursor-not-allowed"
                                     : "bg-blue-500 text-white hover:bg-blue-600"
@@ -298,14 +314,15 @@ const TimeSeriesData = () => {
                                 Clear
                             </button>
                         </div>
-                        {summaryStats.length > 0 && (
+                        {activeView === 'summary' && summaryStats.length > 0 && (
                             <SummaryStatisticsTable stats={summaryStats} showExtended={false} />
                         )}
 
+                        {activeView === 'prediction' && result && (
+                            <PredictionTable result={result} />
+                        )}
 
-                        {result && <PredictionTable result={result} />}
-
-                        {showLineGraph && selectedDateColumn && selectedEndogenousVar && (
+                        {activeView === 'graph' && selectedDateColumn && selectedEndogenousVar && (
                             <LineGraph
                                 data={parsedData}
                                 dateColumn={selectedDateColumn}
