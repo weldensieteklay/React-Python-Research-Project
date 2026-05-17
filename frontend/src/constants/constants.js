@@ -1,8 +1,4 @@
-export const dashboardRoute = [{
-    dataCleaning: {
-        title: "Data Cleaning",
-        route: "/dashboard/data-cleaning"
-    }},
+export const dashboardRoute = [
     {
       crossSectional: {
           title: "Cross-Sectional Data",
@@ -11,6 +7,17 @@ export const dashboardRoute = [{
     {timeSeries: {
         title: "Time Series Data",
         route: "/dashboard/time-series"
+    }},
+    {
+      panelData: {
+        title: "Panel Data",
+        route: "/dashboard/panel-data"
+      }
+    },
+    {
+    dataCleaning: {
+        title: "Data Cleaning",
+        route: "/dashboard/data-cleaning"
     }}
 ]
 

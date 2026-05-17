@@ -53,20 +53,20 @@ export const computeSummaryStatistics = (data, columns) => {
     const nonMissing = values.filter((v) => v !== null);
     const missingCount = values.length - nonMissing.length;
 
-    // Average over all (missing treated as 0)
+   
     const avgAll =
       values.reduce((sum, v) => sum + (v !== null ? v : 0), 0) / values.length;
 
-    // Average for non-missing only
+  
     const avgNonMissing =
       nonMissing.length > 0
         ? nonMissing.reduce((sum, v) => sum + v, 0) / nonMissing.length
         : 0;
 
-    // Mean (same as avgNonMissing)
+    
     const mean = avgNonMissing;
 
-    // Standard Error
+    
     const stdErr =
       nonMissing.length > 0
         ? Math.sqrt(
