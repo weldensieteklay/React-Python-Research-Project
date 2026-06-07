@@ -3,6 +3,7 @@ import pandas as pd
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 import statsmodels.api as sm
 from sklearn.inspection import permutation_importance
+from sklearn.preprocessing import LabelEncoder
 
 def is_valid_date(date_str):
     try:
@@ -285,4 +286,63 @@ def compute_boosting_metrics(model, X_test, y_test, feature_names):
         "mae": mae,
         "r2": r2,
         "data": importance_summary
+    }
+
+def prepare_dataset(
+    raw_data,
+    dependent_col,
+    independent_cols,
+    categorical_cols=None,
+    id_col=None,
+    remove_outliers=False
+):
+    df = pd.DataFrame(raw_data)
+
+    # remove id column
+    if id_col and id_col in df.columns:
+        df = df.drop(columns=[id_col])
+
+    # drop missing rows for now
+    df = df.dropna()
+
+    # encode categorical variables
+    encoders = {}
+
+    if categorical_cols:
+        for col in categorical_cols:
+            if col in df.columns:
+                le = LabelEncoder()
+                df[col] = le.fit_transform(df[col].astype(str))
+                encoders[col] = le
+
+    # optional outlier removal
+    if remove_outliers:
+
+        numeric_cols = df.select_dtypes(
+            include=np.number
+        ).columns
+
+        for col in numeric_cols:
+
+            q1 = df[col].quantile(0.25)
+            q3 = df[col].quantile(0.75)
+
+            iqr = q3 - q1
+
+            lower = q1 - 1.5 * iqr
+            upper = q3 + 1.5 * iqr
+
+            df = df[
+                (df[col] >= lower) &
+                (df[col] <= upper)
+            ]
+
+    X = df[independent_cols]
+    y = df[dependent_col]
+
+    return {
+        "df": df,
+        "X": X,
+        "y": y,
+        "encoders": encoders
     }

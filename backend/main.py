@@ -1,20 +1,9 @@
-# from flask import Flask
-# from flask_cors import CORS
-# from routes.ml import routes
-
-# app = Flask(__name__)
-
-# # Allow all origins, methods, and headers (for testing)
-# CORS(app, resources={r"/api/*": {"origins": "*"}})
-
-# # Register Blueprint
-# app.register_blueprint(routes, url_prefix='/api')
-
-# if __name__ == '__main__':
-#     app.run(debug=True)
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routes.ml import router  # your ML router
+from routes.routes import router  # your time series router
+
+# main.py (top of file, before anything else)
+from dotenv import load_dotenv
 
 app = FastAPI()
 
@@ -23,6 +12,7 @@ origins = [
     "http://localhost:5173",  # your frontend
     "http://127.0.0.1:5173"
 ]
+load_dotenv()
 
 app.add_middleware(
     CORSMiddleware,
