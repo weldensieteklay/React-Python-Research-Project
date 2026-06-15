@@ -12,6 +12,7 @@ from controller.crossSectional.boosting import run_gradient_boosting_cross_secti
 
 #panel data
 from controller.panel.fixedEffect import run_fixed_effects_prediction
+from controller.panel.randomEffect import run_random_effects_prediction
 
 #time series routes
 from controller.arima.ARIMA import predict_price
@@ -87,6 +88,10 @@ async def ridge_prediction(request: Request):
 @router.post("/panel/fixed")
 async def fixed_effects_prediction(request: Request):
     return await run_fixed_effects_prediction(request)
+
+@router.post("/panel/random")
+async def fixed_effects_prediction(request: Request):
+    return await run_random_effects_prediction(request)
 
 # Time series routes
 @router.post("/arima")
