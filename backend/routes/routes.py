@@ -2,13 +2,16 @@ from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
 
 #cross sectional routes
-from controller.ols.ols import run_ols_prediction
+from controller.crossSectional.ols import run_ols_prediction
+from controller.crossSectional.gls import run_gls_prediction
 from controller.crossSectional.lasso import run_lasso_cross_sectional_prediction
 from controller.crossSectional.ridge import run_ridge_cross_sectional_prediction
 from controller.crossSectional.forest import run_random_forest_cross_sectional_prediction
 from controller.crossSectional.bagging import run_bagging_cross_sectional_prediction
 from controller.crossSectional.boosting import run_gradient_boosting_cross_sectional_prediction
 
+#panel data
+from controller.panel.fixedEffect import run_fixed_effects_prediction
 
 #time series routes
 from controller.arima.ARIMA import predict_price
@@ -56,6 +59,10 @@ async def handle_request(func, request: Request = None):
 async def ols_prediction(request: Request):
     return await run_ols_prediction(request)
 
+@router.post("/cross-sectional/gls")
+async def ols_prediction(request: Request):
+    return await run_gls_prediction(request)
+
 @router.post("/cross-sectional/lasso")
 async def lasso_prediction(request: Request):
     return await run_lasso_cross_sectional_prediction(request)
@@ -75,6 +82,11 @@ async def ridge_prediction(request: Request):
 @router.post("/cross-sectional/bagging")
 async def ridge_prediction(request: Request):
     return await run_bagging_cross_sectional_prediction(request)
+
+# panel data
+@router.post("/panel/fixed")
+async def fixed_effects_prediction(request: Request):
+    return await run_fixed_effects_prediction(request)
 
 # Time series routes
 @router.post("/arima")
