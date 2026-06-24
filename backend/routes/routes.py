@@ -13,6 +13,11 @@ from controller.crossSectional.boosting import run_gradient_boosting_cross_secti
 #panel data
 from controller.panel.fixedEffect import run_fixed_effects_prediction
 from controller.panel.randomEffect import run_random_effects_prediction
+from controller.panel.lasso import run_lasso_panel
+from controller.panel.ridge import run_ridge_panel
+from controller.panel.forest import run_random_forest_panel
+from controller.panel.boosting import run_boosting_panel
+from controller.panel.bagging import run_bagging_panel
 
 #time series routes
 from controller.arima.ARIMA import predict_price
@@ -90,8 +95,28 @@ async def fixed_effects_prediction(request: Request):
     return await run_fixed_effects_prediction(request)
 
 @router.post("/panel/random")
-async def fixed_effects_prediction(request: Request):
+async def random_effects_prediction(request: Request):
     return await run_random_effects_prediction(request)
+
+@router.post("/panel/lasso")
+async def lasso_prediction(request: Request):
+    return await run_lasso_panel(request)
+
+@router.post("/panel/ridge")
+async def ridge_prediction(request: Request):
+    return await run_ridge_panel(request)
+
+@router.post("/panel/forest")
+async def forest_panel_prediction(request: Request):
+    return await run_random_forest_panel(request)
+
+@router.post("/panel/boosting")
+async def boosting_panel_prediction(request: Request):
+    return await run_boosting_panel(request)
+
+@router.post("/panel/bagging")
+async def bagging_panel_prediction(request: Request):
+    return await run_bagging_panel(request)
 
 # Time series routes
 @router.post("/arima")

@@ -13,7 +13,7 @@ from controller.crossSectional.helpers import prepare_dataset
 
 
 # ─────────────────────────────────────────
-# HELPERS (same as FE)
+# HELPERS
 # ─────────────────────────────────────────
 
 def sanitize(obj):
@@ -52,13 +52,13 @@ def interpret_p(p, threshold=0.05):
 
 
 # ─────────────────────────────────────────
-# DIAGNOSTICS (same format as FE)
+# DIAGNOSTICS (identical format to FE)
 # ─────────────────────────────────────────
 
 def test_heteroskedasticity_panel(residuals, X_with_const):
     results = {}
     try:
-        bp_lm, bp_p, bp_f, bp_fp = het_breuschpagan(residuals, X_with_const)
+        bp_lm, bp_p, _, _ = het_breuschpagan(residuals, X_with_const)
         bp_p_r = safe_round(bp_p)
         results["breusch_pagan"] = {
             "lm_statistic": safe_round(bp_lm),
@@ -74,7 +74,7 @@ def test_heteroskedasticity_panel(residuals, X_with_const):
         results["breusch_pagan"] = {"error": str(e)}
 
     try:
-        w_lm, w_p, w_f, w_fp = het_white(residuals, X_with_const)
+        w_lm, w_p, _, _ = het_white(residuals, X_with_const)
         w_p_r = safe_round(w_p)
         results["white_test"] = {
             "lm_statistic": safe_round(w_lm),
@@ -92,34 +92,34 @@ def test_heteroskedasticity_panel(residuals, X_with_const):
     return results
 
 
-def test_multicollinearity_panel(X_within):
+def test_multicollinearity_panel(X_transformed):
     results = {}
     try:
-        X_const = sm.add_constant(X_within, has_constant="add")
+        X_const = sm.add_constant(X_transformed, has_constant="add")
         vif_data = {}
         for i, col in enumerate(X_const.columns):
             if col == "const":
                 continue
-            vif = variance_inflation_factor(X_const.values, i)
+            vif   = variance_inflation_factor(X_const.values, i)
             vif_r = safe_round(vif, 4)
             vif_data[str(col)] = {
                 "vif": vif_r,
                 "conclusion": (
-                    "Severe multicollinearity" if (vif_r is not None and vif_r > 10)
-                    else "Moderate multicollinearity" if (vif_r is not None and vif_r > 5)
-                    else "Acceptable"
+                    "Severe multicollinearity"   if (vif_r is not None and vif_r > 10) else
+                    "Moderate multicollinearity" if (vif_r is not None and vif_r > 5)  else
+                    "Acceptable"
                 ),
             }
         results["vif"] = vif_data
 
-        corr_matrix = X_within.corr().round(4)
+        corr_matrix = X_transformed.corr().round(4)
         results["correlation_matrix"] = {
             str(c): {str(r): safe_round(v, 4) for r, v in row.items()}
             for c, row in corr_matrix.to_dict().items()
         }
 
         high_corr_pairs = []
-        cols = X_within.columns.tolist()
+        cols = X_transformed.columns.tolist()
         for i in range(len(cols)):
             for j in range(i + 1, len(cols)):
                 r = corr_matrix.loc[cols[i], cols[j]]
@@ -137,40 +137,23 @@ def test_multicollinearity_panel(X_within):
         )
     except Exception as e:
         results["error"] = str(e)
-
     return results
 
 
 def test_serial_correlation_panel(residuals_df, entity_col="entity", time_col="time"):
     try:
         residuals_df = residuals_df.sort_values([entity_col, time_col]).copy()
-
-        def lag_consecutive(g):
-            g = g.copy()
-            g["resid_lag"] = g["residual"].shift(1)
-            g["time_lag"]  = g[time_col].shift(1)
-            return g
-
-        df_ar = (
-            residuals_df
-            .groupby(entity_col, group_keys=False)
-            .apply(lag_consecutive)
-        )
-
-        try:
-            df_ar[time_col]   = pd.to_numeric(df_ar[time_col])
-            df_ar["time_lag"] = pd.to_numeric(df_ar["time_lag"])
-            df_ar = df_ar[df_ar[time_col] - df_ar["time_lag"] == 1]
-        except Exception:
-            pass
-
-        df_ar = df_ar.dropna(subset=["resid_lag"])
+        resid_lagged = residuals_df.groupby(entity_col)["residual"].shift(1)
+        df_ar = pd.DataFrame({
+            "resid":     residuals_df["residual"].values,
+            "resid_lag": resid_lagged.values,
+        }).dropna()
 
         if len(df_ar) < 10:
-            return {"error": "Not enough consecutive observations for serial correlation test."}
+            return {"error": "Not enough observations for serial correlation test."}
 
         X_ar     = sm.add_constant(df_ar["resid_lag"])
-        ar_model = sm.OLS(df_ar["residual"], X_ar).fit()
+        ar_model = sm.OLS(df_ar["resid"], X_ar).fit()
         coef     = safe_round(ar_model.params.iloc[-1], 6)
         p        = safe_round(ar_model.pvalues.iloc[-1], 6)
 
@@ -218,9 +201,9 @@ def test_cross_sectional_dependence(residuals_df, entity_col="entity", time_col=
         if pairs == 0:
             return {"error": "Could not compute correlations between entities."}
 
-        cd_stat  = math.sqrt(2 * T / (N * (N - 1))) * corr_sum
-        p_value  = 2 * (1 - stats.norm.cdf(abs(cd_stat)))
-        p_val_r  = safe_round(p_value)
+        cd_stat = math.sqrt(2 * T / (N * (N - 1))) * corr_sum
+        p_value = 2 * (1 - stats.norm.cdf(abs(cd_stat)))
+        p_val_r = safe_round(p_value)
 
         return {
             "cd_statistic":   safe_round(cd_stat),
@@ -261,7 +244,7 @@ def test_normality_panel(residuals):
 
 
 # ─────────────────────────────────────────
-# HAUSMAN TEST (FE vs RE)
+# HAUSMAN TEST
 # ─────────────────────────────────────────
 
 def hausman_test(fe_params, re_params, fe_cov, re_cov, common_vars):
@@ -271,28 +254,23 @@ def hausman_test(fe_params, re_params, fe_cov, re_cov, common_vars):
     p < 0.05 → reject RE, use Fixed Effects.
     """
     try:
-        b_fe = np.array([fe_params[v] for v in common_vars])
-        b_re = np.array([re_params[v] for v in common_vars])
-
+        b_fe   = np.array([fe_params[v] for v in common_vars])
+        b_re   = np.array([re_params[v] for v in common_vars])
         fe_keys = list(fe_params.keys())
         re_keys = list(re_params.keys())
         idx_fe  = [fe_keys.index(v) for v in common_vars]
         idx_re  = [re_keys.index(v) for v in common_vars]
+        V_fe    = fe_cov[np.ix_(idx_fe, idx_fe)]
+        V_re    = re_cov[np.ix_(idx_re, idx_re)]
+        V_diff  = V_fe - V_re
+        diff    = b_fe - b_re
 
-        V_fe   = fe_cov[np.ix_(idx_fe, idx_fe)]
-        V_re   = re_cov[np.ix_(idx_re, idx_re)]
-        V_diff = V_fe - V_re
-        diff   = b_fe - b_re
+        V_inv  = np.linalg.pinv(V_diff)
+        H_stat = float(diff @ V_inv @ diff)
+        df_h   = len(common_vars)
+        p_val  = float(1 - stats.chi2.cdf(H_stat, df_h))
+        p_r    = safe_round(p_val)
 
-        try:
-            V_inv  = np.linalg.pinv(V_diff)
-            H_stat = float(diff @ V_inv @ diff)
-            df_h   = len(common_vars)
-            p_val  = float(1 - stats.chi2.cdf(H_stat, df_h))
-        except Exception:
-            return {"error": "Could not compute Hausman statistic (singular covariance difference)."}
-
-        p_r = safe_round(p_val)
         return {
             "statistic":      safe_round(H_stat),
             "df":             df_h,
@@ -315,39 +293,33 @@ def hausman_test(fe_params, re_params, fe_cov, re_cov, common_vars):
 
 def estimate_variance_components(df, y_col, X_cols, entity_col):
     """
-    Estimates sigma2_e (within/idiosyncratic) and sigma2_u (between/entity)
-    using the Swamy-Arora method, then computes per-entity theta for
-    quasi-demeaning. Handles unbalanced panels.
+    Vectorized Swamy-Arora variance component estimation.
+    sigma2_e: within-entity (idiosyncratic) variance — from FE residuals
+    sigma2_u: between-entity (random effect) variance — from between regression
+    theta_i:  per-entity quasi-demeaning weight for RE transformation
     """
     n_obs      = len(df)
     n_entities = df[entity_col].nunique()
     k          = len(X_cols)
 
-    # ── sigma2_e from FE residuals ──
-    entity_mean_y = df.groupby(entity_col)[y_col].transform("mean")
-    y_within      = df[y_col] - entity_mean_y
+    # ── sigma2_e from FE residuals (vectorized demeaning) ──
+    all_cols  = [y_col] + list(X_cols)
+    grp_means = df.groupby(entity_col)[all_cols].transform("mean")
+    y_within  = df[y_col]      - grp_means[y_col]
+    X_within  = df[list(X_cols)] - grp_means[list(X_cols)]
 
-    X_within_list = []
-    for col in X_cols:
-        em = df.groupby(entity_col)[col].transform("mean")
-        X_within_list.append((df[col] - em).rename(col))
-    X_within   = pd.concat(X_within_list, axis=1)
-    X_within_c = sm.add_constant(X_within, has_constant="add")
-    fe_resid   = sm.OLS(y_within, X_within_c).fit().resid
-
-    df_within = n_obs - n_entities - k
-    sigma2_e  = float(np.sum(fe_resid ** 2) / df_within) if df_within > 0 else 1.0
+    X_fe_c   = sm.add_constant(X_within, has_constant="add")
+    fe_resid = sm.OLS(y_within, X_fe_c).fit().resid
+    df_w     = n_obs - n_entities - k
+    sigma2_e = float(np.sum(fe_resid ** 2) / df_w) if df_w > 0 else 1.0
 
     # ── sigma2_u from between (entity-mean) regression ──
-    agg       = df.groupby(entity_col).agg(
-        **{y_col: (y_col, "mean"), **{c: (c, "mean") for c in X_cols}}
-    ).reset_index()
-    T_i       = df.groupby(entity_col).size().values
-
-    X_bet     = sm.add_constant(agg[X_cols], has_constant="add")
-    be_resid  = sm.OLS(agg[y_col], X_bet).fit().resid
-    df_bet    = n_entities - k - 1
-    sigma2_u  = max(
+    agg      = df.groupby(entity_col)[all_cols].mean().reset_index()
+    T_i      = df.groupby(entity_col).size().values
+    X_bet    = sm.add_constant(agg[list(X_cols)], has_constant="add")
+    be_resid = sm.OLS(agg[y_col], X_bet).fit().resid
+    df_bet   = n_entities - k - 1
+    sigma2_u = max(
         float(np.sum(be_resid ** 2) / df_bet) - sigma2_e / float(np.mean(T_i))
         if df_bet > 0 else 0.0,
         0.0
@@ -355,12 +327,13 @@ def estimate_variance_components(df, y_col, X_cols, entity_col):
 
     # ── Per-entity theta (quasi-demeaning weight) ──
     entity_T   = df.groupby(entity_col).size()
-    theta_dict = {}
-    for ent, T_ent in entity_T.items():
-        denom           = T_ent * sigma2_u + sigma2_e
-        theta_dict[ent] = 1.0 - math.sqrt(sigma2_e / denom) if denom > 0 else 0.0
-
+    theta_dict = {
+        ent: 1.0 - math.sqrt(sigma2_e / (T_ent * sigma2_u + sigma2_e))
+        if (T_ent * sigma2_u + sigma2_e) > 0 else 0.0
+        for ent, T_ent in entity_T.items()
+    }
     theta_series = df[entity_col].map(theta_dict)
+
     return sigma2_e, sigma2_u, theta_series, theta_dict
 
 
@@ -381,7 +354,6 @@ async def run_random_effects_prediction(request):
         remove_outliers  = payload.get("outliers", False)
         run_hausman      = payload.get("hausman_test", True)
 
-        # ── Basic validation ──
         if not raw_data:
             raise ValueError("No data provided")
         if not dependent_col:
@@ -391,11 +363,9 @@ async def run_random_effects_prediction(request):
         if not id_col:
             raise ValueError("Entity ID column is required for Random Effects")
 
-        # ── Sanitize outliers flag ──
         if isinstance(remove_outliers, str):
             remove_outliers = remove_outliers.strip().lower() in ("yes", "true", "1")
 
-        # ── Guard: remove id/time cols from independent_cols ──
         independent_cols = [c for c in independent_cols if c != id_col]
         if time_col:
             independent_cols = [c for c in independent_cols if c != time_col]
@@ -420,7 +390,7 @@ async def run_random_effects_prediction(request):
         y_raw = pd.to_numeric(prepared["y"].copy(), errors="coerce")
 
         # ── Rebuild panel df aligned by surviving index ──
-        df     = X_raw.copy()
+        df = X_raw.copy()
         df[dependent_col] = y_raw.values
 
         raw_df         = pd.DataFrame(raw_data)
@@ -445,34 +415,37 @@ async def run_random_effects_prediction(request):
             raise ValueError(
                 f"Random Effects requires at least 2 entities. "
                 f"Found only 1 unique value in '{id_col}'. "
-                f"Make sure id_column is set to 'ZipCode', not 'ID'."
+                f"Make sure id_column is 'ZipCode', not 'ID'."
             )
 
         entity_counts = df.groupby(id_col).size()
         if (entity_counts < 2).all():
             raise ValueError(
-                "Every entity has only 1 observation. Random Effects needs multiple "
-                "time periods per entity. Check that id_column is the entity identifier "
-                "(e.g. 'ZipCode'), not a row ID."
+                "Each entity has only one observation. Random Effects requires "
+                "multiple time periods per entity."
             )
 
-        n_obs = len(df)
-        k     = len(X_raw.columns)
+        n_obs  = len(df)
+        X_cols = list(X_raw.columns)
+        k      = len(X_cols)
 
         # ── Variance components (Swamy-Arora) ──
         sigma2_e, sigma2_u, theta_series, theta_dict = estimate_variance_components(
-            df, dependent_col, list(X_raw.columns), id_col
+            df, dependent_col, X_cols, id_col
         )
 
-        # ── Quasi-demeaning (RE transformation) ──
-        entity_mean_y = df.groupby(id_col)[dependent_col].transform("mean")
-        y_re          = df[dependent_col] - theta_series.values * entity_mean_y
+        # ── RE quasi-demeaning (vectorized) ──
+        # Subtract theta_i * entity_mean from y and each X
+        # theta close to 1 → behaves like FE
+        # theta close to 0 → behaves like pooled OLS
+        all_cols      = [dependent_col] + X_cols
+        grp_means     = df.groupby(id_col)[all_cols].transform("mean")
+        theta_vals    = theta_series.values.reshape(-1, 1)
 
-        X_re_list = []
-        for col in X_raw.columns:
-            entity_mean_x = df.groupby(id_col)[col].transform("mean")
-            X_re_list.append((df[col] - theta_series.values * entity_mean_x).rename(col))
-        X_re   = pd.concat(X_re_list, axis=1)
+        y_re  = df[dependent_col].values - theta_series.values * grp_means[dependent_col].values
+        X_re  = df[X_cols].values        - theta_vals           * grp_means[X_cols].values
+        y_re  = pd.Series(y_re, index=df.index)
+        X_re  = pd.DataFrame(X_re, columns=X_cols, index=df.index)
         X_re_c = sm.add_constant(X_re, has_constant="add")
 
         # ── Fit GLS (OLS on quasi-demeaned data) ──
@@ -485,20 +458,20 @@ async def run_random_effects_prediction(request):
         ss_tot     = np.sum((y_re.values - y_re.values.mean()) ** 2)
         overall_r2 = safe_round(1 - ss_res / ss_tot if ss_tot != 0 else None)
 
-        # Within R² (variance explained after removing entity means)
+        # Within R²
+        entity_mean_y  = grp_means[dependent_col]
         y_within_orig  = df[dependent_col] - entity_mean_y
         fitted_within  = fitted_values - theta_series.values * entity_mean_y
         ss_res_w       = np.sum((y_within_orig.values - fitted_within.values) ** 2)
         ss_tot_w       = np.sum((y_within_orig.values - y_within_orig.values.mean()) ** 2)
         within_r2      = safe_round(1 - ss_res_w / ss_tot_w if ss_tot_w != 0 else None)
 
+        n_obs              = len(df)
         df_resid_corrected = n_obs - n_entities - k
-
-        mse = safe_round(mean_squared_error(y_re, fitted_values))
-        mae = safe_round(mean_absolute_error(y_re, fitted_values))
-
-        p_values        = {str(k_): safe_round(v, 6) for k_, v in model.pvalues.items()}
-        standard_errors = {str(k_): safe_round(v, 6) for k_, v in model.bse.items()}
+        mse                = safe_round(mean_squared_error(y_re, fitted_values))
+        mae                = safe_round(mean_absolute_error(y_re, fitted_values))
+        p_values           = {str(k_): safe_round(v, 6) for k_, v in model.pvalues.items()}
+        standard_errors    = {str(k_): safe_round(v, 6) for k_, v in model.bse.items()}
 
         # ── Cluster-robust SE ──
         try:
@@ -521,32 +494,26 @@ async def run_random_effects_prediction(request):
 
         # ── Diagnostics (identical format to FE) ──
         diagnostics = {
-            "heteroskedasticity":          test_heteroskedasticity_panel(residuals, X_re_c),
-            "multicollinearity":           test_multicollinearity_panel(X_re),
-            "normality_of_residuals":      test_normality_panel(residuals),
-            "serial_correlation":          test_serial_correlation_panel(resid_df, entity_col="entity", time_col="time"),
-            "cross_sectional_dependence":  test_cross_sectional_dependence(resid_df, entity_col="entity", time_col="time"),
+            "heteroskedasticity":         test_heteroskedasticity_panel(residuals, X_re_c),
+            "multicollinearity":          test_multicollinearity_panel(X_re),
+            "normality_of_residuals":     test_normality_panel(residuals),
+            "serial_correlation":         test_serial_correlation_panel(resid_df, entity_col="entity", time_col="time"),
+            "cross_sectional_dependence": test_cross_sectional_dependence(resid_df, entity_col="entity", time_col="time"),
         }
 
         # ── Hausman test ──
         hausman_result = None
         if run_hausman:
             try:
-                # Re-run FE on same data for comparison
-                entity_mean_y_fe = df.groupby(id_col)[dependent_col].transform("mean")
-                y_fe             = df[dependent_col] - entity_mean_y_fe
-                X_fe_list        = []
-                for col in X_raw.columns:
-                    em = df.groupby(id_col)[col].transform("mean")
-                    X_fe_list.append((df[col] - em).rename(col))
-                X_fe   = pd.concat(X_fe_list, axis=1)
-                X_fe_c = sm.add_constant(X_fe, has_constant="add")
-                fe_model = sm.OLS(y_fe, X_fe_c).fit()
+                # FE on same data for comparison (already have demeaned vars)
+                all_cols_fe  = [dependent_col] + X_cols
+                grp_means_fe = df.groupby(id_col)[all_cols_fe].transform("mean")
+                y_fe         = df[dependent_col] - grp_means_fe[dependent_col]
+                X_fe         = df[X_cols]        - grp_means_fe[X_cols]
+                X_fe_c       = sm.add_constant(X_fe, has_constant="add")
+                fe_model     = sm.OLS(y_fe, X_fe_c).fit()
 
-                common_vars = [
-                    v for v in X_raw.columns
-                    if v in model.params and v in fe_model.params
-                ]
+                common_vars  = [v for v in X_cols if v in model.params and v in fe_model.params]
                 hausman_result = hausman_test(
                     fe_params   = dict(fe_model.params),
                     re_params   = dict(model.params),
@@ -561,9 +528,9 @@ async def run_random_effects_prediction(request):
         entity_resid_mean = resid_df.groupby("entity")["residual"].mean()
         entity_re_blup    = {}
         for ent, e_bar in entity_resid_mean.items():
-            T_ent                   = int(entity_counts.get(ent, 1))
-            denom                   = sigma2_u + sigma2_e / T_ent
-            blup                    = (sigma2_u / denom) * e_bar if denom > 0 else 0.0
+            T_ent                    = int(entity_counts.get(ent, 1))
+            denom                    = sigma2_u + sigma2_e / T_ent
+            blup                     = (sigma2_u / denom) * e_bar if denom > 0 else 0.0
             entity_re_blup[str(ent)] = safe_round(blup)
 
         response_payload = sanitize({
@@ -590,9 +557,9 @@ async def run_random_effects_prediction(request):
                 ),
                 "theta_mean": safe_round(float(np.mean(list(theta_dict.values())))),
             },
-            "coefficients":        {str(k_): safe_round(v, 6) for k_, v in model.params.items()},
-            "standard_errors":     standard_errors,
-            "p_values":            p_values,
+            "coefficients":            {str(k_): safe_round(v, 6) for k_, v in model.params.items()},
+            "standard_errors":         standard_errors,
+            "p_values":                p_values,
             "cluster_robust_se":       robust_se,
             "cluster_robust_p_values": robust_p_values,
             "entity_random_effects":   entity_re_blup,
