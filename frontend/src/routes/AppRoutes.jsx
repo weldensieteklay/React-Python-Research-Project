@@ -1,30 +1,35 @@
 import React from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { lazy, Suspense } from "react";
+
+//Internal components
 import Layout from '../components/Layout';
 import Home from '../pages/Home';
-import Dashboard from '../pages/Dashboard';
-import CrossSectionalData from '../components/CrossSectionalData';
-import TimeSeriesData from '../components/TimeSeriesData';
 import DataCleanup from '../components/DataCleanup';
-import PanelData from '../components/PanelData';
-import { useUser } from '../hooks/useUser'
+import { useUser } from '../hooks/useUser';
 
+const CrossSectionalData = lazy(() => import("../components/CrossSectionalData"));
+const TimeSeriesData = lazy(() => import("../components/TimeSeriesData"));
+const PanelData = lazy(() => import("../components/PanelData"));
+const Dashboard = lazy(() => import("../pages/Dashboard"));
 
 const AppRoutes = () => {
     const { user, setUser, clearUser } = useUser();
     return (
 
         <BrowserRouter>
-            <Routes>
-                <Route path="/" element={<Layout user={user} setUser={setUser} clearUser={clearUser} />}>
-                    <Route path="/" element={<Home />} />
-                    <Route path="/dashboard" element={<Dashboard />} />
-                    <Route path="/dashboard/cross-sectional" element={<CrossSectionalData />} />
-                    <Route path="/dashboard/time-series" element={<TimeSeriesData />} />
-                    <Route path="/dashboard/panel-data" element={<PanelData />} />
-                    <Route path="/dashboard/data-cleaning" element={<DataCleanup />} />
-                </Route>
-            </Routes>
+            <Suspense fallback={<div>Loading page...</div>}>
+                <Routes>
+                    <Route path="/" element={<Layout user={user} setUser={setUser} clearUser={clearUser} />}>
+                        <Route path="/" element={<Home />} />
+                        <Route path="/dashboard" element={<Dashboard />} />
+                        <Route path="/dashboard/cross-sectional" element={<CrossSectionalData />} />
+                        <Route path="/dashboard/time-series" element={<TimeSeriesData />} />
+                        <Route path="/dashboard/panel-data" element={<PanelData />} />
+                        <Route path="/dashboard/data-cleaning" element={<DataCleanup />} />
+                    </Route>
+                </Routes>
+            </Suspense>
         </BrowserRouter>
 
     );

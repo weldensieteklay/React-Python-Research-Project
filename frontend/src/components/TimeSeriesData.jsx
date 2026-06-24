@@ -5,6 +5,8 @@ import Select from 'react-select';
 import { usePrediction } from '../hooks/usePrediction';
 import PredictionTable from './PredictionTable';
 import LineGraph from './LineGraph';
+import { Link } from 'react-router-dom';
+import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 
 
 
@@ -184,7 +186,13 @@ const TimeSeriesData = () => {
 
         <>
             <div className="w-full px-4 my-6">
-                <div className="text-center bg-blue-100 py-3 rounded shadow-sm">
+                <div className="relative bg-blue-100 py-3 rounded shadow-sm flex items-center justify-center">
+                    <Link
+                        to="/dashboard"
+                        className="absolute left-4 text-gray-700 hover:text-gray-900"
+                    >
+                        <ArrowLeftIcon className="h-6 w-6" />
+                    </Link>
                     <h2 className="text-2xl font-semibold text-gray-800">Data Analysis and Prediction</h2>
                 </div>
             </div>

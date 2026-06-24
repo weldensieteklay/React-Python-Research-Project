@@ -1,4 +1,3 @@
-import React from "react";
 import { GoogleLogin } from "@react-oauth/google";
 import { jwtDecode } from "jwt-decode";
 import { useNavigate } from "react-router-dom";
@@ -9,10 +8,19 @@ const Home = () => {
     const { setUser } = useUser();
 
     const handleLoginSuccess = (credentialResponse) => {
-        const decoded = jwtDecode(credentialResponse.credential);
-        console.log("Google User:", decoded);
-        setUser(decoded);
-        navigate("/dashboard");
+        try {
+            const decoded = jwtDecode(credentialResponse.credential);
+            console.log("Google User:", decoded);
+
+            // Persist both the decoded user and the raw token
+            localStorage.setItem("user", JSON.stringify(decoded));
+            localStorage.setItem("credential", credentialResponse.credential);
+
+            setUser(decoded);
+            navigate("/dashboard");
+        } catch (err) {
+            console.error("Failed to decode credential:", err);
+        }
     };
 
     const handleLoginError = () => {
@@ -30,7 +38,6 @@ const Home = () => {
                 />
             </div>
         </div>
-
     );
 };
 

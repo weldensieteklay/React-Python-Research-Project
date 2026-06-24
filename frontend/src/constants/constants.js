@@ -14,11 +14,6 @@ export const dashboardRoute = [
         route: "/dashboard/panel-data"
       }
     },
-    {
-    dataCleaning: {
-        title: "Data Cleaning",
-        route: "/dashboard/data-cleaning"
-    }}
 ]
 
 const timeSeriesResultsMapping = [

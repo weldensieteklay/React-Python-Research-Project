@@ -16,7 +16,7 @@ export const usePrediction = () => {
     setError(null);
 
     try {
-      const response = await axios.post(`http://localhost:5000/api/${method}`, payload);
+      const response = await axios.post(`http://localhost:8000/api/${method}`, payload);
       setData(response.data);
     } catch (err) {
       setError(err.response?.data || err.message);

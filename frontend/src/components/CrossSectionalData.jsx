@@ -6,6 +6,7 @@ import SummaryStatisticsTable from './SummaryStatisticsTable';
 import { usePrediction } from '../hooks/usePrediction';
 import { Link } from 'react-router-dom';
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
+import CrossSectionalTable from './CrossSectionalTable';
 
 const CrossSectionalData = () => {
     const [parsedData, setParsedData] = useState([]);
@@ -19,7 +20,7 @@ const CrossSectionalData = () => {
     const [categoricalVar, setCategoricalVar] = useState([]);
     const [outliers, setOutliers] = useState('');
     const fileInputRef = useRef(null);
-    const { data, loading, error, handlePredict: runPrediction } = usePrediction();
+    const { data: result, loading, error, handlePredict: runPrediction } = usePrediction();
     const [activeView, setActiveView] = useState(null);
 
 
@@ -27,7 +28,12 @@ const CrossSectionalData = () => {
 
     const methodOptions = [
         { value: 'ols', label: 'OLS' },
+        {value: 'gls', label: 'General Least Square'},
         { value: 'lasso', label: 'LASSO' },
+        { value: 'ridge', label: 'RIDGE' },
+        { value: 'forest', label: 'FOREST' },
+        { value: 'boosting', label: 'BOOSTING' },
+        { value: 'bagging', label: 'BAGGING' },
     ];
 
     const outlierOptions = [
@@ -69,8 +75,8 @@ const CrossSectionalData = () => {
             categorical_variable: categoricalVar,
             outliers,
         };
-
-        await runPrediction(payload, method);
+       const result = await runPrediction(payload, `cross-sectional/${method}`);
+       console.log(result, 'response result')
     };
 
     const handleClear = () => {
@@ -214,6 +220,9 @@ const CrossSectionalData = () => {
                         </div>
                         {activeView === 'summary' && summaryStats.length > 0 && (
                             <SummaryStatisticsTable stats={summaryStats} showExtended={false} />
+                        )}
+                         {activeView === 'prediction' && result && (
+                            <CrossSectionalTable result={result} />
                         )}
                     </div>
                 </div>
