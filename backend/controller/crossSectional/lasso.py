@@ -1,23 +1,101 @@
-from sklearn.linear_model import Lasso
-from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
+from sklearn.linear_model import Lasso, LogisticRegression
+from sklearn.metrics import (
+    r2_score, mean_squared_error, mean_absolute_error,
+    accuracy_score, roc_auc_score, log_loss,
+    confusion_matrix, classification_report, brier_score_loss,
+)
+from sklearn.preprocessing import StandardScaler
 from fastapi.responses import JSONResponse
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import OneHotEncoder
-import statsmodels.api as sm
+import numpy as np
 import pandas as pd
 
 from controller.crossSectional.helpers import prepare_dataset
+
+
+def _run_continuous(X_train, X_test, y_train, y_test):
+    """Original Lasso path — unchanged."""
+    model = Lasso(alpha=1.0, max_iter=10000)
+    model.fit(X_train, y_train)
+    predictions = model.predict(X_test)
+
+    coefficients = {
+        str(k): round(float(v), 6)
+        for k, v in zip(X_train.columns, model.coef_)
+    }
+    selected   = [k for k, v in zip(X_train.columns, model.coef_) if abs(v) > 1e-10]
+    eliminated = [k for k, v in zip(X_train.columns, model.coef_) if abs(v) <= 1e-10]
+
+    return {
+        "model":        "LASSO",
+        "target_type":  "continuous",
+        "r2_score":     round(float(r2_score(y_test, predictions)), 4),
+        "mse":          round(float(mean_squared_error(y_test, predictions)), 4),
+        "mae":          round(float(mean_absolute_error(y_test, predictions)), 4),
+        "coefficients": coefficients,
+        # LASSO has no p-values or std errors — kept None for API consistency
+        "standard_errors":      {str(k): None for k in X_train.columns},
+        "p_values":             {str(k): None for k in X_train.columns},
+        "selected_features":    selected,
+        "eliminated_features":  eliminated,
+    }
+
+
+def _run_binary(X_train, X_test, y_train, y_test, threshold=0.5):
+    """L1 logistic regression path for binary (0/1) targets."""
+    scaler         = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled  = scaler.transform(X_test)
+
+    model = LogisticRegression(
+        penalty="l1",
+        solver="saga",
+        C=1.0,          # C = 1/alpha, mirrors alpha=1.0 in the continuous path
+        max_iter=10000,
+        random_state=42,
+    )
+    model.fit(X_train_scaled, y_train)
+
+    y_prob    = model.predict_proba(X_test_scaled)[:, 1]
+    y_pred    = (y_prob >= threshold).astype(int)
+    coef_vals = model.coef_[0]
+
+    coefficients = {str(k): round(float(v), 6) for k, v in zip(X_train.columns, coef_vals)}
+    odds_ratios  = {str(k): round(float(np.exp(v)), 6) for k, v in zip(X_train.columns, coef_vals)}
+    selected     = [str(k) for k, v in zip(X_train.columns, coef_vals) if abs(v) > 1e-10]
+    eliminated   = [str(k) for k, v in zip(X_train.columns, coef_vals) if abs(v) <= 1e-10]
+
+    return {
+        "model":                    "LASSO_LOGISTIC",
+        "target_type":              "binary",
+        "threshold":                threshold,
+        "accuracy":                 round(float(accuracy_score(y_test, y_pred)), 4),
+        "roc_auc":                  round(float(roc_auc_score(y_test, y_prob)), 4),
+        "log_loss":                 round(float(log_loss(y_test, y_prob)), 4),
+        "brier_score":              round(float(brier_score_loss(y_test, y_prob)), 4),
+        "confusion_matrix":         confusion_matrix(y_test, y_pred).tolist(),
+        "classification_report":    classification_report(y_test, y_pred, output_dict=True),
+        "coefficients":             coefficients,
+        "odds_ratios":              odds_ratios,
+        # Kept None for API consistency with the continuous path
+        "standard_errors":          {str(k): None for k in X_train.columns},
+        "p_values":                 {str(k): None for k in X_train.columns},
+        "selected_features":        selected,
+        "eliminated_features":      eliminated,
+    }
+
 
 async def run_lasso_cross_sectional_prediction(request):
     try:
         payload = await request.json()
 
-        raw_data = payload.get("data", [])
+        raw_data         = payload.get("data", [])
         categorical_cols = payload.get("categorical_variable", [])
-        dependent_col = payload.get("dependent_variable")
+        dependent_col    = payload.get("dependent_variable")
         independent_cols = payload.get("independent_variable", [])
-        id_col = payload.get("id_column")
-        remove_outliers = payload.get("outliers", False)
+        id_col           = payload.get("id_column")
+        remove_outliers  = payload.get("outliers", False)
+        threshold        = float(payload.get("threshold", 0.5))
 
         if not raw_data:
             raise ValueError("No data provided")
@@ -35,11 +113,8 @@ async def run_lasso_cross_sectional_prediction(request):
             remove_outliers=remove_outliers,
         )
 
-        X = prepared["X"].copy()
-        y = prepared["y"].copy()
-
-        X = X.apply(pd.to_numeric, errors="coerce")
-        y = pd.to_numeric(y, errors="coerce")
+        X = prepared["X"].copy().apply(pd.to_numeric, errors="coerce")
+        y = pd.to_numeric(prepared["y"].copy(), errors="coerce")
 
         valid_rows = X.notna().all(axis=1) & y.notna()
         X, y = X[valid_rows], y[valid_rows]
@@ -47,54 +122,33 @@ async def run_lasso_cross_sectional_prediction(request):
         if len(X) < 5:
             raise ValueError("Dataset too small for LASSO")
 
+        # ── Auto-detect binary vs continuous ──
+        is_binary = set(y.unique()).issubset({0, 1})
+
+        # ── Train / test split ──
+        # Stratify when binary to preserve class ratio in both sets
         X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42
+            X, y, test_size=0.2, random_state=42,
+            stratify=y if is_binary else None,
         )
 
-        # LASSO model
-        model = Lasso(alpha=1.0, max_iter=10000)
-        model.fit(X_train, y_train)
+        # ── Branch on target type ──
+        if is_binary:
+            metrics = _run_binary(X_train, X_test, y_train, y_test, threshold)
+        else:
+            metrics = _run_continuous(X_train, X_test, y_train, y_test)
 
-        predictions = model.predict(X_test)
-
-        r2 = r2_score(y_test, predictions)
-        mse = mean_squared_error(y_test, predictions)
-        mae = mean_absolute_error(y_test, predictions)
-
-        # Coefficients (LASSO can shrink to 0)
-        coefficients = {
-            str(k): round(float(v), 6)
-            for k, v in zip(X_train.columns, model.coef_)
-        }
-
-        # LASSO has no p-values or std errors → keep API consistent
-        p_values = {
-            str(k): None for k in X_train.columns
-        }
-
-        standard_errors = {
-            str(k): None for k in X_train.columns
-        }
-
-        return JSONResponse(
-            content={
-                "success": True,
-                "model": "LASSO",
-                "rows_used": len(X),
-                "r2_score": round(float(r2), 4),
-                "mse": round(float(mse), 4),
-                "mae": round(float(mae), 4),
-                "coefficients": coefficients,
-                "standard_errors": standard_errors,
-                "p_values": p_values,
-            }
-        )
+        return JSONResponse(content={
+            "success":   True,
+            "rows_used": len(X),
+            **metrics,
+        })
 
     except Exception as e:
         return JSONResponse(
             content={
                 "success": False,
-                "error": "Model execution failed",
+                "error":   "Model execution failed",
                 "details": str(e),
             },
             status_code=500,

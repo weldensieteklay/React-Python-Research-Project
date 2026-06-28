@@ -7,6 +7,7 @@ import Layout from '../components/Layout';
 import Home from '../pages/Home';
 import DataCleanup from '../components/DataCleanup';
 import { useUser } from '../hooks/useUser';
+import ProtectedRoute from '../components/ProtectedRoute';
 
 const CrossSectionalData = lazy(() => import("../components/CrossSectionalData"));
 const TimeSeriesData = lazy(() => import("../components/TimeSeriesData"));
@@ -22,11 +23,22 @@ const AppRoutes = () => {
                 <Routes>
                     <Route path="/" element={<Layout user={user} setUser={setUser} clearUser={clearUser} />}>
                         <Route path="/" element={<Home />} />
-                        <Route path="/dashboard" element={<Dashboard />} />
-                        <Route path="/dashboard/cross-sectional" element={<CrossSectionalData />} />
-                        <Route path="/dashboard/time-series" element={<TimeSeriesData />} />
-                        <Route path="/dashboard/panel-data" element={<PanelData />} />
-                        <Route path="/dashboard/data-cleaning" element={<DataCleanup />} />
+                       // Wrap every dashboard route:
+                        <Route path="/dashboard" element={
+                            <ProtectedRoute><Dashboard /></ProtectedRoute>
+                        } />
+                        <Route path="/dashboard/cross-sectional" element={
+                            <ProtectedRoute><CrossSectionalData /></ProtectedRoute>
+                        } />
+                        <Route path="/dashboard/time-series" element={
+                            <ProtectedRoute><TimeSeriesData /></ProtectedRoute>
+                        } />
+                        <Route path="/dashboard/panel-data" element={
+                            <ProtectedRoute><PanelData /></ProtectedRoute>
+                        } />
+                        <Route path="/dashboard/data-cleaning" element={
+                            <ProtectedRoute><DataCleanup /></ProtectedRoute>
+                        } />
                     </Route>
                 </Routes>
             </Suspense>

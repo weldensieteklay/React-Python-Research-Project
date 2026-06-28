@@ -28,7 +28,8 @@ const CrossSectionalData = () => {
 
     const methodOptions = [
         { value: 'ols', label: 'OLS' },
-        {value: 'gls', label: 'General Least Square'},
+        { value: 'gls', label: 'General Least Square' },
+        { value: 'logit', label: 'Logit' },
         { value: 'lasso', label: 'LASSO' },
         { value: 'ridge', label: 'RIDGE' },
         { value: 'forest', label: 'FOREST' },
@@ -75,8 +76,8 @@ const CrossSectionalData = () => {
             categorical_variable: categoricalVar,
             outliers,
         };
-       const result = await runPrediction(payload, `cross-sectional/${method}`);
-       console.log(result, 'response result')
+        const result = await runPrediction(payload, `cross-sectional/${method}`);
+        console.log(result, 'response result')
     };
 
     const handleClear = () => {
@@ -221,7 +222,7 @@ const CrossSectionalData = () => {
                         {activeView === 'summary' && summaryStats.length > 0 && (
                             <SummaryStatisticsTable stats={summaryStats} showExtended={false} />
                         )}
-                         {activeView === 'prediction' && result && (
+                        {activeView === 'prediction' && result && (
                             <CrossSectionalTable result={result} />
                         )}
                     </div>

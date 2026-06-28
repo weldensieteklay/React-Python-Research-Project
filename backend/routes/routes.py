@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 #cross sectional routes
 from controller.crossSectional.ols import run_ols_prediction
 from controller.crossSectional.gls import run_gls_prediction
+from controller.crossSectional.logit import run_logit_prediction
 from controller.crossSectional.lasso import run_lasso_cross_sectional_prediction
 from controller.crossSectional.ridge import run_ridge_cross_sectional_prediction
 from controller.crossSectional.forest import run_random_forest_cross_sectional_prediction
@@ -64,6 +65,11 @@ async def handle_request(func, request: Request = None):
 @router.post("/cross-sectional/ols")
 async def ols_prediction(request: Request):
     return await run_ols_prediction(request)
+
+# cross sectional routes
+@router.post("/cross-sectional/logit")
+async def logit_prediction(request: Request):
+    return await run_logit_prediction(request)
 
 @router.post("/cross-sectional/gls")
 async def ols_prediction(request: Request):

@@ -244,8 +244,8 @@ const CrossSectionalTable = ({ result }) => {
   if (!result || !result.success) {
     return <p className="text-red-500">No model summary available.</p>;
   }
-
-  const isTreeModel = ["RANDOM_FOREST", "GRADIENT_BOOSTING", "BAGGING"].includes(result.model);
+  const isTreeModel = ["RANDOM_FOREST", "GRADIENT_BOOSTING", "BAGGING", "RANDOM_FOREST_CLASSIFIER", 
+    "GRADIENT_BOOSTING_CLASSIFIER", "BAGGING_CLASSIFIER"].includes(result.model);
   const coefficients = result.coefficients ? Object.entries(result.coefficients) : [];
   const featureImportance = result.feature_importance ? Object.entries(result.feature_importance) : [];
   const pValues = result.p_values || {};
@@ -265,6 +265,8 @@ const CrossSectionalTable = ({ result }) => {
     { label: "F P-Value", value: result.f_pvalue },
     { label: "AIC", value: result.aic },
     { label: "BIC", value: result.bic },
+    { label: "Log loss", value: result.log_loss },
+    { label: "ROC AUC", value: result.roc_auc },
   ];
 
   return (
