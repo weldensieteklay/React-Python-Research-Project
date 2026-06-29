@@ -16,7 +16,16 @@ export const usePrediction = () => {
     setError(null);
 
     try {
-      const response = await axios.post(`http://localhost:8000/api/${method}`, payload);
+      const token = localStorage.getItem("credential");
+      const response = await axios.post(
+        `http://localhost:8000/api/${method}`,
+        payload,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
       setData(response.data);
     } catch (err) {
       setError(err.response?.data || err.message);

@@ -7,7 +7,7 @@ import Layout from '../components/Layout';
 import Home from '../pages/Home';
 import DataCleanup from '../components/DataCleanup';
 import { useUser } from '../hooks/useUser';
-import ProtectedRoute from '../components/ProtectedRoute';
+import ProtectedRoute from '../pages/ProtectedRoute';
 
 const CrossSectionalData = lazy(() => import("../components/CrossSectionalData"));
 const TimeSeriesData = lazy(() => import("../components/TimeSeriesData"));
