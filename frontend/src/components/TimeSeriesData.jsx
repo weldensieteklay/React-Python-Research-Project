@@ -5,6 +5,8 @@ import Select from 'react-select';
 import { usePrediction } from '../hooks/usePrediction';
 import PredictionTable from './PredictionTable';
 import LineGraph from './LineGraph';
+import { Link } from 'react-router-dom';
+import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 
 
 
@@ -23,6 +25,7 @@ const TimeSeriesData = () => {
     const [summaryStats, setSummaryStats] = useState([]);
     const [isValidDateColumn, setIsValidDateColumn] = useState(null);
     const [showLineGraph, setShowLineGraph] = useState(false);
+    const [activeView, setActiveView] = useState(null);
 
     const fileInputRef = useRef(null);
 
@@ -54,6 +57,15 @@ const TimeSeriesData = () => {
         });
 
         setIsValidDateColumn(isValid);
+
+        if (isValid) {
+            const sortedDates = columnValues
+                .filter(value => !isNaN(new Date(value).getTime()))
+                .sort((a, b) => new Date(a) - new Date(b));
+
+            setStartDate(sortedDates[0]);
+            setEndDate(sortedDates[sortedDates.length - 1]);
+        }
     };
 
     const handleSummaryStatistics = () => {
@@ -107,13 +119,13 @@ const TimeSeriesData = () => {
         setIsValidDateColumn(null);
         setFileUploaded(false);
         setData(null);
-        setShowLineGraph(false);
         if (fileInputRef.current) {
             fileInputRef.current.value = null;
         }
+        setActiveView(null);
     };
 
-   
+
 
 
     const isPredictDisabled =
@@ -174,7 +186,13 @@ const TimeSeriesData = () => {
 
         <>
             <div className="w-full px-4 my-6">
-                <div className="text-center bg-blue-100 py-3 rounded shadow-sm">
+                <div className="relative bg-blue-100 py-3 rounded shadow-sm flex items-center justify-center">
+                    <Link
+                        to="/dashboard"
+                        className="absolute left-4 text-gray-700 hover:text-gray-900"
+                    >
+                        <ArrowLeftIcon className="h-6 w-6" />
+                    </Link>
                     <h2 className="text-2xl font-semibold text-gray-800">Data Analysis and Prediction</h2>
                 </div>
             </div>
@@ -277,15 +295,21 @@ const TimeSeriesData = () => {
 
                         <div className="w-full flex flex-wrap justify-center gap-4 mt-6">
 
-                            
-                            <button className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600" onClick={handleSummaryStatistics}>
+
+                            <button
+                                className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                                onClick={() => { handleSummaryStatistics(); setActiveView('summary'); }}
+                            >
                                 Summary Statistics
                             </button>
-                            <button className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600" onClick={() => setShowLineGraph(true)}>
+                            <button
+                                className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                                onClick={() => setActiveView('graph')}
+                            >
                                 Line Graph
                             </button>
                             <button
-                                onClick={onClickPredict}
+                                onClick={() => { onClickPredict(); setActiveView('prediction'); }}
                                 className={`w-40 px-4 py-2 rounded ${isPredictDisabled
                                     ? "bg-gray-300 text-gray-500 cursor-not-allowed"
                                     : "bg-blue-500 text-white hover:bg-blue-600"
@@ -298,14 +322,15 @@ const TimeSeriesData = () => {
                                 Clear
                             </button>
                         </div>
-                        {summaryStats.length > 0 && (
+                        {activeView === 'summary' && summaryStats.length > 0 && (
                             <SummaryStatisticsTable stats={summaryStats} showExtended={false} />
                         )}
 
+                        {activeView === 'prediction' && result && (
+                            <PredictionTable result={result} />
+                        )}
 
-                        {result && <PredictionTable result={result} />}
-
-                        {showLineGraph && selectedDateColumn && selectedEndogenousVar && (
+                        {activeView === 'graph' && selectedDateColumn && selectedEndogenousVar && (
                             <LineGraph
                                 data={parsedData}
                                 dateColumn={selectedDateColumn}

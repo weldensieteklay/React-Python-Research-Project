@@ -3,7 +3,10 @@ import axios from 'axios';
 import Select from 'react-select';
 import { parseCsvFile, computeSummaryStatistics } from '../utils/utils';
 import SummaryStatisticsTable from './SummaryStatisticsTable';
-import { usePrediction } from '../hooks/usePrediction'
+import { usePrediction } from '../hooks/usePrediction';
+import { Link } from 'react-router-dom';
+import { ArrowLeftIcon } from "@heroicons/react/24/solid";
+import CrossSectionalTable from './CrossSectionalTable';
 
 const CrossSectionalData = () => {
     const [parsedData, setParsedData] = useState([]);
@@ -17,14 +20,21 @@ const CrossSectionalData = () => {
     const [categoricalVar, setCategoricalVar] = useState([]);
     const [outliers, setOutliers] = useState('');
     const fileInputRef = useRef(null);
-    const { data, loading, error, handlePredict: runPrediction } = usePrediction();
+    const { data: result, loading, error, handlePredict: runPrediction } = usePrediction();
+    const [activeView, setActiveView] = useState(null);
 
 
     const columnOptions = columns.map(col => ({ value: col, label: col }));
 
     const methodOptions = [
         { value: 'ols', label: 'OLS' },
+        { value: 'gls', label: 'General Least Square' },
+        { value: 'logit', label: 'Logit' },
         { value: 'lasso', label: 'LASSO' },
+        { value: 'ridge', label: 'RIDGE' },
+        { value: 'forest', label: 'FOREST' },
+        { value: 'boosting', label: 'BOOSTING' },
+        { value: 'bagging', label: 'BAGGING' },
     ];
 
     const outlierOptions = [
@@ -56,7 +66,7 @@ const CrossSectionalData = () => {
         outliers;
 
     const handlePredict = async () => {
-    
+
         const payload = {
             data: parsedData,
             method,
@@ -66,8 +76,8 @@ const CrossSectionalData = () => {
             categorical_variable: categoricalVar,
             outliers,
         };
-
-        await runPrediction(payload, method);
+        const result = await runPrediction(payload, `cross-sectional/${method}`);
+        console.log(result, 'response result')
     };
 
     const handleClear = () => {
@@ -85,13 +95,25 @@ const CrossSectionalData = () => {
         if (fileInputRef.current) {
             fileInputRef.current.value = null;
         };
+        setActiveView(null);
     };
 
     return (
         <>
             <div className="w-full px-4 my-6">
-                <div className="text-center bg-blue-100 py-3 rounded shadow-sm">
-                    <h2 className="text-2xl font-semibold text-gray-800">Data Analysis and Prediction</h2>
+                <div className="relative bg-blue-100 py-3 rounded shadow-sm flex items-center justify-center">
+
+                    <Link
+                        to="/dashboard"
+                        className="absolute left-4 text-gray-700 hover:text-gray-900"
+                    >
+                        <ArrowLeftIcon className="h-6 w-6" />
+                    </Link>
+
+                    <h2 className="text-2xl font-semibold text-gray-800 text-center">
+                        Data Analysis and Prediction
+                    </h2>
+
                 </div>
             </div>
             <div className="w-full px-4 my-6">
@@ -182,7 +204,7 @@ const CrossSectionalData = () => {
                         </div>
 
                         <div className="w-full flex flex-wrap justify-center gap-4 mt-6">
-                            <button className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600" onClick={handleSummaryStatistics}>
+                            <button className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600" onClick={() => { handleSummaryStatistics(); setActiveView('summary'); }}>
                                 Summary Statistics
                             </button>
                             <button className={`w-40 px-4 py-2 rounded ${isReadyToPredict
@@ -190,15 +212,18 @@ const CrossSectionalData = () => {
                                 : "bg-gray-300 text-gray-500 cursor-not-allowed"
                                 }`}
                                 disabled={!isReadyToPredict}
-                                onClick={handlePredict}>
+                                onClick={() => { handlePredict(); setActiveView('prediction'); }}>
                                 Predict
                             </button>
                             <button className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600" onClick={handleClear}>
                                 Clear
                             </button>
                         </div>
-                        {summaryStats.length > 0 && (
-                            <SummaryStatisticsTable stats={summaryStats} />
+                        {activeView === 'summary' && summaryStats.length > 0 && (
+                            <SummaryStatisticsTable stats={summaryStats} showExtended={false} />
+                        )}
+                        {activeView === 'prediction' && result && (
+                            <CrossSectionalTable result={result} />
                         )}
                     </div>
                 </div>

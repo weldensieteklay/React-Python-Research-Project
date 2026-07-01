@@ -1,7 +1,26 @@
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
 
-from controller.ols.ols import run_ols_prediction
+#cross sectional routes
+from controller.crossSectional.ols import run_ols_prediction
+from controller.crossSectional.gls import run_gls_prediction
+from controller.crossSectional.logit import run_logit_prediction
+from controller.crossSectional.lasso import run_lasso_cross_sectional_prediction
+from controller.crossSectional.ridge import run_ridge_cross_sectional_prediction
+from controller.crossSectional.forest import run_random_forest_cross_sectional_prediction
+from controller.crossSectional.bagging import run_bagging_cross_sectional_prediction
+from controller.crossSectional.boosting import run_gradient_boosting_cross_sectional_prediction
+
+#panel data
+from controller.panel.fixedEffect import run_fixed_effects_prediction
+from controller.panel.randomEffect import run_random_effects_prediction
+from controller.panel.lasso import run_lasso_panel
+from controller.panel.ridge import run_ridge_panel
+from controller.panel.forest import run_random_forest_panel
+from controller.panel.boosting import run_boosting_panel
+from controller.panel.bagging import run_bagging_panel
+
+#time series routes
 from controller.arima.ARIMA import predict_price
 from controller.lasso.LASSO import predict_price_lasso
 from controller.ridge.RIDGE import predict_price_ridge
@@ -42,10 +61,70 @@ async def handle_request(func, request: Request = None):
 # Endpoints
 # -----------------------------
 
-@router.post("/ols")
+# cross sectional routes
+@router.post("/cross-sectional/ols")
 async def ols_prediction(request: Request):
-    return await handle_request(run_ols_prediction, request)
+    return await run_ols_prediction(request)
 
+# cross sectional routes
+@router.post("/cross-sectional/logit")
+async def logit_prediction(request: Request):
+    return await run_logit_prediction(request)
+
+@router.post("/cross-sectional/gls")
+async def ols_prediction(request: Request):
+    return await run_gls_prediction(request)
+
+@router.post("/cross-sectional/lasso")
+async def lasso_prediction(request: Request):
+    return await run_lasso_cross_sectional_prediction(request)
+
+@router.post("/cross-sectional/ridge")
+async def ridge_prediction(request: Request):
+    return await run_ridge_cross_sectional_prediction(request)
+
+@router.post("/cross-sectional/forest")
+async def ridge_prediction(request: Request):
+    return await run_random_forest_cross_sectional_prediction(request)
+
+@router.post("/cross-sectional/boosting")
+async def ridge_prediction(request: Request):
+    return await run_gradient_boosting_cross_sectional_prediction(request)
+
+@router.post("/cross-sectional/bagging")
+async def ridge_prediction(request: Request):
+    return await run_bagging_cross_sectional_prediction(request)
+
+# panel data
+@router.post("/panel/fixed")
+async def fixed_effects_prediction(request: Request):
+    return await run_fixed_effects_prediction(request)
+
+@router.post("/panel/random")
+async def random_effects_prediction(request: Request):
+    return await run_random_effects_prediction(request)
+
+@router.post("/panel/lasso")
+async def lasso_prediction(request: Request):
+    return await run_lasso_panel(request)
+
+@router.post("/panel/ridge")
+async def ridge_prediction(request: Request):
+    return await run_ridge_panel(request)
+
+@router.post("/panel/forest")
+async def forest_panel_prediction(request: Request):
+    return await run_random_forest_panel(request)
+
+@router.post("/panel/boosting")
+async def boosting_panel_prediction(request: Request):
+    return await run_boosting_panel(request)
+
+@router.post("/panel/bagging")
+async def bagging_panel_prediction(request: Request):
+    return await run_bagging_panel(request)
+
+# Time series routes
 @router.post("/arima")
 async def arima_endpoint(request: Request):
     # pass request to your function
@@ -94,3 +173,4 @@ async def hybrid_bagging_prediction(request: Request):
 @router.post("/hybrid-forest-arima")
 async def hybrid_forest_arima_prediction(request: Request):
     return await handle_request(request)
+
