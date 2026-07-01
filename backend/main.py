@@ -22,6 +22,7 @@ GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "https://econ-web-cast.vercel.app",
 ]
 
 app.add_middleware(
@@ -31,6 +32,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # ─────────────────────────────────────────
 # TOKEN VERIFICATION MIDDLEWARE
@@ -53,7 +55,10 @@ async def verify_google_token(request: Request, call_next):
     if not auth_header or not auth_header.startswith("Bearer "):
         return JSONResponse(
             status_code=401,
-            content={"success": False, "error": "Missing or invalid Authorization header"},
+            content={
+                "success": False,
+                "error": "Missing or invalid Authorization header",
+            },
         )
 
     token = auth_header.split(" ")[1]
@@ -61,7 +66,10 @@ async def verify_google_token(request: Request, call_next):
     if not GOOGLE_CLIENT_ID:
         return JSONResponse(
             status_code=500,
-            content={"success": False, "error": "GOOGLE_CLIENT_ID not configured on server"},
+            content={
+                "success": False,
+                "error": "GOOGLE_CLIENT_ID not configured on server",
+            },
         )
 
     try:
@@ -85,6 +93,7 @@ async def verify_google_token(request: Request, call_next):
 # ROUTES
 # ─────────────────────────────────────────
 app.include_router(router, prefix="/api")
+
 
 @app.get("/")
 def root():
