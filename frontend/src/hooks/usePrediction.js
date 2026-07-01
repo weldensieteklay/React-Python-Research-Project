@@ -18,7 +18,7 @@ export const usePrediction = () => {
     try {
       const token = localStorage.getItem("credential");
       const response = await axios.post(
-        `http://localhost:8000/api/${method}`,
+        `${import.meta.env.VITE_API_URL}/api/${method}`,
         payload,
         {
           headers: {
