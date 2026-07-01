@@ -17,7 +17,7 @@ GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 # ─────────────────────────────────────────
 # CORS — must be added BEFORE auth middleware
 # so preflight OPTIONS responses include the
-# correct headers before auth runs
+# correct headers before auth run
 # ─────────────────────────────────────────
 origins = [
     "http://localhost:5173",
