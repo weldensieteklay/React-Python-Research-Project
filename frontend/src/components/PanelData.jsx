@@ -108,7 +108,7 @@ const PanelData = () => {
         idColumn &&
         dependentVar &&
         independentVar.length > 0 &&
-        outliers;
+        selectedDateColumn && outliers;
 
     const handlePredict = async () => {
         const payload = {

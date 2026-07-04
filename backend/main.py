@@ -35,6 +35,10 @@ app.add_middleware(
 
 @app.middleware("http")
 async def verify_google_token(request: Request, call_next):
+     # Allow CORS preflight requests
+    if request.method == "OPTIONS":
+        return await call_next(request)
+    
     auth_header = request.headers.get("Authorization")
 
     if not auth_header or not auth_header.startswith("Bearer "):
