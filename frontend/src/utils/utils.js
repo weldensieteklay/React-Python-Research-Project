@@ -33,55 +33,102 @@ export const parseCsvFile = (file, callback) => {
 };
 ;
 
-export const computeSummaryStatistics = (data, columns) => {
-  if (!data || data.length === 0 || !columns || columns.length === 0) return [];
+export const computeCategoricalStatistics = (data, column) => {
+  const values = data.map(row => row[column]);
 
-  const numericColumns = columns.filter((col) => {
-    const sample = data[0][col];
-    const isNumeric = !isNaN(parseFloat(sample));
-    const isExcluded =
-      col.toLowerCase().includes("id") || col.toLowerCase().includes("date");
-    return isNumeric && !isExcluded;
+  const nonMissing = values.filter(
+    value => value !== null &&
+             value !== undefined &&
+             value !== ""
+  );
+
+  const missingCount = values.length - nonMissing.length;
+
+  const frequency = {};
+
+  nonMissing.forEach(value => {
+    frequency[value] = (frequency[value] || 0) + 1;
   });
 
-  return numericColumns.map((col) => {
-    const values = data.map((row) => {
-      const val = parseFloat(row[col]);
-      return isNaN(val) ? null : val;
-    });
+  const frequencies = Object.fromEntries(
+    Object.entries(frequency).map(([value, count]) => [
+      value,
+      {
+        count,
+        percentage: ((count / nonMissing.length) * 100).toFixed(2)
+      }
+    ])
+  );
 
-    const nonMissing = values.filter((v) => v !== null);
-    const missingCount = values.length - nonMissing.length;
+  return {
+    column,
+    type: "Categorical",
+    totalObservations: values.length,
+    nonMissing: nonMissing.length,
+    missingCount,
+    categories: Object.keys(frequencies).length,
+    frequencies
+  };
+};
 
-   
-    const avgAll =
-      values.reduce((sum, v) => sum + (v !== null ? v : 0), 0) / values.length;
+export const computeNumericStatistics = (data, column) => {
+  const values = data.map(row => {
+    const value = parseFloat(row[column]);
+    return isNaN(value) ? null : value;
+  });
 
-  
-    const avgNonMissing =
-      nonMissing.length > 0
-        ? nonMissing.reduce((sum, v) => sum + v, 0) / nonMissing.length
-        : 0;
+  const nonMissing = values.filter(value => value !== null);
+  const missingCount = values.length - nonMissing.length;
 
-    
-    const mean = avgNonMissing;
+  const averageAll =
+    values.reduce((sum, value) => sum + (value ?? 0), 0) / values.length;
 
-    
-    const stdErr =
-      nonMissing.length > 0
-        ? Math.sqrt(
-          nonMissing.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) /
-          nonMissing.length
+  const averageNonMissing =
+    nonMissing.length > 0
+      ? nonMissing.reduce((sum, value) => sum + value, 0) /
+        nonMissing.length
+      : 0;
+
+  const mean = averageNonMissing;
+
+  const standardError =
+    nonMissing.length > 0
+      ? Math.sqrt(
+          nonMissing.reduce(
+            (sum, value) => sum + Math.pow(value - mean, 2),
+            0
+          ) / nonMissing.length
         ) / Math.sqrt(nonMissing.length)
-        : 0;
+      : 0;
 
-    return {
-      column: col,
-      averageAll: avgAll.toFixed(2),
-      averageNonMissing: avgNonMissing.toFixed(2),
-      missingCount: missingCount,
-      mean: mean.toFixed(2),
-      standardError: stdErr.toFixed(2),
-    };
-  });
+  return {
+    column,
+    type: "Numeric",
+    averageAll: averageAll.toFixed(2),
+    averageNonMissing: averageNonMissing.toFixed(2),
+    missingCount,
+    mean: mean.toFixed(2),
+    standardError: standardError.toFixed(2),
+  };
+};
+
+export const computeSummaryStatistics = (
+  data,
+  columns,
+  categoricalColumns = []
+) => {
+  if (!data?.length || !columns?.length) return [];
+
+  return columns
+    .filter(column => {
+      const lower = column.toLowerCase();
+      return !lower.includes("id") && !lower.includes("date");
+    })
+    .map(column => {
+      const isCategorical = categoricalColumns.includes(column);
+
+      return isCategorical
+        ? computeCategoricalStatistics(data, column)
+        : computeNumericStatistics(data, column);
+    });
 };

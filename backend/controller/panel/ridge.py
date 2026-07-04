@@ -197,7 +197,7 @@ async def run_ridge_panel(request):
 
         return JSONResponse(content=sanitize({
             "success":        True,
-            "model":          "RIDGE_PANEL",
+            "model":          "RIDGE PANEL",
             "n_entities":     n_entities,
             "n_observations": n_obs,
             "time_periods":   df[time_col].nunique() if time_col else None,

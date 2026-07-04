@@ -7,6 +7,7 @@ import { usePrediction } from '../hooks/usePrediction';
 import { Link } from 'react-router-dom';
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import CrossSectionalTable from './CrossSectionalTable';
+import LoadingOverlay from './Error';
 
 const CrossSectionalData = () => {
     const [parsedData, setParsedData] = useState([]);
@@ -20,9 +21,10 @@ const CrossSectionalData = () => {
     const [categoricalVar, setCategoricalVar] = useState([]);
     const [outliers, setOutliers] = useState('');
     const fileInputRef = useRef(null);
-    const { data: result, loading, error, handlePredict: runPrediction } = usePrediction();
-    const [activeView, setActiveView] = useState(null);
 
+    const { data: result, loading, error, handlePredict: runPrediction } = usePrediction();
+
+    const [activeView, setActiveView] = useState(null);
 
     const columnOptions = columns.map(col => ({ value: col, label: col }));
 
@@ -45,14 +47,17 @@ const CrossSectionalData = () => {
     const onDataParsed = (data) => {
         setParsedData(data);
         if (data.length > 0) {
-            const keys = Object.keys(data[0]);
-            setColumns(keys);
+            setColumns(Object.keys(data[0]));
         }
-        console.log("Parsed Data:", data);
     };
 
     const handleSummaryStatistics = () => {
-        const stats = computeSummaryStatistics(parsedData, columns);
+        const selectedColumns = [
+            dependentVar,
+            ...independentVar,
+        ].filter(Boolean);
+
+        const stats = computeSummaryStatistics(parsedData, selectedColumns, categoricalVar);
         setSummaryStats(stats);
     };
 
@@ -61,12 +66,11 @@ const CrossSectionalData = () => {
         method &&
         idColumn &&
         dependentVar &&
-        independentVar &&
-        categoricalVar &&
+        independentVar.length > 0 &&
+        categoricalVar.length >= 0 &&
         outliers;
 
     const handlePredict = async () => {
-
         const payload = {
             data: parsedData,
             method,
@@ -76,8 +80,9 @@ const CrossSectionalData = () => {
             categorical_variable: categoricalVar,
             outliers,
         };
-        const result = await runPrediction(payload, `cross-sectional/${method}`);
-        console.log(result, 'response result')
+
+        setActiveView('prediction');
+        await runPrediction(payload, `cross-sectional/${method}`);
     };
 
     const handleClear = () => {
@@ -91,18 +96,18 @@ const CrossSectionalData = () => {
         setParsedData([]);
         setColumns([]);
         setSummaryStats([]);
+        setActiveView(null);
 
         if (fileInputRef.current) {
             fileInputRef.current.value = null;
-        };
-        setActiveView(null);
+        }
     };
 
     return (
         <>
+            {/* Header */}
             <div className="w-full px-4 my-6">
                 <div className="relative bg-blue-100 py-3 rounded shadow-sm flex items-center justify-center">
-
                     <Link
                         to="/dashboard"
                         className="absolute left-4 text-gray-700 hover:text-gray-900"
@@ -113,16 +118,19 @@ const CrossSectionalData = () => {
                     <h2 className="text-2xl font-semibold text-gray-800 text-center">
                         Data Analysis and Prediction
                     </h2>
-
                 </div>
             </div>
+
+            {/* Form */}
             <div className="w-full px-4 my-6">
                 <div className="flex justify-center">
-                    <div className="flex flex-wrap justify-center gap-6 p-6 border-2 border-solid border-gray-300 rounded-lg w-full bg-white shadow-sm">
+                    <div className="flex flex-wrap justify-center gap-6 p-6 border-2 border-gray-300 rounded-lg w-full bg-white shadow-sm">
 
+                        {/* Upload */}
                         <div className="flex flex-col w-48">
                             <label className="text-sm text-gray-700 mb-1">Upload File</label>
-                            <input type="file" className="px-2 py-[5px] border border-gray-300 rounded bg-white text-sm text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 hover:border-gray-400"
+                            <input
+                                type="file"
                                 accept=".csv"
                                 ref={fileInputRef}
                                 onChange={(e) => {
@@ -131,107 +139,130 @@ const CrossSectionalData = () => {
                                         setFileUploaded(true);
                                         parseCsvFile(file, onDataParsed);
                                     }
-                                }} />
+                                }}
+                                className="px-2 py-[5px] border border-gray-300 rounded text-sm"
+                            />
                         </div>
 
+                        {/* Method */}
                         <div className="flex flex-col w-48">
                             <label className="text-sm text-gray-700 mb-1">Methods</label>
                             <Select
                                 options={methodOptions}
-                                value={method ? methodOptions.find(opt => opt.value === method) : null}
+                                value={methodOptions.find(opt => opt.value === method) || null}
                                 onChange={(selected) => setMethod(selected.value)}
-                                classNamePrefix="react-select"
-                                className="text-sm"
                             />
                         </div>
 
+                        {/* ID */}
                         <div className="flex flex-col w-48">
-                            <label className="text-sm text-gray-700 mb-1">Id of the Data</label>
+                            <label className="text-sm text-gray-700 mb-1">ID Column</label>
                             <Select
                                 options={columnOptions}
+                                value={columnOptions.find(opt => opt.value === idColumn) || null}
                                 onChange={(selected) => setIdColumn(selected.value)}
-                                value={idColumn ? columnOptions.find(opt => opt.value === idColumn) : null}
-                                classNamePrefix="react-select"
-                                className="text-sm"
                             />
                         </div>
 
+                        {/* Dependent */}
                         <div className="flex flex-col w-48">
-                            <label className="text-sm text-gray-700 mb-1">Dependent Variables</label>
+                            <label className="text-sm text-gray-700 mb-1">Dependent Variable</label>
                             <Select
                                 options={columnOptions}
-                                value={dependentVar ? columnOptions.find(opt => opt.value === dependentVar) : null}
+                                value={columnOptions.find(opt => opt.value === dependentVar) || null}
                                 onChange={(selected) => setDependentVar(selected.value)}
-                                classNamePrefix="react-select"
-                                className="text-sm"
                             />
                         </div>
 
+                        {/* Independent */}
                         <div className="flex flex-col w-48">
                             <label className="text-sm text-gray-700 mb-1">Independent Variables</label>
                             <Select
                                 isMulti
                                 options={columnOptions}
                                 value={columnOptions.filter(opt => independentVar.includes(opt.value))}
-                                onChange={(selected) => setIndependentVar(selected.map(opt => opt.value))}
-                                classNamePrefix="react-select"
-                                className="text-sm"
+                                onChange={(selected) =>
+                                    setIndependentVar(selected.map(opt => opt.value))
+                                }
                             />
                         </div>
 
+                        {/* Categorical */}
                         <div className="flex flex-col w-48">
                             <label className="text-sm text-gray-700 mb-1">Categorical Variables</label>
                             <Select
                                 isMulti
                                 options={columnOptions}
                                 value={columnOptions.filter(opt => categoricalVar.includes(opt.value))}
-                                onChange={(selected) => setCategoricalVar(selected.map(opt => opt.value))}
-                                className="text-sm"
-                                classNamePrefix="react-select"
+                                onChange={(selected) =>
+                                    setCategoricalVar(selected.map(opt => opt.value))
+                                }
                             />
                         </div>
 
-
+                        {/* Outliers */}
                         <div className="flex flex-col w-48">
                             <label className="text-sm text-gray-700 mb-1">Outliers</label>
                             <Select
                                 options={outlierOptions}
-                                value={outliers ? outlierOptions.find(opt => opt.value === outliers) : null}
+                                value={outlierOptions.find(opt => opt.value === outliers) || null}
                                 onChange={(selected) => setOutliers(selected.value)}
-                                classNamePrefix="react-select"
-                                className="text-sm"
                             />
                         </div>
 
+                        {/* Buttons */}
                         <div className="w-full flex flex-wrap justify-center gap-4 mt-6">
-                            <button className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600" onClick={() => { handleSummaryStatistics(); setActiveView('summary'); }}>
+                            <button
+                                className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                                onClick={() => {
+                                    handleSummaryStatistics();
+                                    setActiveView('summary');
+                                }}
+                            >
                                 Summary Statistics
                             </button>
-                            <button className={`w-40 px-4 py-2 rounded ${isReadyToPredict
-                                ? "bg-blue-500 text-white hover:bg-blue-600"
-                                : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                                }`}
-                                disabled={!isReadyToPredict}
-                                onClick={() => { handlePredict(); setActiveView('prediction'); }}>
-                                Predict
+
+                            <button
+                                className={`w-40 px-4 py-2 rounded ${isReadyToPredict && !loading
+                                    ? "bg-blue-500 text-white hover:bg-blue-600"
+                                    : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                                    }`}
+                                disabled={!isReadyToPredict || loading}
+                                onClick={handlePredict}
+                            >
+                                {loading ? "Predicting..." : "Predict"}
                             </button>
-                            <button className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600" onClick={handleClear}>
+
+                            <button
+                                className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                                onClick={handleClear}
+                            >
                                 Clear
                             </button>
                         </div>
+
+                        {/* Loading */}
+                        {loading && <LoadingOverlay />}
+                        {/* Error */}
+                        {error && activeView != "summary" && (
+                            <div className="w-full text-center text-red-600 bg-red-50 p-2 rounded mt-4">
+                                Something went wrong. Try agin!!
+                            </div>
+                        )}
+
+                        {/* Results */}
                         {activeView === 'summary' && summaryStats.length > 0 && (
                             <SummaryStatisticsTable stats={summaryStats} showExtended={false} />
                         )}
+
                         {activeView === 'prediction' && result && (
                             <CrossSectionalTable result={result} />
                         )}
                     </div>
                 </div>
             </div>
-
-
         </>
-    )
-}
+    );
+};
 
 export default CrossSectionalData;

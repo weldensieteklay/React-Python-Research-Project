@@ -6,6 +6,7 @@ import { parseCsvFile, computeSummaryStatistics } from "../utils/utils";
 import SummaryStatisticsTable from "./SummaryStatisticsTable";
 import { usePrediction } from "../hooks/usePrediction";
 import CrossSectionalTable from "./CrossSectionalTable";
+import LoadingOverlay from './Error';
 
 const PanelData = () => {
     const [parsedData, setParsedData] = useState([]);
@@ -92,7 +93,12 @@ const PanelData = () => {
     };
 
     const handleSummaryStatistics = () => {
-        const stats = computeSummaryStatistics(parsedData, columns);
+        const selectedColumns = [
+            dependentVar,
+            ...independentVar,
+        ].filter(Boolean);
+
+        const stats = computeSummaryStatistics(parsedData, selectedColumns, categoricalVar);
         setSummaryStats(stats);
     };
 
@@ -114,8 +120,6 @@ const PanelData = () => {
             categorical_variable: categoricalVar,
             outliers,
             date_column: selectedDateColumn,
-            start_date: startDate,
-            end_date: endDate,
         };
         await runPrediction(payload, `panel/${method}`);
     };
@@ -270,31 +274,6 @@ const PanelData = () => {
                                 </p>
                             )}
                         </div>
-
-                        {/* Start Date */}
-                        <div className="flex flex-col w-48">
-                            <label className="text-sm text-gray-700 mb-1">Start Date</label>
-                            <Select
-                                options={dateOptions}
-                                value={startDate ? dateOptions.find((o) => o.value === startDate) : null}
-                                onChange={(selected) => setStartDate(selected?.value || "")}
-                                classNamePrefix="react-select"
-                                className="text-sm"
-                            />
-                        </div>
-
-                        {/* End Date */}
-                        <div className="flex flex-col w-48">
-                            <label className="text-sm text-gray-700 mb-1">End Date</label>
-                            <Select
-                                options={dateOptions}
-                                value={endDate ? dateOptions.find((o) => o.value === endDate) : null}
-                                onChange={(selected) => setEndDate(selected?.value || "")}
-                                classNamePrefix="react-select"
-                                className="text-sm"
-                            />
-                        </div>
-
                         {/* Action Buttons */}
                         <div className="w-full flex flex-wrap justify-center gap-4 mt-6">
                             <button
@@ -304,11 +283,10 @@ const PanelData = () => {
                                 Summary Statistics
                             </button>
                             <button
-                                className={`w-40 px-4 py-2 rounded ${
-                                    isReadyToPredict
-                                        ? "bg-blue-500 text-white hover:bg-blue-600"
-                                        : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                                }`}
+                                className={`w-40 px-4 py-2 rounded ${isReadyToPredict
+                                    ? "bg-blue-500 text-white hover:bg-blue-600"
+                                    : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                                    }`}
                                 disabled={!isReadyToPredict}
                                 onClick={() => { handlePredict(); setActiveView("prediction"); }}
                             >
@@ -321,6 +299,13 @@ const PanelData = () => {
                                 Clear
                             </button>
                         </div>
+                        {/* Loading */}
+                        {loading && <LoadingOverlay />}
+                        {error && activeView !== "summary" && (
+                            <div className="flex flex-col items-center text-center">
+                                Something went wrong. Try agin!!
+                            </div>
+                        )}
 
                         {/* Results */}
                         {activeView === "summary" && summaryStats.length > 0 && (

@@ -75,7 +75,8 @@ async def predict_price_boosting(request: Request):
         # Compute metrics and return
         # --------------------------
         metrics = compute_boosting_metrics(model, X_test, y_test, X.columns)
-        return to_serializable(metrics)
+        response = { "model": "BOOSTING", **metrics } 
+        return to_serializable(response)
 
     except HTTPException:
         raise

@@ -437,7 +437,7 @@ async def run_fixed_effects_prediction(request):
 
         response_payload = sanitize({
             "success":        True,
-            "model":          "FIXED_EFFECTS",
+            "model":          "FIXED EFFECTS",
             "n_entities":     n_entities,
             "n_observations": n_obs,
             "time_periods":   df[time_col].nunique() if time_col else None,

@@ -231,7 +231,7 @@ async def run_random_forest_panel(request):
 
         return JSONResponse(content=sanitize({
             "success":        True,
-            "model":          "RANDOM_FOREST_PANEL",
+            "model":          "RANDOM FOREST PANEL",
             "n_entities":     n_entities,
             "n_observations": n_obs,
             "time_periods":   df[time_col].nunique() if time_col else None,
