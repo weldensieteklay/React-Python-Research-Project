@@ -7,10 +7,7 @@ import PredictionTable from './PredictionTable';
 import LineGraph from './LineGraph';
 import { Link } from 'react-router-dom';
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
-
-
-
-
+import LoadingOverlay from './Error';
 
 const TimeSeriesData = () => {
     const [parsedData, setParsedData] = useState([]);
@@ -69,7 +66,12 @@ const TimeSeriesData = () => {
     };
 
     const handleSummaryStatistics = () => {
-        const stats = computeSummaryStatistics(parsedData, columns);
+        const selectedColumns = [
+            selectedEndogenousVar,
+            ...selectedExogenousVar,
+        ].filter(Boolean);
+
+        const stats = computeSummaryStatistics(parsedData, selectedColumns);
         setSummaryStats(stats);
     };
 
@@ -80,13 +82,6 @@ const TimeSeriesData = () => {
         { value: 'forest', label: 'FOREST' },
         { value: 'boosting', label: 'BOOSTING' },
         { value: 'bagging', label: 'BAGGING' },
-        { value: 'hybrid-forest', label: 'HYBRID FOREST' },
-        { value: 'hybrid-lasso', label: 'HYBRID LASSO' },
-        { value: 'hybrid-ridge', label: 'HYBRID RIDGE' },
-        { value: 'hybrid-boosting', label: 'HYBRID BOOSTING' },
-        { value: 'hybrid-bagging', label: 'HYBRID BAGGING' },
-
-
     ];
 
     const columnOptions = columns.map(col => ({ value: col, label: col }));
@@ -322,6 +317,14 @@ const TimeSeriesData = () => {
                                 Clear
                             </button>
                         </div>
+
+                        {loading && <LoadingOverlay />}
+
+                        {error && activeView != "summary" && (
+                            <div className="w-full text-center text-red-600 bg-red-50 p-2 rounded mt-4">
+                                Something went wrong. Try agin!!
+                            </div>
+                        )}
                         {activeView === 'summary' && summaryStats.length > 0 && (
                             <SummaryStatisticsTable stats={summaryStats} showExtended={false} />
                         )}

@@ -70,11 +70,11 @@ async def predict_price(request: Request):
 
         response = {
             **metrics,
+            "model": "ARIMA",
             "stationary": stationarity["stationary"],
             "adfuller_p": round(stationarity["p_value"], 4),
             "data": extract_model_summary(results, target_col)
         }
-
         return JSONResponse(to_serializable(response))
 
     except Exception as e:

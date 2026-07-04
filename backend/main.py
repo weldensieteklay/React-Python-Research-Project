@@ -33,62 +33,41 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-# ─────────────────────────────────────────
-# TOKEN VERIFICATION MIDDLEWARE
-# ─────────────────────────────────────────
 @app.middleware("http")
 async def verify_google_token(request: Request, call_next):
-    # ── Skip auth for CORS preflight requests ──
-    # Browsers send OPTIONS before every POST to check permissions.
-    # Blocking OPTIONS with 401 prevents the actual request from ever firing.
-    if request.method == "OPTIONS":
-        return await call_next(request)
-
-    # Skip auth for non-API routes (e.g. GET /)
-    if not request.url.path.startswith("/api/"):
-        return await call_next(request)
-
-    # Extract token from Authorization header
     auth_header = request.headers.get("Authorization")
 
     if not auth_header or not auth_header.startswith("Bearer "):
         return JSONResponse(
             status_code=401,
-            content={
-                "success": False,
-                "error": "Missing or invalid Authorization header",
-            },
+            content={"success": False, "error": "Missing or invalid Authorization header"},
         )
 
-    token = auth_header.split(" ")[1]
+    token = auth_header[len("Bearer "):].strip()
 
-    if not GOOGLE_CLIENT_ID:
+    if not token:
         return JSONResponse(
-            status_code=500,
-            content={
-                "success": False,
-                "error": "GOOGLE_CLIENT_ID not configured on server",
-            },
+            status_code=401,
+            content={"success": False, "error": "Empty bearer token"},
         )
 
     try:
-        decoded = id_token.verify_oauth2_token(
-            token,
-            google_requests.Request(),
-            GOOGLE_CLIENT_ID,
-        )
+        decoded = id_token.verify_oauth2_token(token, google_requests.Request(), GOOGLE_CLIENT_ID)
         request.state.user = decoded
-
-    except ValueError as e:
+    except ValueError:
         return JSONResponse(
             status_code=401,
-            content={"success": False, "error": f"Invalid or expired token: {str(e)}"},
+            content={"success": False, "error": "Invalid or expired token"},
+        )
+    except Exception as e:
+        # Catch-all so an unexpected error never bypasses CORS headers
+        print(f"[AUTH] Unexpected error: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": "Internal authentication error"},
         )
 
     return await call_next(request)
-
-
 # ─────────────────────────────────────────
 # ROUTES
 # ─────────────────────────────────────────

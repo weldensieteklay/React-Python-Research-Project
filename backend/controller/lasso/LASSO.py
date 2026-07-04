@@ -75,8 +75,8 @@ async def predict_price_lasso(request: Request):
         # Metrics
         # -------------------------------
         metrics = compute_lasso_metrics(lasso, X_test, y_test, X.columns)
-
-        return to_serializable(metrics)
+        response = { "model": "LASSO", **metrics } 
+        return to_serializable(response)
 
     except HTTPException:
         raise

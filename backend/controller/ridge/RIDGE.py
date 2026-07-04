@@ -76,9 +76,9 @@ async def predict_price_ridge(request: Request):
         # Metrics
         # -------------------------------
         metrics = compute_ridge_metrics(ridge, X_test, y_test, X.columns)
-
-        return to_serializable(metrics)
-
+        response = { "model": "RIDGE", **metrics } 
+        return to_serializable(response)
+    
     except HTTPException:
         raise
     except Exception as e:

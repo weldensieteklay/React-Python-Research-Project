@@ -535,7 +535,7 @@ async def run_random_effects_prediction(request):
 
         response_payload = sanitize({
             "success":        True,
-            "model":          "RANDOM_EFFECTS",
+            "model":          "RANDOM EFFECTS",
             "n_entities":     n_entities,
             "n_observations": n_obs,
             "time_periods":   df[time_col].nunique() if time_col else None,

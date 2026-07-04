@@ -195,7 +195,7 @@ def compute_rf_metrics(model, X_test, y_test, feature_names):
     ]
 
     return {
-        "model": "random_forest",
+        "model": "RANDOM FOREST",
         "n_estimators": model.n_estimators,
         "rmse": fmt(rmse),
         "mae": fmt(mae),
@@ -241,7 +241,7 @@ def compute_bagging_metrics(model, X_test, y_test, feature_names):
         })
 
     return {
-        "model": "bagging",
+        "model": "BAGGING",
         "n_estimators": model.n_estimators,
         "rmse": rmse,
         "mae": mae,
@@ -279,7 +279,7 @@ def compute_boosting_metrics(model, X_test, y_test, feature_names):
     ]
 
     return {
-        "model": "gradient_boosting",
+        "model": "BOOSTING",
         "n_estimators": model.n_estimators,
         "learning_rate": fmt(model.learning_rate),
         "rmse": rmse,

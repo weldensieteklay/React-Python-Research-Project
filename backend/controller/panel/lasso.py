@@ -202,7 +202,7 @@ async def run_lasso_panel(request):
 
         return JSONResponse(content=sanitize({
             "success":        True,
-            "model":          "LASSO_PANEL",
+            "model":          "LASSO PANEL",
             "n_entities":     n_entities,
             "n_observations": n_obs,
             "time_periods":   df[time_col].nunique() if time_col else None,

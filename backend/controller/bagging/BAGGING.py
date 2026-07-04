@@ -76,7 +76,7 @@ async def predict_price_bagging(request: Request):
         # --------------------------
         metrics = compute_bagging_metrics(model, X_test, y_test, X.columns)
         return to_serializable(metrics)
-
+    
     except HTTPException:
         raise
     except Exception as e:
