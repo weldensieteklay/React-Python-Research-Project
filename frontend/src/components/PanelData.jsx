@@ -6,7 +6,7 @@ import { parseCsvFile, computeSummaryStatistics } from "../utils/utils";
 import SummaryStatisticsTable from "./SummaryStatisticsTable";
 import { usePrediction } from "../hooks/usePrediction";
 import CrossSectionalTable from "./CrossSectionalTable";
-import LoadingOverlay from './Error';
+import LoadingOverlay from './LoadingOverlay';
 
 const PanelData = () => {
     const [parsedData, setParsedData] = useState([]);
@@ -290,7 +290,7 @@ const PanelData = () => {
                                 disabled={!isReadyToPredict}
                                 onClick={() => { handlePredict(); setActiveView("prediction"); }}
                             >
-                                {loading ? "Running..." : "Predict"}
+                               Predict
                             </button>
                             <button
                                 className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"

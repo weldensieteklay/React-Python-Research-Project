@@ -7,7 +7,7 @@ import PredictionTable from './PredictionTable';
 import LineGraph from './LineGraph';
 import { Link } from 'react-router-dom';
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
-import LoadingOverlay from './Error';
+import LoadingOverlay from './LoadingOverlay';
 
 const TimeSeriesData = () => {
     const [parsedData, setParsedData] = useState([]);
