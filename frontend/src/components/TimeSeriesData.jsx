@@ -8,6 +8,9 @@ import LineGraph from './LineGraph';
 import { Link } from 'react-router-dom';
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import LoadingOverlay from './LoadingOverlay';
+import DownloadPptxButton from './dowload/DownloadPptxButton';
+import GuidePanel from "../guideMe/GuidePanel";
+import { guideContent } from "../guideMe/Guidecontent";
 
 const TimeSeriesData = () => {
     const [parsedData, setParsedData] = useState([]);
@@ -23,6 +26,7 @@ const TimeSeriesData = () => {
     const [isValidDateColumn, setIsValidDateColumn] = useState(null);
     const [showLineGraph, setShowLineGraph] = useState(false);
     const [activeView, setActiveView] = useState(null);
+    const [showGuide, setShowGuide] = useState(false);
 
     const fileInputRef = useRef(null);
 
@@ -189,6 +193,20 @@ const TimeSeriesData = () => {
                         <ArrowLeftIcon className="h-6 w-6" />
                     </Link>
                     <h2 className="text-2xl font-semibold text-gray-800">Data Analysis and Prediction</h2>
+                    <button
+                        onClick={() => setShowGuide((o) => !o)}
+                        className="absolute right-4 flex items-center gap-2 px-3 py-1.5 bg-white text-black text-sm rounded-lg shadow-sm hover:bg-gray-100 transition-colors"
+                    >
+                        <span className="font-medium">Guide Me</span>
+                    </button>
+                    {/* Guide panel — inline, no overlay */}
+                    <div className="flex justify-center mt-3">
+                        <GuidePanel
+                            open={showGuide}
+                            onClose={() => setShowGuide(false)}
+                            content={guideContent.timeSeries}
+                        />
+                    </div>
                 </div>
             </div>
             <div className="w-full px-4 my-6">
@@ -329,8 +347,14 @@ const TimeSeriesData = () => {
                             <SummaryStatisticsTable stats={summaryStats} showExtended={false} />
                         )}
 
-                        {activeView === 'prediction' && result && (
-                            <PredictionTable result={result} />
+                        {activeView === "prediction" && result && (
+                            <>
+                                <div className="w-full flex justify-end mb-4">
+                                    <DownloadPptxButton result={result} />
+                                </div>
+
+                                <PredictionTable result={result} />
+                            </>
                         )}
 
                         {activeView === 'graph' && selectedDateColumn && selectedEndogenousVar && (

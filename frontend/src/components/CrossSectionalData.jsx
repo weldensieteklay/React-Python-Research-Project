@@ -8,6 +8,9 @@ import { Link } from 'react-router-dom';
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import CrossSectionalTable from './CrossSectionalTable';
 import LoadingOverlay from './LoadingOverlay';
+import DownloadPptxButton from './dowload/DownloadPptxButton';
+import GuidePanel from "../guideMe/GuidePanel";
+import { guideContent } from "../guideMe/Guidecontent";
 
 const CrossSectionalData = () => {
     const [parsedData, setParsedData] = useState([]);
@@ -20,6 +23,7 @@ const CrossSectionalData = () => {
     const [independentVar, setIndependentVar] = useState([]);
     const [categoricalVar, setCategoricalVar] = useState([]);
     const [outliers, setOutliers] = useState('');
+    const [showGuide, setShowGuide] = useState(false);
     const fileInputRef = useRef(null);
 
     const { data: result, loading, error, handlePredict: runPrediction } = usePrediction();
@@ -118,6 +122,21 @@ const CrossSectionalData = () => {
                     <h2 className="text-2xl font-semibold text-gray-800 text-center">
                         Data Analysis and Prediction
                     </h2>
+
+                    <button
+                        onClick={() => setShowGuide((o) => !o)}
+                        className="absolute right-4 flex items-center gap-2 px-3 py-1.5 bg-white text-black text-sm rounded-lg shadow-sm hover:bg-gray-100 transition-colors"
+                    >
+                        <span className="font-medium">Guide Me</span>
+                    </button>
+                </div>
+                {/* Guide panel — inline, no overlay */}
+                <div className="flex justify-center mt-3">
+                    <GuidePanel
+                        open={showGuide}
+                        onClose={() => setShowGuide(false)}
+                        content={guideContent.crossSectional}
+                    />
                 </div>
             </div>
 
@@ -255,8 +274,25 @@ const CrossSectionalData = () => {
                             <SummaryStatisticsTable stats={summaryStats} showExtended={false} />
                         )}
 
-                        {activeView === 'prediction' && result && (
-                            <CrossSectionalTable result={result} />
+
+                        {activeView === 'prediction' && result && !loading && !error && (
+                            <>
+                                <div className="w-full flex justify-end">
+                                    <DownloadPptxButton
+                                        result={result}
+                                        title="Cross-Sectional Data Analysis"
+                                        filenamePrefix="cross_sectional"
+                                        variables={{
+                                            dependentVar,
+                                            independentVar,
+                                            categoricalVar,
+                                            idColumn,
+                                            outliers,
+                                        }}
+                                    />
+                                </div>
+                                <CrossSectionalTable result={result} />
+                            </>
                         )}
                     </div>
                 </div>
