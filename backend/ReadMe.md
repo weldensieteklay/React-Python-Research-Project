@@ -16,8 +16,8 @@ python -m venv venv
 ### Install Dependencies
 pip install -r requirements.txt
 
-### Run using flask cli
- flask run
+### Run using fast api 
+ uvicorn main:app --reload
 
  ### Running server
 local: http://127.0.0.1:5000/

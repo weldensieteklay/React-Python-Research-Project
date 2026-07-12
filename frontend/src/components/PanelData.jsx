@@ -10,6 +10,7 @@ import LoadingOverlay from './LoadingOverlay';
 import DownloadPptxButton from './dowload/DownloadPptxButton';
 import GuidePanel from "../guideMe/GuidePanel";
 import { guideContent } from "../guideMe/Guidecontent";
+import MultiCheckboxDropdown from "./MultiCheckboxDropdown";
 
 const PanelData = () => {
     const [parsedData, setParsedData] = useState([]);
@@ -104,6 +105,45 @@ const PanelData = () => {
 
         const stats = computeSummaryStatistics(parsedData, selectedColumns, categoricalVar);
         setSummaryStats(stats);
+    };
+
+    // Toggle a column in/out of the Independent Variables list.
+    // If a column is removed from Independent Variables, it can no longer be
+    // categorical either, so we drop it from categoricalVar at the same time.
+    const handleIndependentToggle = (col) => {
+        setIndependentVar((prev) => {
+            const next = prev.includes(col)
+                ? prev.filter((c) => c !== col)
+                : [...prev, col];
+
+            setCategoricalVar((prevCat) => prevCat.filter((c) => next.includes(c)));
+
+            return next;
+        });
+    };
+
+    // Categorical Variables can only be chosen from the already-selected
+    // Independent Variables.
+    const handleCategoricalToggle = (col) => {
+        setCategoricalVar((prev) =>
+            prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col]
+        );
+    };
+
+    // "Select All" toggles between every column and none. If everything is
+    // already selected, it deselects all (also clearing any categorical
+    // picks that depended on them); otherwise it selects every column.
+    const handleSelectAllIndependent = (allCurrentlySelected) => {
+        setIndependentVar(() => {
+            const next = allCurrentlySelected ? [] : [...columns];
+            setCategoricalVar((prevCat) => prevCat.filter((c) => next.includes(c)));
+            return next;
+        });
+    };
+
+    // Same idea, scoped to whatever is currently in Independent Variables.
+    const handleSelectAllCategorical = (allCurrentlySelected) => {
+        setCategoricalVar(allCurrentlySelected ? [] : [...independentVar]);
     };
 
     const isReadyToPredict =
@@ -238,31 +278,27 @@ const PanelData = () => {
                             />
                         </div>
 
-                        {/* Independent Variables */}
-                        <div className="flex flex-col w-48">
-                            <label className="text-sm text-gray-700 mb-1">Independent Variables</label>
-                            <Select
-                                isMulti
-                                options={columnOptions}
-                                value={columnOptions.filter((o) => independentVar.includes(o.value))}
-                                onChange={(selected) => setIndependentVar(selected.map((o) => o.value))}
-                                classNamePrefix="react-select"
-                                className="text-sm"
-                            />
-                        </div>
+                        {/* Independent — click-to-open dropdown with checkboxes */}
+                        <MultiCheckboxDropdown
+                            label="Independent Variables"
+                            options={columns}
+                            selected={independentVar}
+                            onToggle={handleIndependentToggle}
+                            onSelectAll={handleSelectAllIndependent}
+                            placeholder="Select variables"
+                            emptyMessage="Upload a file to see columns"
+                        />
 
-                        {/* Categorical Variables */}
-                        <div className="flex flex-col w-48">
-                            <label className="text-sm text-gray-700 mb-1">Categorical Variables</label>
-                            <Select
-                                isMulti
-                                options={columnOptions}
-                                value={columnOptions.filter((o) => categoricalVar.includes(o.value))}
-                                onChange={(selected) => setCategoricalVar(selected.map((o) => o.value))}
-                                classNamePrefix="react-select"
-                                className="text-sm"
-                            />
-                        </div>
+                        {/* Categorical — click-to-open dropdown, options limited to chosen Independent Variables */}
+                        <MultiCheckboxDropdown
+                            label="Categorical Variables"
+                            options={independentVar}
+                            selected={categoricalVar}
+                            onToggle={handleCategoricalToggle}
+                            onSelectAll={handleSelectAllCategorical}
+                            placeholder="Select variables"
+                            emptyMessage="Select independent variables first"
+                        />
 
                         {/* Outliers */}
                         <div className="flex flex-col w-48">
