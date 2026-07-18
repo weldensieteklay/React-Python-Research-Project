@@ -1,7 +1,7 @@
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
+from sklearn.model_selection import TimeSeriesSplit, GroupKFold
 from fastapi.responses import JSONResponse
-from sklearn.model_selection import train_test_split
 import pandas as pd
 import numpy as np
 import math
@@ -38,6 +38,141 @@ def safe_round(v, digits=4):
         return None
 
 
+# ─────────────────────────────────────────
+# FEATURE BUILDING
+# ─────────────────────────────────────────
+
+def _build_rf_features(df, X_cols, id_col, time_col, entity_categories=None):
+    """
+    Random Forest gets entity ID as one-hot features instead of having
+    the target/regressors demeaned by entity. A tree ensemble can
+    split directly on entity identity to learn entity-specific
+    baselines, so demeaning only destroys level information it could
+    otherwise use -- unlike a linear model, RF has no bias problem
+    that demeaning is needed to fix.
+
+    entity_categories, when provided (fold fitting), fixes the set of
+    one-hot columns to those seen during training -- rows for
+    entities outside that set simply get all-zero entity dummies,
+    which is a reasonable, low-bias way for a tree model to handle an
+    unseen entity (falls back to whatever the level features suggest).
+    """
+    X = df[X_cols].copy()
+
+    entity_dummies = pd.get_dummies(df[id_col], prefix="entity")
+    if entity_categories is not None:
+        entity_dummies = entity_dummies.reindex(columns=entity_categories, fill_value=0)
+
+    X = pd.concat([X, entity_dummies], axis=1)
+
+    if time_col:
+        # Ordinal time index (0, 1, 2, ...) rather than a raw
+        # timestamp, so the model gets a usable numeric trend feature.
+        time_rank = pd.factorize(df[time_col], sort=True)[0]
+        X["time_index"] = time_rank
+
+    return X, list(entity_dummies.columns)
+
+
+# ─────────────────────────────────────────
+# CROSS-VALIDATION
+# ─────────────────────────────────────────
+
+def _fit_predict_rf_fold(train_df, test_df, dependent_col, X_cols, id_col, time_col, rf_params):
+    if train_df.empty or test_df.empty:
+        return None
+
+    X_train, entity_cols = _build_rf_features(train_df, X_cols, id_col, time_col)
+    X_test, _ = _build_rf_features(test_df, X_cols, id_col, time_col, entity_categories=entity_cols)
+    # keep test columns aligned with train (time_index always present if time_col set)
+    X_test = X_test.reindex(columns=X_train.columns, fill_value=0)
+
+    y_train = train_df[dependent_col]
+    y_test = test_df[dependent_col]
+
+    model = RandomForestRegressor(**rf_params)
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+
+    mse = float(mean_squared_error(y_test, y_pred))
+    return {
+        "rmse": safe_round(np.sqrt(mse)),
+        "mae": safe_round(mean_absolute_error(y_test, y_pred)),
+        "r2": safe_round(r2_score(y_test, y_pred)),
+        "n_test_rows": int(len(y_test)),
+    }
+
+
+def _aggregate_cv_metrics(fold_metrics):
+    if not fold_metrics:
+        return None
+    agg = {}
+    for key in ("rmse", "mae", "r2"):
+        vals = [m[key] for m in fold_metrics if m.get(key) is not None]
+        if vals:
+            agg[key] = {
+                "mean": safe_round(np.mean(vals)),
+                "std": safe_round(np.std(vals)),
+            }
+    return agg
+
+
+def run_rf_cross_validation(df, dependent_col, X_cols, id_col, time_col, rf_params, cv_folds=3):
+    """
+    Time-based walk-forward CV when a usable date_column exists (train
+    on earlier periods, predict later ones); entity-based GroupKFold
+    otherwise. Unlike the linear panel models, RF can genuinely predict
+    for entities unseen during training (via level features + whatever
+    the trees generalize from similar entities), so neither method is
+    a weaker fallback here -- both are legitimate, time-based is just
+    preferred when time ordering is meaningful for the data.
+    """
+    fold_metrics = []
+    method = None
+
+    if time_col and df[time_col].nunique() >= cv_folds + 1:
+        method = "time_based_walk_forward"
+        unique_times = np.array(sorted(df[time_col].unique()))
+        splitter = TimeSeriesSplit(n_splits=cv_folds)
+        for train_t_idx, test_t_idx in splitter.split(unique_times):
+            train_times = set(unique_times[train_t_idx])
+            test_times = set(unique_times[test_t_idx])
+            train_df = df[df[time_col].isin(train_times)]
+            test_df = df[df[time_col].isin(test_times)]
+            result = _fit_predict_rf_fold(
+                train_df, test_df, dependent_col, X_cols, id_col, time_col, rf_params
+            )
+            if result:
+                fold_metrics.append(result)
+    else:
+        n_entities = df[id_col].nunique()
+        n_splits = min(cv_folds, n_entities) if n_entities >= 2 else 0
+        if n_splits >= 2:
+            method = "entity_based_group_kfold"
+            gkf = GroupKFold(n_splits=n_splits)
+            for train_idx, test_idx in gkf.split(df, groups=df[id_col]):
+                train_df = df.iloc[train_idx]
+                test_df = df.iloc[test_idx]
+                result = _fit_predict_rf_fold(
+                    train_df, test_df, dependent_col, X_cols, id_col, time_col, rf_params
+                )
+                if result:
+                    fold_metrics.append(result)
+        else:
+            method = "skipped_insufficient_entities"
+
+    return {
+        "method": method,
+        "folds_requested": cv_folds,
+        "folds_used": len(fold_metrics),
+        **(_aggregate_cv_metrics(fold_metrics) or {}),
+    }
+
+
+# ─────────────────────────────────────────
+# MAIN HANDLER
+# ─────────────────────────────────────────
+
 async def run_random_forest_panel(request):
     try:
         payload = await request.json()
@@ -49,13 +184,14 @@ async def run_random_forest_panel(request):
         id_col           = payload.get("id_column")
         time_col         = payload.get("date_column", None)
         remove_outliers  = payload.get("outliers", False)
+        cv_folds         = int(payload.get("cv_folds", 3))
 
         # ── Random Forest hyperparameters ──
-        n_estimators      = int(payload.get("n_estimators", 100))
-        max_depth         = payload.get("max_depth", None)
-        min_samples_split = int(payload.get("min_samples_split", 2))
-        min_samples_leaf  = int(payload.get("min_samples_leaf", 1))
-        max_features      = payload.get("max_features", "sqrt")
+        n_estimators      = int(payload.get("n_estimators", 200))
+        max_depth         = payload.get("max_depth", 8)
+        min_samples_split = int(payload.get("min_samples_split", 10))
+        min_samples_leaf  = int(payload.get("min_samples_leaf", 5))
+        max_features       = payload.get("max_features", "sqrt")
         random_state      = int(payload.get("random_state", 42))
 
         if max_depth is not None:
@@ -70,6 +206,8 @@ async def run_random_forest_panel(request):
             raise ValueError("Independent variables are required")
         if not id_col:
             raise ValueError("Entity ID column is required for panel Random Forest")
+        if cv_folds < 2:
+            raise ValueError("cv_folds must be at least 2")
 
         if isinstance(remove_outliers, str):
             remove_outliers = remove_outliers.strip().lower() in ("yes", "true", "1")
@@ -136,95 +274,82 @@ async def run_random_forest_panel(request):
         n_obs  = len(df)
         X_cols = list(X_raw.columns)
 
-        # ── Within transformation (demean by entity) ──
-        # Random Forest is a non-linear model and does not require demeaning
-        # to be consistent. However, applying within-transformation removes
-        # unobserved entity-level heterogeneity, mirroring fixed-effects logic
-        # and making results comparable to Ridge/Lasso panel models.
-        all_cols  = [dependent_col] + X_cols
-        grp_means = df.groupby(id_col)[all_cols].transform("mean")
-        y_within  = df[dependent_col] - grp_means[dependent_col]
-        X_within  = df[X_cols]        - grp_means[X_cols]
-
-        # Drop time-invariant columns (zero variance after demeaning)
-        zero_var_cols = [c for c in X_within.columns if X_within[c].abs().max() < 1e-10]
-        if zero_var_cols:
-            X_within = X_within.drop(columns=zero_var_cols)
-
-        if X_within.shape[1] == 0:
-            raise ValueError(
-                "All independent variables are time-invariant within entities. "
-                f"Dropped: {zero_var_cols}"
-            )
-
-        coef_names = X_within.columns.tolist()
-
-        # ── Train / test split ──
-        X_train, X_test, y_train, y_test = train_test_split(
-            X_within, y_within, test_size=0.2, random_state=random_state
-        )
-
-        # ── Fit Random Forest ──
-        model = RandomForestRegressor(
-            n_estimators=n_estimators,
-            max_depth=max_depth,
-            min_samples_split=min_samples_split,
-            min_samples_leaf=min_samples_leaf,
-            max_features=max_features,
-            random_state=random_state,
-            n_jobs=-1,
-        )
-        model.fit(X_train, y_train)
-        predictions = model.predict(X_test)
-
-        # ── Metrics ──
-        within_r2 = safe_round(r2_score(y_test, predictions))
-        mse       = safe_round(mean_squared_error(y_test, predictions))
-        mae       = safe_round(mean_absolute_error(y_test, predictions))
-
-        # ── Out-of-bag R² (only available when oob_score=True; we expose via
-        #    a second fit if the training set is large enough) ──
-        oob_r2 = None
-        if len(X_train) >= 10:
-            try:
-                oob_model = RandomForestRegressor(
-                    n_estimators=n_estimators,
-                    max_depth=max_depth,
-                    min_samples_split=min_samples_split,
-                    min_samples_leaf=min_samples_leaf,
-                    max_features=max_features,
-                    random_state=random_state,
-                    oob_score=True,
-                    n_jobs=-1,
-                )
-                oob_model.fit(X_train, y_train)
-                oob_r2 = safe_round(oob_model.oob_score_)
-            except Exception:
-                oob_r2 = None
-
-        # ── Feature importances (mean decrease in impurity) ──
-        importances     = model.feature_importances_
-        importance_dict = {
-            str(name): safe_round(imp, 6)
-            for name, imp in zip(coef_names, importances)
+        rf_params = {
+            "n_estimators": n_estimators,
+            "max_depth": max_depth,
+            "min_samples_split": min_samples_split,
+            "min_samples_leaf": min_samples_leaf,
+            "max_features": max_features,
+            "random_state": random_state,
+            "n_jobs": -1,
         }
 
-        # Ranked feature importances (descending)
+        # ── Cross-validation. No per-fold hyperparameter search --
+        # fixed rf_params reused across folds, keeping total cost to
+        # cv_folds + 1 fits rather than multiplying it. ──
+        cross_validation = run_rf_cross_validation(
+            df, dependent_col, X_cols, id_col, time_col, rf_params, cv_folds=cv_folds
+        )
+
+        # ── Full-sample fit (level data + entity/time features, NOT demeaned) ──
+        X_full, entity_cols = _build_rf_features(df, X_cols, id_col, time_col)
+        y_full = df[dependent_col]
+
+        model = RandomForestRegressor(oob_score=True, **rf_params)
+        model.fit(X_full, y_full)
+        fitted = model.predict(X_full)
+
+        # In-sample fit stats (the model saw all this data -- CV above
+        # is the honest out-of-sample estimate)
+        in_sample_r2  = safe_round(r2_score(y_full, fitted))
+        mse           = safe_round(mean_squared_error(y_full, fitted))
+        mae           = safe_round(mean_absolute_error(y_full, fitted))
+        oob_r2        = safe_round(model.oob_score_) if hasattr(model, "oob_score_") else None
+
+        # ── Feature importances ──
+        all_feature_names = list(X_full.columns)
+        importances = model.feature_importances_
+        importance_dict = {
+            str(name): safe_round(imp, 6)
+            for name, imp in zip(all_feature_names, importances)
+        }
+
+        # Collapse the per-entity one-hot dummies into a single
+        # "entity_id" importance figure -- individual dummy columns
+        # aren't meaningful on their own, but their combined
+        # contribution tells you how much entity identity matters.
+        entity_importance_total = safe_round(
+            sum(importance_dict.get(c, 0) or 0 for c in entity_cols), 6
+        )
+        base_feature_importances = {
+            k: v for k, v in importance_dict.items() if k not in entity_cols
+        }
+        if "entity_id" not in base_feature_importances:
+            base_feature_importances["entity_id"] = entity_importance_total
+
         ranked_importances = sorted(
-            importance_dict.items(), key=lambda x: (x[1] or 0), reverse=True
+            base_feature_importances.items(), key=lambda x: (x[1] or 0), reverse=True
         )
         ranked_importances = [{"variable": k, "importance": v} for k, v in ranked_importances]
 
-        # ── Permutation-style importance approximation via std across trees ──
-        # std of per-tree importances gives a sense of stability
+        # std of per-tree importances, same collapsing applied
         tree_importances = np.array([tree.feature_importances_ for tree in model.estimators_])
-        importance_std   = {
-            str(name): safe_round(std, 6)
-            for name, std in zip(coef_names, tree_importances.std(axis=0))
+        importance_std_raw = {
+            str(name): float(std)
+            for name, std in zip(all_feature_names, tree_importances.std(axis=0))
         }
+        importance_std = {k: safe_round(v, 6) for k, v in importance_std_raw.items() if k not in entity_cols}
+        importance_std["entity_id"] = safe_round(
+            float(np.mean([importance_std_raw[c] for c in entity_cols])) if entity_cols else 0.0, 6
+        )
 
-        # ── Entity fixed effects (entity-level mean of dependent variable) ──
-        entity_fe = {
+        # ── Raw entity means of the dependent variable ──
+        # This is a descriptive statistic (observed group means), NOT
+        # a model-estimated fixed effect -- Random Forest doesn't
+        # produce linear coefficients the way FE/RE do, so unlike
+        # those endpoints this number isn't derived from the fitted
+        # model at all.
+        entity_mean_dependent = {
             str(ent): safe_round(df.loc[df[id_col] == ent, dependent_col].mean())
             for ent in df[id_col].unique()
         }
@@ -235,31 +360,30 @@ async def run_random_forest_panel(request):
             "n_entities":     n_entities,
             "n_observations": n_obs,
             "time_periods":   df[time_col].nunique() if time_col else None,
-            "within_r2":      within_r2,
+            "in_sample_r2":   in_sample_r2,
             "oob_r2":         oob_r2,
             "mse":            mse,
             "mae":            mae,
+            "cross_validation": cross_validation,
             "random_forest": {
-                "n_estimators":             n_estimators,
-                "max_depth":                max_depth,
-                "min_samples_split":        min_samples_split,
-                "min_samples_leaf":         min_samples_leaf,
-                "max_features":             max_features,
-                "n_features":               len(coef_names),
-                "dropped_time_invariant":   zero_var_cols if zero_var_cols else None,
+                "n_estimators":       n_estimators,
+                "max_depth":          max_depth,
+                "min_samples_split":  min_samples_split,
+                "min_samples_leaf":   min_samples_leaf,
+                "max_features":       max_features,
+                "n_base_features":    len(X_cols),
+                "n_entity_dummies":   len(entity_cols),
+                "uses_time_index":    time_col is not None,
             },
-            # Feature importances replace coefficients for tree-based models.
-            # Values sum to 1.0 and represent mean decrease in impurity (MDI).
-            "feature_importances":          importance_dict,
-            "feature_importances_std":      importance_std,
-            "feature_importances_ranked":   ranked_importances,
-            # Tree models have no analytic coefficients, SEs, or p-values.
-            "coefficients":                 {k: None for k in coef_names},
-            "standard_errors":              {k: None for k in coef_names},
-            "p_values":                     {k: None for k in coef_names},
-            "cluster_robust_se":            {},
-            "cluster_robust_p_values":      {},
-            "entity_fixed_effects":         entity_fe,
+            "feature_importance":        base_feature_importances,
+            "feature_importances_std":    importance_std,
+            "feature_importances_ranked": ranked_importances,
+            "coefficients":            {k: None for k in X_cols},
+            "standard_errors":         {k: None for k in X_cols},
+            "p_values":                {k: None for k in X_cols},
+            "cluster_robust_se":       {},
+            "cluster_robust_p_values": {},
+            "entity_mean_dependent_variable": entity_mean_dependent,
         }))
 
     except Exception as e:

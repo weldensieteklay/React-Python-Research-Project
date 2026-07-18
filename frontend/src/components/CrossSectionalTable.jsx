@@ -245,7 +245,7 @@ const CrossSectionalTable = ({ result }) => {
     return <p className="text-red-500">No model summary available.</p>;
   }
   const isTreeModel = ["RANDOM_FOREST", "GRADIENT_BOOSTING", "BAGGING", "RANDOM_FOREST_CLASSIFIER", 
-    "GRADIENT_BOOSTING_CLASSIFIER", "BAGGING_CLASSIFIER"].includes(result.model);
+    "GRADIENT_BOOSTING_CLASSIFIER", "BAGGING_CLASSIFIER", "RANDOM FOREST PANEL", "BOOSTING PANEL"].includes(result.model);
   const coefficients = result.coefficients ? Object.entries(result.coefficients) : [];
   const featureImportance = result.feature_importance ? Object.entries(result.feature_importance) : [];
   const pValues = result.p_values || {};

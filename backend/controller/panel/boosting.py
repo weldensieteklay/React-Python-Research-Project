@@ -1,7 +1,7 @@
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
+from sklearn.model_selection import TimeSeriesSplit, GroupKFold
 from fastapi.responses import JSONResponse
-from sklearn.model_selection import train_test_split
 import pandas as pd
 import numpy as np
 import math
@@ -38,6 +38,138 @@ def safe_round(v, digits=4):
         return None
 
 
+# ─────────────────────────────────────────
+# FEATURE BUILDING
+# ─────────────────────────────────────────
+
+def _build_boosting_features(df, X_cols, id_col, time_col, entity_categories=None):
+    """
+    Gradient Boosting gets entity ID as one-hot features instead of
+    having the target/regressors demeaned by entity. Like Random
+    Forest, a tree ensemble can split directly on entity identity to
+    learn entity-specific baselines -- demeaning only discards level
+    information it could otherwise use, since boosting doesn't have
+    the omitted-variable-bias problem that makes demeaning necessary
+    for linear panel models.
+
+    entity_categories, when provided (fold fitting), fixes the set of
+    one-hot columns to those seen during training -- rows for
+    entities outside that set get all-zero entity dummies, a
+    reasonable way for a tree model to handle an unseen entity.
+    """
+    X = df[X_cols].copy()
+
+    entity_dummies = pd.get_dummies(df[id_col], prefix="entity")
+    if entity_categories is not None:
+        entity_dummies = entity_dummies.reindex(columns=entity_categories, fill_value=0)
+
+    X = pd.concat([X, entity_dummies], axis=1)
+
+    if time_col:
+        time_rank = pd.factorize(df[time_col], sort=True)[0]
+        X["time_index"] = time_rank
+
+    return X, list(entity_dummies.columns)
+
+
+# ─────────────────────────────────────────
+# CROSS-VALIDATION
+# ─────────────────────────────────────────
+
+def _fit_predict_boosting_fold(train_df, test_df, dependent_col, X_cols, id_col, time_col, gb_params):
+    if train_df.empty or test_df.empty:
+        return None
+
+    X_train, entity_cols = _build_boosting_features(train_df, X_cols, id_col, time_col)
+    X_test, _ = _build_boosting_features(
+        test_df, X_cols, id_col, time_col, entity_categories=entity_cols
+    )
+    X_test = X_test.reindex(columns=X_train.columns, fill_value=0)
+
+    y_train = train_df[dependent_col]
+    y_test = test_df[dependent_col]
+
+    model = GradientBoostingRegressor(**gb_params)
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+
+    mse = float(mean_squared_error(y_test, y_pred))
+    return {
+        "rmse": safe_round(np.sqrt(mse)),
+        "mae": safe_round(mean_absolute_error(y_test, y_pred)),
+        "r2": safe_round(r2_score(y_test, y_pred)),
+        "n_test_rows": int(len(y_test)),
+    }
+
+
+def _aggregate_cv_metrics(fold_metrics):
+    if not fold_metrics:
+        return None
+    agg = {}
+    for key in ("rmse", "mae", "r2"):
+        vals = [m[key] for m in fold_metrics if m.get(key) is not None]
+        if vals:
+            agg[key] = {
+                "mean": safe_round(np.mean(vals)),
+                "std": safe_round(np.std(vals)),
+            }
+    return agg
+
+
+def run_boosting_cross_validation(df, dependent_col, X_cols, id_col, time_col, gb_params, cv_folds=3):
+    """
+    Time-based walk-forward CV when a usable date_column exists;
+    entity-based GroupKFold otherwise. As with the RF panel endpoint,
+    both are legitimate here (not one preferred / one fallback) since
+    boosting can make a reasonable prediction for an unseen entity via
+    level features, unlike the linear FE-style panel models.
+    """
+    fold_metrics = []
+    method = None
+
+    if time_col and df[time_col].nunique() >= cv_folds + 1:
+        method = "time_based_walk_forward"
+        unique_times = np.array(sorted(df[time_col].unique()))
+        splitter = TimeSeriesSplit(n_splits=cv_folds)
+        for train_t_idx, test_t_idx in splitter.split(unique_times):
+            train_times = set(unique_times[train_t_idx])
+            test_times = set(unique_times[test_t_idx])
+            train_df = df[df[time_col].isin(train_times)]
+            test_df = df[df[time_col].isin(test_times)]
+            result = _fit_predict_boosting_fold(
+                train_df, test_df, dependent_col, X_cols, id_col, time_col, gb_params
+            )
+            if result:
+                fold_metrics.append(result)
+    else:
+        n_entities = df[id_col].nunique()
+        n_splits = min(cv_folds, n_entities) if n_entities >= 2 else 0
+        if n_splits >= 2:
+            method = "entity_based_group_kfold"
+            gkf = GroupKFold(n_splits=n_splits)
+            for train_idx, test_idx in gkf.split(df, groups=df[id_col]):
+                train_df = df.iloc[train_idx]
+                test_df = df.iloc[test_idx]
+                result = _fit_predict_boosting_fold(
+                    train_df, test_df, dependent_col, X_cols, id_col, time_col, gb_params
+                )
+                if result:
+                    fold_metrics.append(result)
+        else:
+            method = "skipped_insufficient_entities"
+
+    return {
+        "method": method,
+        "folds_requested": cv_folds,
+        "folds_used": len(fold_metrics),
+        **(_aggregate_cv_metrics(fold_metrics) or {}),
+    }
+
+
+# ─────────────────────────────────────────
+# MAIN HANDLER
+# ─────────────────────────────────────────
+
 async def run_boosting_panel(request):
     try:
         payload = await request.json()
@@ -49,18 +181,19 @@ async def run_boosting_panel(request):
         id_col           = payload.get("id_column")
         time_col         = payload.get("date_column", None)
         remove_outliers  = payload.get("outliers", False)
+        cv_folds         = int(payload.get("cv_folds", 3))
 
         # ── Gradient Boosting hyperparameters ──
-        n_estimators      = int(payload.get("n_estimators", 100))
-        learning_rate     = float(payload.get("learning_rate", 0.1))
+        n_estimators      = int(payload.get("n_estimators", 200))
+        learning_rate     = float(payload.get("learning_rate", 0.05))
         max_depth         = int(payload.get("max_depth", 3))
-        min_samples_split = int(payload.get("min_samples_split", 2))
-        min_samples_leaf  = int(payload.get("min_samples_leaf", 1))
-        subsample         = float(payload.get("subsample", 1.0))
+        min_samples_split = int(payload.get("min_samples_split", 10))
+        min_samples_leaf  = int(payload.get("min_samples_leaf", 5))
+        subsample         = float(payload.get("subsample", 0.8))
         max_features      = payload.get("max_features", None)
         random_state      = int(payload.get("random_state", 42))
         validation_fraction = float(payload.get("validation_fraction", 0.1))
-        n_iter_no_change  = payload.get("n_iter_no_change", None)
+        n_iter_no_change  = payload.get("n_iter_no_change", 10)
         tol               = float(payload.get("tol", 1e-4))
 
         if n_iter_no_change is not None:
@@ -79,6 +212,8 @@ async def run_boosting_panel(request):
             raise ValueError("subsample must be in (0.0, 1.0]")
         if not (0.0 < learning_rate):
             raise ValueError("learning_rate must be positive")
+        if cv_folds < 2:
+            raise ValueError("cv_folds must be at least 2")
 
         if isinstance(remove_outliers, str):
             remove_outliers = remove_outliers.strip().lower() in ("yes", "true", "1")
@@ -145,98 +280,91 @@ async def run_boosting_panel(request):
         n_obs  = len(df)
         X_cols = list(X_raw.columns)
 
-        # ── Within transformation (demean by entity) ──
-        # Removes unobserved entity-level fixed effects before fitting,
-        # consistent with the Ridge and Lasso panel implementations.
-        all_cols  = [dependent_col] + X_cols
-        grp_means = df.groupby(id_col)[all_cols].transform("mean")
-        y_within  = df[dependent_col] - grp_means[dependent_col]
-        X_within  = df[X_cols]        - grp_means[X_cols]
-
-        # Drop time-invariant columns (zero variance after demeaning)
-        zero_var_cols = [c for c in X_within.columns if X_within[c].abs().max() < 1e-10]
-        if zero_var_cols:
-            X_within = X_within.drop(columns=zero_var_cols)
-
-        if X_within.shape[1] == 0:
-            raise ValueError(
-                "All independent variables are time-invariant within entities. "
-                f"Dropped: {zero_var_cols}"
-            )
-
-        coef_names = X_within.columns.tolist()
-
-        # ── Train / test split ──
-        X_train, X_test, y_train, y_test = train_test_split(
-            X_within, y_within, test_size=0.2, random_state=random_state
-        )
-
-        # ── Fit Gradient Boosting ──
-        # Key differences from Random Forest:
-        #   - Builds trees sequentially, each correcting the residuals of the last
-        #   - learning_rate shrinks each tree's contribution (lower = more trees needed)
-        #   - subsample < 1.0 enables Stochastic Gradient Boosting (reduces overfitting)
-        #   - n_iter_no_change enables early stopping on an internal validation set
-        model = GradientBoostingRegressor(
-            n_estimators=n_estimators,
-            learning_rate=learning_rate,
-            max_depth=max_depth,
-            min_samples_split=min_samples_split,
-            min_samples_leaf=min_samples_leaf,
-            subsample=subsample,
-            max_features=max_features,
-            random_state=random_state,
-            validation_fraction=validation_fraction,
-            n_iter_no_change=n_iter_no_change,
-            tol=tol,
-        )
-        model.fit(X_train, y_train)
-        predictions = model.predict(X_test)
-
-        # Actual number of trees used (may be < n_estimators if early stopping fired)
-        n_estimators_used = model.n_estimators_
-
-        # ── Metrics ──
-        within_r2    = safe_round(r2_score(y_test, predictions))
-        mse          = safe_round(mean_squared_error(y_test, predictions))
-        mae          = safe_round(mean_absolute_error(y_test, predictions))
-        train_r2     = safe_round(r2_score(y_train, model.predict(X_train)))
-
-        # ── Training deviance (loss per boosting iteration) ──
-        # Useful for diagnosing convergence and overfitting.
-        train_deviance = [safe_round(v) for v in model.train_score_]
-
-        # ── Feature importances (mean decrease in impurity across all trees) ──
-        importances     = model.feature_importances_
-        importance_dict = {
-            str(name): safe_round(imp, 6)
-            for name, imp in zip(coef_names, importances)
+        gb_params = {
+            "n_estimators": n_estimators,
+            "learning_rate": learning_rate,
+            "max_depth": max_depth,
+            "min_samples_split": min_samples_split,
+            "min_samples_leaf": min_samples_leaf,
+            "subsample": subsample,
+            "max_features": max_features,
+            "random_state": random_state,
+            "validation_fraction": validation_fraction,
+            "n_iter_no_change": n_iter_no_change,
+            "tol": tol,
         }
 
-        # Ranked feature importances (descending)
+        # ── Cross-validation. No per-fold hyperparameter search --
+        # fixed gb_params reused across folds. ──
+        cross_validation = run_boosting_cross_validation(
+            df, dependent_col, X_cols, id_col, time_col, gb_params, cv_folds=cv_folds
+        )
+
+        # ── Full-sample fit (level data + entity/time features, NOT demeaned) ──
+        X_full, entity_cols = _build_boosting_features(df, X_cols, id_col, time_col)
+        y_full = df[dependent_col]
+
+        model = GradientBoostingRegressor(**gb_params)
+        model.fit(X_full, y_full)
+        fitted = model.predict(X_full)
+
+        n_estimators_used = model.n_estimators_
+
+        in_sample_r2 = safe_round(r2_score(y_full, fitted))
+        mse          = safe_round(mean_squared_error(y_full, fitted))
+        mae          = safe_round(mean_absolute_error(y_full, fitted))
+
+        # ── Training deviance (loss per boosting iteration) ──
+        train_deviance = [safe_round(v) for v in model.train_score_]
+
+        # ── Feature importances ──
+        all_feature_names = list(X_full.columns)
+        importances = model.feature_importances_
+        importance_dict = {
+            str(name): safe_round(imp, 6)
+            for name, imp in zip(all_feature_names, importances)
+        }
+
+        # Collapse per-entity one-hot dummies into a single "entity_id"
+        # importance figure -- individual dummy columns aren't
+        # meaningful on their own.
+        entity_importance_total = safe_round(
+            sum(importance_dict.get(c, 0) or 0 for c in entity_cols), 6
+        )
+        base_feature_importances = {
+            k: v for k, v in importance_dict.items() if k not in entity_cols
+        }
+        if "entity_id" not in base_feature_importances:
+            base_feature_importances["entity_id"] = entity_importance_total
+
         ranked_importances = sorted(
-            importance_dict.items(), key=lambda x: (x[1] or 0), reverse=True
+            base_feature_importances.items(), key=lambda x: (x[1] or 0), reverse=True
         )
         ranked_importances = [{"variable": k, "importance": v} for k, v in ranked_importances]
 
-        # ── Per-stage prediction: cumulative R² at each boosting round ──
-        # Shows how model performance evolves as more trees are added.
-        # Sampled at most at 20 evenly spaced checkpoints to keep payload small.
+        # ── Per-stage prediction: cumulative R² at each boosting round,
+        # evaluated on the full sample (in-sample -- CV above is the
+        # honest out-of-sample estimate). Sampled at up to 20 evenly
+        # spaced checkpoints to keep payload small.
         staged_r2 = []
         try:
-            checkpoints = np.linspace(0, n_estimators_used - 1, min(20, n_estimators_used), dtype=int)
-            staged_preds_gen = model.staged_predict(X_test)
-            for i, staged_pred in enumerate(staged_preds_gen):
+            checkpoints = set(
+                np.linspace(0, n_estimators_used - 1, min(20, n_estimators_used), dtype=int)
+            )
+            for i, staged_pred in enumerate(model.staged_predict(X_full)):
                 if i in checkpoints:
                     staged_r2.append({
                         "iteration": i + 1,
-                        "r2": safe_round(r2_score(y_test, staged_pred)),
+                        "r2": safe_round(r2_score(y_full, staged_pred)),
                     })
         except Exception:
             staged_r2 = []
 
-        # ── Entity fixed effects (entity-level mean of dependent variable) ──
-        entity_fe = {
+        # ── Raw entity means of the dependent variable ──
+        # Descriptive statistic (observed group means), NOT a
+        # model-estimated fixed effect -- boosting doesn't produce
+        # linear coefficients the way FE/RE do.
+        entity_mean_dependent = {
             str(ent): safe_round(df.loc[df[id_col] == ent, dependent_col].mean())
             for ent in df[id_col].unique()
         }
@@ -247,13 +375,12 @@ async def run_boosting_panel(request):
             "n_entities":     n_entities,
             "n_observations": n_obs,
             "time_periods":   df[time_col].nunique() if time_col else None,
-            "within_r2":      within_r2,
-            "train_r2":       train_r2,
+            "in_sample_r2":   in_sample_r2,
             "mse":            mse,
             "mae":            mae,
+            "cross_validation": cross_validation,
             "boosting": {
                 "n_estimators_requested":   n_estimators,
-                # n_estimators_used may be lower than requested if early stopping fired
                 "n_estimators_used":        n_estimators_used,
                 "early_stopping_triggered": n_estimators_used < n_estimators,
                 "learning_rate":            learning_rate,
@@ -265,23 +392,20 @@ async def run_boosting_panel(request):
                 "n_iter_no_change":         n_iter_no_change,
                 "validation_fraction":      validation_fraction,
                 "tol":                      tol,
-                "n_features":               len(coef_names),
-                "dropped_time_invariant":   zero_var_cols if zero_var_cols else None,
+                "n_base_features":          len(X_cols),
+                "n_entity_dummies":         len(entity_cols),
+                "uses_time_index":          time_col is not None,
             },
-            # Boosting loss at each iteration — useful for convergence plots
-            "train_deviance":               train_deviance,
-            # R² sampled at up to 20 checkpoints across boosting iterations
-            "staged_r2":                    staged_r2,
-            # Feature importances replace coefficients for tree-based models
-            "feature_importances":          importance_dict,
-            "feature_importances_ranked":   ranked_importances,
-            # Tree models have no analytic coefficients, SEs, or p-values
-            "coefficients":                 {k: None for k in coef_names},
-            "standard_errors":              {k: None for k in coef_names},
-            "p_values":                     {k: None for k in coef_names},
-            "cluster_robust_se":            {},
-            "cluster_robust_p_values":      {},
-            "entity_fixed_effects":         entity_fe,
+            "train_deviance":              train_deviance,
+            "staged_r2":                   staged_r2,
+            "feature_importance":         base_feature_importances,
+            "feature_importances_ranked":  ranked_importances,
+            "coefficients":            {k: None for k in X_cols},
+            "standard_errors":         {k: None for k in X_cols},
+            "p_values":                {k: None for k in X_cols},
+            "cluster_robust_se":       {},
+            "cluster_robust_p_values": {},
+            "entity_mean_dependent_variable": entity_mean_dependent,
         }))
 
     except Exception as e:

@@ -18,7 +18,7 @@ export const usePrediction = () => {
     try {
       const token = localStorage.getItem("credential");
       const response = await axios.post(
-        `${"http://127.0.0.1:8000"}/api/${method}`,
+        `${import.meta.env.VITE_API_URL}/api/${method}`,
         payload,
         {
           headers: {
@@ -28,7 +28,7 @@ export const usePrediction = () => {
       );
       setData(response.data);
     } catch (err) {
-      console.log(err.message, "Errorwwwwww logs");
+      console.log(err, "Error logs");
 
       if (err) {
         // Server responded with a status code outside 2xx (401, 500, etc.)

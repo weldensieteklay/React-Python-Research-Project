@@ -6,13 +6,23 @@ from routes.routes import router
 
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
+from controller.common.rate_limiter import limiter
+from slowapi.errors import RateLimitExceeded
 import os
 
 load_dotenv()
 
 app = FastAPI()
 
+app.state.limiter = limiter
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+
+PUBLIC_PATHS = {
+    "/",
+    "/docs",
+    "/redoc",
+    "/openapi.json",
+}
 
 # ─────────────────────────────────────────
 # CORS — must be added BEFORE auth middleware
@@ -33,10 +43,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content={
+            "success": False,
+            "error": "Too many requests. Please try again in one minute."
+        },
+    )
+
 @app.middleware("http")
 async def verify_google_token(request: Request, call_next):
      # Allow CORS preflight requests
     if request.method == "OPTIONS":
+        return await call_next(request)
+    
+    if request.url.path in PUBLIC_PATHS:
         return await call_next(request)
     
     auth_header = request.headers.get("Authorization")

@@ -54,6 +54,49 @@ def interpret_p(p, threshold=0.05):
     return "significant" if p < threshold else "not significant"
 
 
+def compute_pearson_residuals(y, p):
+    """
+    Pearson residuals for a Bernoulli model: (y - p) / sqrt(p * (1-p)).
+    Computed manually rather than relying on a model attribute, since
+    resid_pearson is a GLM-family concept and its availability on
+    sm.Logit's results object isn't guaranteed across versions.
+    """
+    p_clipped = np.clip(p, 1e-10, 1 - 1e-10)
+    return (y - p_clipped) / np.sqrt(p_clipped * (1 - p_clipped))
+
+
+def compute_deviance_and_pearson_chi2(y, p):
+    """
+    For ungrouped (individual-observation) binary data, the saturated
+    log-likelihood is exactly 0 (each observation is fit perfectly by its
+    own outcome, and 0*log(0) and 1*log(1) both evaluate to 0). So:
+        deviance = -2 * (llf - llf_saturated) = -2 * llf
+    computed directly here from y and predicted probabilities p, rather
+    than assumed as a model attribute (deviance/pearson_chi2 are GLM
+    concepts and may not exist identically on Logit's results object).
+    """
+    p_clipped = np.clip(p, 1e-10, 1 - 1e-10)
+    llf = np.sum(y * np.log(p_clipped) + (1 - y) * np.log(1 - p_clipped))
+    deviance = -2 * llf
+    pearson_resid = compute_pearson_residuals(y, p)
+    pearson_chi2 = float(np.sum(pearson_resid ** 2))
+    return float(deviance), pearson_chi2
+
+
+def get_convergence_flag(model):
+    """
+    Checks multiple possible locations for the optimizer's convergence
+    status, since the attribute name/location has varied across
+    statsmodels versions for discrete (MLE-based) models.
+    """
+    if hasattr(model, "converged"):
+        return bool(model.converged)
+    mle_retvals = getattr(model, "mle_retvals", None)
+    if isinstance(mle_retvals, dict) and "converged" in mle_retvals:
+        return bool(mle_retvals["converged"])
+    return None  # unknown — don't assert convergence if we can't confirm it
+
+
 # ─────────────────────────────────────────
 # DIAGNOSTIC TESTS
 # ─────────────────────────────────────────
@@ -170,6 +213,12 @@ def test_hosmer_lemeshow(y_true, y_prob, g=10):
     """
     Hosmer-Lemeshow goodness-of-fit test for binary models.
     H0: model fits well. p > 0.05 → good fit.
+
+    NOTE: with many binary/dummy predictors, predicted probabilities are
+    often tied across many rows, which can collapse far fewer than `g`
+    distinct groups (pd.qcut's duplicates="drop"). If that leaves too few
+    groups for a meaningful chi-square df, we report that explicitly
+    instead of returning a nonsensical statistic.
     """
     try:
         df = pd.DataFrame({"y": y_true, "prob": y_prob})
@@ -180,17 +229,29 @@ def test_hosmer_lemeshow(y_true, y_prob, g=10):
         expected_1 = grouped["prob"].sum()
         expected_0 = grouped["prob"].apply(lambda x: len(x) - x.sum())
 
+        n_groups = len(observed_1)
+        df_hl = n_groups - 2
+        if df_hl <= 0:
+            return {
+                "error": (
+                    f"Only {n_groups} distinct probability group(s) after binning — "
+                    "insufficient for a meaningful Hosmer-Lemeshow test. This usually "
+                    "happens when most predictors are binary/dummy variables, causing "
+                    "many tied predicted probabilities."
+                )
+            }
+
         hl_stat = float(
             ((observed_1 - expected_1) ** 2 / expected_1.clip(lower=1e-10)).sum()
             + ((observed_0 - expected_0) ** 2 / expected_0.clip(lower=1e-10)).sum()
         )
-        df_hl   = len(observed_1) - 2
         p_value = float(1 - stats.chi2.cdf(hl_stat, df=df_hl))
 
         return {
             "statistic":      safe_round(hl_stat),
             "p_value":        safe_round(p_value),
             "df":             df_hl,
+            "n_groups":       n_groups,
             "interpretation": interpret_p(p_value),
             "conclusion": (
                 "Model fits well (fail to reject H0)."
@@ -200,6 +261,42 @@ def test_hosmer_lemeshow(y_true, y_prob, g=10):
         }
     except Exception as e:
         return {"error": str(e)}
+
+
+def test_separation_risk(params, std_errors, coef_threshold=10, se_threshold=100):
+    """
+    Flags coefficients that look like they may be suffering from
+    (quasi-)complete separation: a coefficient pushed toward an
+    extreme value with a correspondingly enormous standard error.
+    This is a common failure mode for logit models with many sparse
+    binary/dummy predictors (e.g., rare-category district or region
+    dummies), and it can silently sit inside a 90+ variable coefficient
+    dictionary unless explicitly flagged.
+    """
+    flagged = []
+    for name, coef in params.items():
+        if coef is None:
+            continue
+        se = std_errors.get(name)
+        if abs(coef) > coef_threshold or (se is not None and se > se_threshold):
+            flagged.append({
+                "variable": name,
+                "coefficient": coef,
+                "standard_error": se,
+            })
+    return {
+        "n_flagged": len(flagged),
+        "flagged_variables": flagged,
+        "conclusion": (
+            f"{len(flagged)} variable(s) show signs of possible separation "
+            "(extreme coefficient and/or standard error). Results for these "
+            "variables should be interpreted with caution — consider Firth's "
+            "penalized logistic regression or dropping/collapsing sparse "
+            "categories."
+            if flagged
+            else "No obvious signs of separation detected."
+        ),
+    }
 
 
 def build_classification_metrics(y_true, y_pred, y_prob):
@@ -302,12 +399,14 @@ async def run_logit_prediction(request):
         X_train_c = sm.add_constant(X_train, has_constant="add")
         X_test_c  = sm.add_constant(X_test,  has_constant="add")
 
-        # ── Fit Logit via GLM ──
-        model = sm.GLM(
-            y_train,
-            X_train_c,
-            family=sm.families.Binomial(link=sm.families.links.Logit()),
-        ).fit(disp=False)
+        # ── Fit Logit directly (not via GLM) ──
+        # sm.Logit is what researchers overwhelmingly call directly in
+        # practice — it's mathematically identical to
+        # GLM(Binomial, Logit link) and converges to the same MLE solution,
+        # but using Logit itself maximizes equivalence with the literature
+        # and with what a reviewer would type themselves.
+        model = sm.Logit(y_train, X_train_c).fit(disp=False)
+        converged = get_convergence_flag(model)
 
         y_prob_train = model.predict(X_train_c)
         y_prob_test  = model.predict(X_test_c)
@@ -345,9 +444,18 @@ async def run_logit_prediction(request):
         }
 
         # ── Marginal effects at the mean (MEM) ──
+        # dummy=True is essential here: with dummy=False (the default),
+        # statsmodels computes the marginal effect for EVERY regressor as
+        # the derivative of the logistic function at the mean — which is
+        # only correct for continuous predictors. For a 0/1 dummy (which is
+        # nearly every predictor in this model: electricity_1, urban_1, all
+        # dist*_1 columns, etc.), the correct marginal effect is the
+        # discrete change P(y=1 | d=1) - P(y=1 | d=0), holding other
+        # covariates at their means. dummy=True tells statsmodels to detect
+        # binary regressors and use that discrete-change formula instead.
         marginal_effects = None
         try:
-            me = model.get_margeff(at="mean")
+            me = model.get_margeff(at="mean", dummy=True)
             marginal_effects = {
                 str(k): {
                     "marginal_effect": safe_round(v, 6),
@@ -365,17 +473,26 @@ async def run_logit_prediction(request):
         except Exception as e:
             marginal_effects = {"error": str(e)}
 
-        # ── Robust SEs (HC3) ──
+        # ── Robust SEs ──
+        # HC3 is a leverage-based small-sample correction specific to
+        # linear (OLS/GLM) models and is not a standard robust covariance
+        # type for MLE-based models like Logit. The standard "robust" SE
+        # researchers use for logit is the basic White/sandwich estimator,
+        # requested here via cov_type="HC0" at fit time (statsmodels'
+        # documented mechanism for discrete-model robust covariance),
+        # rather than a post-hoc get_robustcov_results(cov_type="HC3") call.
         try:
-            model_robust = model.get_robustcov_results(cov_type="HC3")
-            robust_se    = {str(k): safe_round(v, 6) for k, v in zip(model.params.index, model_robust.bse)}
-            robust_pvals = {str(k): safe_round(v, 6) for k, v in zip(model.params.index, model_robust.pvalues)}
+            model_robust = sm.Logit(y_train, X_train_c).fit(disp=False, cov_type="HC0")
+            robust_se    = {str(k): safe_round(v, 6) for k, v in model_robust.bse.items()}
+            robust_pvals = {str(k): safe_round(v, 6) for k, v in model_robust.pvalues.items()}
         except Exception as e:
             robust_se    = {"error": str(e)}
             robust_pvals = {"error": str(e)}
 
         # ── Goodness of fit ──
-        pseudo_r2 = safe_round(1 - (model.llf / model.llnull)) if model.llnull != 0 else None
+        # prsquared is Logit's built-in McFadden's pseudo-R^2 property —
+        # using it directly rather than recomputing 1 - llf/llnull by hand.
+        pseudo_r2 = safe_round(model.prsquared) if model.llnull != 0 else None
 
         # ── Classification metrics ──
         classification = build_classification_metrics(
@@ -383,17 +500,23 @@ async def run_logit_prediction(request):
         )
 
         # ── Diagnostics ──
-        pearson_resid = model.resid_pearson
+        # resid_pearson, deviance, and pearson_chi2 are GLM-family concepts;
+        # computed manually here rather than assumed as attributes on
+        # Logit's results object (see helper functions above).
+        pearson_resid = compute_pearson_residuals(y_train.values, y_prob_train.values)
+        deviance, pearson_chi2 = compute_deviance_and_pearson_chi2(y_train.values, y_prob_train.values)
         diagnostics = {
             "multicollinearity":        test_multicollinearity(X_train),
             "normality_of_residuals":   test_normality_residuals(pearson_resid),
             "influential_observations": test_influential_observations(model, X_train_c),
             "hosmer_lemeshow":          test_hosmer_lemeshow(y_test.values, y_prob_test.values),
+            "separation_risk":          test_separation_risk(params, std_errors),
         }
 
         return JSONResponse(content=sanitize({
             "success":            True,
             "model":              "LOGIT",
+            "converged":          converged,
             "rows_used":          len(X),
             "n_train":            len(y_train),
             "n_test":             len(y_test),
@@ -406,8 +529,8 @@ async def run_logit_prediction(request):
             "pseudo_r2_mcfadden": pseudo_r2,
             "aic":                safe_round(model.aic),
             "bic":                safe_round(model.bic),
-            "deviance":           safe_round(model.deviance),
-            "pearson_chi2":       safe_round(model.pearson_chi2),
+            "deviance":           safe_round(deviance),
+            "pearson_chi2":       safe_round(pearson_chi2),
             # Coefficients (log-odds)
             "coefficients":           params,
             "standard_errors":        std_errors,
@@ -419,7 +542,7 @@ async def run_logit_prediction(request):
             # Odds ratios (exponentiated coefficients)
             "odds_ratios":            odds_ratios,
             "odds_ratio_ci_95":       odds_ratio_ci,
-            # Marginal effects
+            # Marginal effects (discrete change for dummies, derivative for continuous)
             "marginal_effects_at_mean": marginal_effects,
             # Classification performance
             "classification":         classification,

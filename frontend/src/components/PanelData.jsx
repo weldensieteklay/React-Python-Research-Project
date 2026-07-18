@@ -6,7 +6,11 @@ import { parseCsvFile, computeSummaryStatistics } from "../utils/utils";
 import SummaryStatisticsTable from "./SummaryStatisticsTable";
 import { usePrediction } from "../hooks/usePrediction";
 import CrossSectionalTable from "./CrossSectionalTable";
-import LoadingOverlay from './Error';
+import LoadingOverlay from './LoadingOverlay';
+import DownloadPptxButton from './dowload/DownloadPptxButton';
+import GuidePanel from "../guideMe/GuidePanel";
+import { guideContent } from "../guideMe/Guidecontent";
+import MultiCheckboxDropdown from "./MultiCheckboxDropdown";
 
 const PanelData = () => {
     const [parsedData, setParsedData] = useState([]);
@@ -26,6 +30,7 @@ const PanelData = () => {
     const [dateOptions, setDateOptions] = useState([]);
     const [startDate, setStartDate] = useState("");
     const [endDate, setEndDate] = useState("");
+    const [showGuide, setShowGuide] = useState(false);
 
     const fileInputRef = useRef(null);
     const { data: result, loading, error, handlePredict: runPrediction } = usePrediction();
@@ -102,6 +107,45 @@ const PanelData = () => {
         setSummaryStats(stats);
     };
 
+    // Toggle a column in/out of the Independent Variables list.
+    // If a column is removed from Independent Variables, it can no longer be
+    // categorical either, so we drop it from categoricalVar at the same time.
+    const handleIndependentToggle = (col) => {
+        setIndependentVar((prev) => {
+            const next = prev.includes(col)
+                ? prev.filter((c) => c !== col)
+                : [...prev, col];
+
+            setCategoricalVar((prevCat) => prevCat.filter((c) => next.includes(c)));
+
+            return next;
+        });
+    };
+
+    // Categorical Variables can only be chosen from the already-selected
+    // Independent Variables.
+    const handleCategoricalToggle = (col) => {
+        setCategoricalVar((prev) =>
+            prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col]
+        );
+    };
+
+    // "Select All" toggles between every column and none. If everything is
+    // already selected, it deselects all (also clearing any categorical
+    // picks that depended on them); otherwise it selects every column.
+    const handleSelectAllIndependent = (allCurrentlySelected) => {
+        setIndependentVar(() => {
+            const next = allCurrentlySelected ? [] : [...columns];
+            setCategoricalVar((prevCat) => prevCat.filter((c) => next.includes(c)));
+            return next;
+        });
+    };
+
+    // Same idea, scoped to whatever is currently in Independent Variables.
+    const handleSelectAllCategorical = (allCurrentlySelected) => {
+        setCategoricalVar(allCurrentlySelected ? [] : [...independentVar]);
+    };
+
     const isReadyToPredict =
         fileUploaded &&
         method &&
@@ -158,6 +202,20 @@ const PanelData = () => {
                     <h2 className="text-2xl font-semibold text-gray-800 text-center">
                         Panel Data Analysis and Prediction
                     </h2>
+                    <button
+                        onClick={() => setShowGuide((o) => !o)}
+                        className="absolute right-4 flex items-center gap-2 px-3 py-1.5 bg-white text-black text-sm rounded-lg shadow-sm hover:bg-gray-100 transition-colors"
+                    >
+                        <span className="font-medium">Guide Me</span>
+                    </button>
+                </div>
+                {/* Guide panel — inline, no overlay */}
+                <div className="flex justify-center mt-3">
+                    <GuidePanel
+                        open={showGuide}
+                        onClose={() => setShowGuide(false)}
+                        content={guideContent.crossSectional}
+                    />
                 </div>
             </div>
 
@@ -220,31 +278,27 @@ const PanelData = () => {
                             />
                         </div>
 
-                        {/* Independent Variables */}
-                        <div className="flex flex-col w-48">
-                            <label className="text-sm text-gray-700 mb-1">Independent Variables</label>
-                            <Select
-                                isMulti
-                                options={columnOptions}
-                                value={columnOptions.filter((o) => independentVar.includes(o.value))}
-                                onChange={(selected) => setIndependentVar(selected.map((o) => o.value))}
-                                classNamePrefix="react-select"
-                                className="text-sm"
-                            />
-                        </div>
+                        {/* Independent — click-to-open dropdown with checkboxes */}
+                        <MultiCheckboxDropdown
+                            label="Independent Variables"
+                            options={columns}
+                            selected={independentVar}
+                            onToggle={handleIndependentToggle}
+                            onSelectAll={handleSelectAllIndependent}
+                            placeholder="Select variables"
+                            emptyMessage="Upload a file to see columns"
+                        />
 
-                        {/* Categorical Variables */}
-                        <div className="flex flex-col w-48">
-                            <label className="text-sm text-gray-700 mb-1">Categorical Variables</label>
-                            <Select
-                                isMulti
-                                options={columnOptions}
-                                value={columnOptions.filter((o) => categoricalVar.includes(o.value))}
-                                onChange={(selected) => setCategoricalVar(selected.map((o) => o.value))}
-                                classNamePrefix="react-select"
-                                className="text-sm"
-                            />
-                        </div>
+                        {/* Categorical — click-to-open dropdown, options limited to chosen Independent Variables */}
+                        <MultiCheckboxDropdown
+                            label="Categorical Variables"
+                            options={independentVar}
+                            selected={categoricalVar}
+                            onToggle={handleCategoricalToggle}
+                            onSelectAll={handleSelectAllCategorical}
+                            placeholder="Select variables"
+                            emptyMessage="Select independent variables first"
+                        />
 
                         {/* Outliers */}
                         <div className="flex flex-col w-48">
@@ -290,7 +344,7 @@ const PanelData = () => {
                                 disabled={!isReadyToPredict}
                                 onClick={() => { handlePredict(); setActiveView("prediction"); }}
                             >
-                                {loading ? "Running..." : "Predict"}
+                                Predict
                             </button>
                             <button
                                 className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
@@ -312,7 +366,12 @@ const PanelData = () => {
                             <SummaryStatisticsTable stats={summaryStats} showExtended={false} />
                         )}
                         {activeView === "prediction" && result && (
-                            <CrossSectionalTable result={result} />
+                            <>
+                                <div className="w-full flex justify-end mb-4">
+                                    <DownloadPptxButton result={result} />
+                                </div>
+                                <CrossSectionalTable result={result} />
+                            </>
                         )}
 
                     </div>

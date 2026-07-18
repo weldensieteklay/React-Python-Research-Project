@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
+from controller.common.rate_limiter import limiter
 
 #cross sectional routes
 from controller.crossSectional.ols import run_ols_prediction
@@ -39,6 +40,7 @@ from controller.arima.HYBRIDBAGGING import predict_price_hybrid_bagging
 # -----------------------------
 router = APIRouter()
 
+limit_prediction = limiter.limit("20/minute")
 # -----------------------------
 # Helper to handle JSON request and errors
 # -----------------------------
@@ -63,35 +65,43 @@ async def handle_request(func, request: Request = None):
 
 # cross sectional routes
 @router.post("/cross-sectional/ols")
+@limit_prediction
 async def ols_prediction(request: Request):
     return await run_ols_prediction(request)
 
 # cross sectional routes
 @router.post("/cross-sectional/logit")
+@limit_prediction
 async def logit_prediction(request: Request):
     return await run_logit_prediction(request)
 
 @router.post("/cross-sectional/gls")
+@limit_prediction
 async def ols_prediction(request: Request):
     return await run_gls_prediction(request)
 
 @router.post("/cross-sectional/lasso")
+@limit_prediction
 async def lasso_prediction(request: Request):
     return await run_lasso_cross_sectional_prediction(request)
 
 @router.post("/cross-sectional/ridge")
+@limit_prediction
 async def ridge_prediction(request: Request):
     return await run_ridge_cross_sectional_prediction(request)
 
 @router.post("/cross-sectional/forest")
+@limit_prediction
 async def ridge_prediction(request: Request):
     return await run_random_forest_cross_sectional_prediction(request)
 
 @router.post("/cross-sectional/boosting")
+@limit_prediction
 async def ridge_prediction(request: Request):
     return await run_gradient_boosting_cross_sectional_prediction(request)
 
 @router.post("/cross-sectional/bagging")
+@limit_prediction
 async def ridge_prediction(request: Request):
     return await run_bagging_cross_sectional_prediction(request)
 

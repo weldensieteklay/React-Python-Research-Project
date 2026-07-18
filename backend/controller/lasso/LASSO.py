@@ -1,6 +1,9 @@
 from fastapi import Request, HTTPException
 from sklearn.linear_model import LassoCV
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import TimeSeriesSplit
 import pandas as pd
+import numpy as np
 
 from ..common.helper import (
     clean_input_data,
@@ -10,6 +13,58 @@ from ..common.helper import (
     create_lag_features
 )
 
+
+def _scale(X_train, X_test):
+    """Fit the scaler on train only, apply to both -- keeps DataFrame
+    columns/index so downstream helpers (compute_lasso_metrics) still
+    see feature names."""
+    scaler = StandardScaler()
+    X_train_scaled = pd.DataFrame(
+        scaler.fit_transform(X_train), columns=X_train.columns, index=X_train.index
+    )
+    X_test_scaled = pd.DataFrame(
+        scaler.transform(X_test), columns=X_test.columns, index=X_test.index
+    )
+    return X_train_scaled, X_test_scaled
+
+
+def _fit_lasso(X_train, y_train, inner_cv_folds=3, n_alphas=50):
+    """
+    LassoCV with a TimeSeriesSplit for its internal alpha-selection CV
+    instead of the default fold splitting, so choosing the
+    regularization strength doesn't use later observations to help
+    predict earlier ones. n_alphas is capped (default sklearn is 100)
+    to keep fit time reasonable.
+    """
+    inner_cv = TimeSeriesSplit(n_splits=inner_cv_folds)
+    lasso = LassoCV(
+        cv=inner_cv,
+        n_alphas=n_alphas,
+        random_state=42,
+        max_iter=5000,
+        n_jobs=-1,
+    )
+    lasso.fit(X_train, y_train)
+    return lasso
+
+
+def _aggregate_fold_metrics(fold_metrics):
+    """Mean/std across folds for whatever numeric keys
+    compute_lasso_metrics returns, without assuming its exact schema."""
+    if not fold_metrics:
+        return None
+    common_keys = set.intersection(*(set(m.keys()) for m in fold_metrics))
+    agg = {}
+    for key in sorted(common_keys):
+        vals = [m[key] for m in fold_metrics if isinstance(m.get(key), (int, float))]
+        if vals:
+            agg[key] = {
+                "mean": round(float(np.mean(vals)), 4),
+                "std": round(float(np.std(vals)), 4),
+            }
+    return agg
+
+
 async def predict_price_lasso(request: Request):
     try:
         payload = await request.json()
@@ -18,9 +73,13 @@ async def predict_price_lasso(request: Request):
         date_col = payload.get("date_variable")
         target_col = payload.get("target_variable")
         exog_cols = payload.get("exogenous_variable", [])
+        cv_folds = int(payload.get("cv_folds", 3))
 
         if not raw_data or not date_col or not target_col:
             raise HTTPException(status_code=400, detail="Missing required fields")
+
+        if cv_folds < 2:
+            raise HTTPException(status_code=400, detail="cv_folds must be at least 2")
 
         # -------------------------------
         # Load and clean data
@@ -53,29 +112,70 @@ async def predict_price_lasso(request: Request):
 
         X = pd.concat(X_parts, axis=1)
 
-        # Drop NaNs from lagging
         valid_idx = X.dropna().index
-        X = X.loc[valid_idx]
-        y = df.loc[valid_idx, target_col]
+        X = X.loc[valid_idx].reset_index(drop=True)
+        y = df.loc[valid_idx, target_col].reset_index(drop=True)
+
+        min_required = max(20, cv_folds * 8)
+        if len(X) < min_required:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Not enough observations: need at least {min_required} "
+                       f"for {cv_folds}-fold CV, got {len(X)}"
+            )
 
         # -------------------------------
-        # Train-test split (time series)
+        # Walk-forward outer cross-validation.
+        # Evaluates generalization the same way the ARIMA endpoints do:
+        # each fold trains only on the past and tests on the block
+        # right after it -- no shuffling, since shuffled k-fold would
+        # leak future rows (including lag features built from them)
+        # into training.
+        # -------------------------------
+        outer_cv = TimeSeriesSplit(n_splits=cv_folds)
+        fold_metrics = []
+
+        for train_idx, test_idx in outer_cv.split(X):
+            X_tr, X_te = X.iloc[train_idx], X.iloc[test_idx]
+            y_tr, y_te = y.iloc[train_idx], y.iloc[test_idx]
+
+            # keep the inner LassoCV fold count sane for small folds
+            inner_folds = min(3, max(2, len(X_tr) // 10))
+
+            try:
+                X_tr_scaled, X_te_scaled = _scale(X_tr, X_te)
+                fold_lasso = _fit_lasso(X_tr_scaled, y_tr, inner_cv_folds=inner_folds)
+                fold_metrics.append(
+                    compute_lasso_metrics(fold_lasso, X_te_scaled, y_te, X.columns)
+                )
+            except Exception:
+                continue
+
+        cross_validation = {
+            "folds_requested": cv_folds,
+            "folds_used": len(fold_metrics),
+            **(_aggregate_fold_metrics(fold_metrics) or {}),
+        }
+
+        # -------------------------------
+        # Final hold-out fit (last 80/20 split) -- the reportable model
         # -------------------------------
         split_index = int(len(X) * 0.8)
         X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
         y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]
 
-        # -------------------------------
-        # Lasso Model
-        # -------------------------------
-        lasso = LassoCV(cv=5, random_state=42)
-        lasso.fit(X_train, y_train)
+        X_train_scaled, X_test_scaled = _scale(X_train, X_test)
+        lasso = _fit_lasso(X_train_scaled, y_train)
 
-        # -------------------------------
-        # Metrics
-        # -------------------------------
-        metrics = compute_lasso_metrics(lasso, X_test, y_test, X.columns)
-        response = { "model": "LASSO", **metrics } 
+        metrics = compute_lasso_metrics(lasso, X_test_scaled, y_test, X.columns)
+
+        response = {
+            "model": "LASSO",
+            "alpha_selected": round(float(lasso.alpha_), 6),
+            "rows_used": int(len(X)),
+            "cross_validation": cross_validation,
+            **metrics,
+        }
         return to_serializable(response)
 
     except HTTPException:

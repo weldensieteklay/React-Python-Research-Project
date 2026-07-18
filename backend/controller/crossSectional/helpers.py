@@ -36,7 +36,12 @@ def prepare_dataset(
     if id_col and id_col in df.columns:
         df = df.drop(columns=[id_col])
 
-    df = df.dropna()
+    # Only require non-missing values in columns actually used by the model
+    # (dependent + raw independent columns, pre-encoding), instead of
+    # dropping rows for missingness in unrelated columns the user uploaded
+    # but never selected.
+    relevant_cols = [c for c in [dependent_col, *independent_cols] if c in df.columns]
+    df = df.dropna(subset=relevant_cols)
 
     encoders = {}
     dummy_column_map = {}
@@ -77,11 +82,30 @@ def prepare_dataset(
             expanded_independent_cols.append(col)
 
     if remove_outliers:
-        numeric_cols = df.select_dtypes(include=np.number).columns
+        # IMPORTANT: exclude one-hot encoded dummy columns from IQR-based
+        # outlier detection. For a 0/1 column, if a category's prevalence is
+        # below 25% or above 75%, Q1/Q3 collapse to the same value (IQR = 0),
+        # which makes the bounds [0, 0] or [1, 1] and silently deletes every
+        # row belonging to (or excluded from) that category. IQR filtering
+        # is only meaningful for genuinely continuous columns.
+        ohe_col_names = encoders.get("ohe_col_names", [])
+        numeric_cols = [
+            c for c in df.select_dtypes(include=np.number).columns
+            if c not in ohe_col_names
+        ]
+
+        # Build all column masks against the same (pre-filter) DataFrame and
+        # apply them together, rather than filtering column-by-column. Doing
+        # it sequentially makes the result depend on column order, since
+        # later columns' quantiles get computed on data already trimmed by
+        # earlier ones. A combined mask is order-independent and easier to
+        # reason about / replicate in a comparison script.
+        mask = pd.Series(True, index=df.index)
         for col in numeric_cols:
             q1, q3 = df[col].quantile(0.25), df[col].quantile(0.75)
             iqr = q3 - q1
-            df = df[(df[col] >= q1 - 1.5 * iqr) & (df[col] <= q3 + 1.5 * iqr)]
+            mask &= (df[col] >= q1 - 1.5 * iqr) & (df[col] <= q3 + 1.5 * iqr)
+        df = df[mask]
 
     return {
         "df": df,
