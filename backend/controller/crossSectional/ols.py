@@ -1,5 +1,5 @@
 from fastapi.responses import JSONResponse
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, KFold
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
 import statsmodels.api as sm
 from statsmodels.stats.stattools import durbin_watson
@@ -12,6 +12,14 @@ import numpy as np
 import math
 
 from controller.crossSectional.helpers import prepare_dataset
+
+# Number of folds for the supplementary cross-validation robustness check.
+# This is NOT a hyperparameter-selection CV (plain OLS has no
+# regularization strength to tune) — it exists purely to report how
+# stable the model's out-of-sample performance is across different
+# train/validation partitions, as a complement to the single fixed
+# 80/20 split used for the primary reported metrics.
+CV_FOLDS = 5
 
 
 # ─────────────────────────────────────────
@@ -263,6 +271,106 @@ def test_linearity(residuals, y_fitted):
 
 
 # ─────────────────────────────────────────
+# SUPPLEMENTARY K-FOLD CROSS-VALIDATION
+# ─────────────────────────────────────────
+
+def run_kfold_cv(X, y, k=CV_FOLDS, random_state=42):
+    """
+    Refits OLS across k different train/validation partitions of the full
+    dataset and reports the spread of out-of-sample R^2/RMSE/MAE. This is
+    a robustness check on the single-split test metrics, not a
+    replacement for them — plain OLS has no hyperparameter for CV to
+    select, so this exists purely to show whether the reported test
+    performance is a stable estimate or sensitive to which rows happened
+    to land in the held-out set.
+
+    Returns a dict with per-fold results and mean/std, or an "error" key
+    if the dataset is too small for meaningful folds (each fold's training
+    partition must have more rows than parameters, or the fit is
+    underdetermined and unreliable).
+    """
+    n_params = X.shape[1] + 1  # +1 for intercept
+    min_rows_needed = k * max(5, n_params + 1)
+    if len(X) < min_rows_needed:
+        return {
+            "error": (
+                f"Dataset too small for {k}-fold cross-validation given "
+                f"{n_params} parameters (need at least {min_rows_needed} rows, "
+                f"have {len(X)}). Reduce the number of independent/categorical "
+                f"variables, or treat this section as unavailable for this run."
+            )
+        }
+
+    kf = KFold(n_splits=k, shuffle=True, random_state=random_state)
+    X_reset = X.reset_index(drop=True)
+    y_reset = y.reset_index(drop=True)
+
+    fold_results = []
+    fold_r2, fold_rmse, fold_mae = [], [], []
+
+    for fold_idx, (train_idx, val_idx) in enumerate(kf.split(X_reset), start=1):
+        X_tr, X_val = X_reset.iloc[train_idx], X_reset.iloc[val_idx]
+        y_tr, y_val = y_reset.iloc[train_idx], y_reset.iloc[val_idx]
+
+        if len(X_tr) <= n_params:
+            return {
+                "error": (
+                    f"Fold {fold_idx} has only {len(X_tr)} training rows for "
+                    f"{n_params} parameters — underdetermined. Reduce the "
+                    f"number of variables or use fewer folds."
+                )
+            }
+
+        X_tr_c = sm.add_constant(X_tr, has_constant="add")
+        X_val_c = sm.add_constant(X_val, has_constant="add")
+        # Guard against a sparse dummy column being constant/absent within
+        # this particular fold's training partition, which could otherwise
+        # misalign the fold's design matrix columns between fit and predict.
+        X_val_c = X_val_c.reindex(columns=X_tr_c.columns, fill_value=0)
+
+        try:
+            fold_model = sm.OLS(y_tr, X_tr_c).fit()
+            preds = fold_model.predict(X_val_c)
+
+            r2 = r2_score(y_val, preds)
+            rmse = mean_squared_error(y_val, preds) ** 0.5
+            mae = mean_absolute_error(y_val, preds)
+        except Exception as e:
+            return {"error": f"Fold {fold_idx} failed: {str(e)}"}
+
+        fold_r2.append(r2)
+        fold_rmse.append(rmse)
+        fold_mae.append(mae)
+        fold_results.append({
+            "fold": fold_idx,
+            "n_train": len(X_tr),
+            "n_val": len(X_val),
+            "r2": safe_round(r2),
+            "rmse": safe_round(rmse),
+            "mae": safe_round(mae),
+        })
+
+    return {
+        "k_folds": k,
+        "fold_results": fold_results,
+        "r2_mean": safe_round(float(np.mean(fold_r2))),
+        "r2_std": safe_round(float(np.std(fold_r2))),
+        "rmse_mean": safe_round(float(np.mean(fold_rmse))),
+        "rmse_std": safe_round(float(np.std(fold_rmse))),
+        "mae_mean": safe_round(float(np.mean(fold_mae))),
+        "mae_std": safe_round(float(np.std(fold_mae))),
+        "note": (
+            "Supplementary robustness check, not a hyperparameter search — "
+            "plain OLS has no regularization strength to tune. Compare "
+            "r2_mean/r2_std here against the single-split test_r2 above: a "
+            "large gap or a large std across folds suggests the single 80/20 "
+            "split may not be representative of the model's typical "
+            "out-of-sample performance."
+        ),
+    }
+
+
+# ─────────────────────────────────────────
 # MAIN HANDLER
 # ─────────────────────────────────────────
 
@@ -306,6 +414,18 @@ async def run_ols_prediction(request):
             X, y, test_size=0.2, random_state=42
         )
 
+        # Guard against an underdetermined model: if there are as many or
+        # more predictors (plus the intercept) than training rows, sm.OLS
+        # will still "fit" but the result is degenerate/unreliable.
+        n_params = X_train.shape[1] + 1  # +1 for the intercept
+        if len(X_train) <= n_params:
+            raise ValueError(
+                f"Not enough training observations ({len(X_train)}) for the "
+                f"number of parameters ({n_params}). Upload more rows, "
+                f"reduce the number of independent/categorical variables, "
+                f"or disable the train/test split for very small datasets."
+            )
+
         X_train_c = sm.add_constant(X_train, has_constant="add")
         X_test_c = sm.add_constant(X_test, has_constant="add")
 
@@ -314,9 +434,20 @@ async def run_ols_prediction(request):
 
         residuals = model.resid
         fitted_values = model.fittedvalues
-        r2 = r2_score(y_test, predictions)
-        mse = mean_squared_error(y_test, predictions)
-        mae = mean_absolute_error(y_test, predictions)
+
+        # Test-set (out-of-sample) predictive performance. Requires at
+        # least 2 test points for r2_score to be meaningful — with only one
+        # point, R² is either exactly 0 or an unstable/undefined value, so
+        # we report it as None with the row count rather than a misleading
+        # number.
+        if len(X_test) >= 2:
+            test_r2 = safe_round(r2_score(y_test, predictions))
+            test_mse = safe_round(mean_squared_error(y_test, predictions))
+            test_mae = safe_round(mean_absolute_error(y_test, predictions))
+        else:
+            test_r2 = None
+            test_mse = None
+            test_mae = None
 
         p_values = {str(k): safe_round(v, 6) for k, v in model.pvalues.items()}
         standard_errors = {str(k): safe_round(v, 6) for k, v in model.bse.items()}
@@ -344,19 +475,43 @@ async def run_ols_prediction(request):
             "linearity": test_linearity(residuals, fitted_values),
         }
 
+        # ── Supplementary k-fold cross-validation (robustness check) ──
+        # Uses the FULL dataset (X, y), not just the training split, since
+        # this is an independent analysis re-partitioning the data k ways
+        # rather than reusing the single 80/20 split above.
+        try:
+            cross_validation = run_kfold_cv(X, y, k=CV_FOLDS)
+        except Exception as e:
+            cross_validation = {"error": f"Cross-validation failed: {str(e)}"}
+
         # ── Build full payload and sanitize in one pass ──
         response_payload = sanitize({
             "success": True,
             "model": "OLS",
             "rows_used": len(X),
-            "r2_score": safe_round(r2),
+            "n_train": len(X_train),
+            "n_test": len(X_test),
+
+            # In-sample (training) fit statistics — this is what a plain
+            # statsmodels/Stata/R OLS summary reports by default, and what
+            # you should compare against when benchmarking coefficients,
+            # standard errors, and model fit against another tool.
+            "r2_score": safe_round(model.rsquared),
             "adj_r2": safe_round(model.rsquared_adj),
-            "mse": safe_round(mse),
-            "mae": safe_round(mae),
             "f_statistic": safe_round(model.fvalue),
             "f_pvalue": safe_round(model.f_pvalue),
             "aic": safe_round(model.aic),
             "bic": safe_round(model.bic),
+
+            # Out-of-sample (held-out test set) predictive performance —
+            # NOT directly comparable to a script that fits and scores on
+            # the full dataset; only compare this against another pipeline
+            # using the identical train_test_split (same test_size and
+            # random_state).
+            "test_r2": test_r2,
+            "test_mse": test_mse,
+            "test_mae": test_mae,
+
             "coefficients": {
                 str(k): safe_round(v, 6) for k, v in model.params.items()
             },
@@ -365,6 +520,11 @@ async def run_ols_prediction(request):
             "robust_standard_errors_hc3": robust_se,
             "robust_p_values_hc3": robust_p_values,
             "diagnostics": diagnostics,
+
+            # Supplementary robustness check — see run_kfold_cv() docstring.
+            # NOT part of the primary reported metrics above; use this to
+            # gauge whether test_r2/test_mse/test_mae are stable estimates.
+            "cross_validation": cross_validation,
         })
 
         return JSONResponse(content=response_payload)

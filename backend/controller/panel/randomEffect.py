@@ -1,5 +1,6 @@
 from fastapi.responses import JSONResponse
-from sklearn.metrics import mean_squared_error, mean_absolute_error
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from sklearn.model_selection import TimeSeriesSplit, GroupKFold
 import statsmodels.api as sm
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 from statsmodels.stats.diagnostic import het_breuschpagan, het_white
@@ -302,7 +303,6 @@ def estimate_variance_components(df, y_col, X_cols, entity_col):
     n_entities = df[entity_col].nunique()
     k          = len(X_cols)
 
-    # ── sigma2_e from FE residuals (vectorized demeaning) ──
     all_cols  = [y_col] + list(X_cols)
     grp_means = df.groupby(entity_col)[all_cols].transform("mean")
     y_within  = df[y_col]      - grp_means[y_col]
@@ -313,7 +313,6 @@ def estimate_variance_components(df, y_col, X_cols, entity_col):
     df_w     = n_obs - n_entities - k
     sigma2_e = float(np.sum(fe_resid ** 2) / df_w) if df_w > 0 else 1.0
 
-    # ── sigma2_u from between (entity-mean) regression ──
     agg      = df.groupby(entity_col)[all_cols].mean().reset_index()
     T_i      = df.groupby(entity_col).size().values
     X_bet    = sm.add_constant(agg[list(X_cols)], has_constant="add")
@@ -325,7 +324,6 @@ def estimate_variance_components(df, y_col, X_cols, entity_col):
         0.0
     )
 
-    # ── Per-entity theta (quasi-demeaning weight) ──
     entity_T   = df.groupby(entity_col).size()
     theta_dict = {
         ent: 1.0 - math.sqrt(sigma2_e / (T_ent * sigma2_u + sigma2_e))
@@ -335,6 +333,159 @@ def estimate_variance_components(df, y_col, X_cols, entity_col):
     theta_series = df[entity_col].map(theta_dict)
 
     return sigma2_e, sigma2_u, theta_series, theta_dict
+
+
+# ─────────────────────────────────────────
+# CROSS-VALIDATION
+# ─────────────────────────────────────────
+
+def _fit_re_fold(train_df, dependent_col, X_cols, id_col):
+    """
+    Fit Random Effects on one fold's training rows: estimate variance
+    components, quasi-demean, OLS, then recover per-entity BLUPs from
+    training residuals so they can be applied to that entity's
+    held-out rows.
+    """
+    if train_df[id_col].nunique() < 2 or len(train_df) < 5:
+        return None
+
+    try:
+        sigma2_e, sigma2_u, theta_series, theta_dict = estimate_variance_components(
+            train_df, dependent_col, X_cols, id_col
+        )
+    except Exception:
+        return None
+
+    all_cols   = [dependent_col] + list(X_cols)
+    grp_means  = train_df.groupby(id_col)[all_cols].transform("mean")
+    theta_vals = theta_series.values.reshape(-1, 1)
+
+    y_re = train_df[dependent_col].values - theta_series.values * grp_means[dependent_col].values
+    X_re = train_df[X_cols].values - theta_vals * grp_means[X_cols].values
+    y_re = pd.Series(y_re, index=train_df.index)
+    X_re = pd.DataFrame(X_re, columns=X_cols, index=train_df.index)
+    X_re_c = sm.add_constant(X_re, has_constant="add")
+
+    try:
+        model = sm.OLS(y_re, X_re_c).fit()
+    except Exception:
+        return None
+
+    const = float(model.params.get("const", 0.0))
+    betas = model.params.drop("const", errors="ignore")
+    if list(betas.index) != list(X_cols):
+        betas = betas.reindex(X_cols).fillna(0.0)
+
+    # Entity BLUPs from training-period level residuals (y - const - X@beta)
+    y_hat_level_train = const + train_df[X_cols].values @ betas.values
+    resid_level = train_df[dependent_col].values - y_hat_level_train
+    resid_df = pd.DataFrame({"entity": train_df[id_col].values, "residual": resid_level})
+    entity_resid_mean = resid_df.groupby("entity")["residual"].mean()
+    entity_counts = train_df.groupby(id_col).size()
+
+    entity_blup = {}
+    for ent, e_bar in entity_resid_mean.items():
+        T_ent = int(entity_counts.get(ent, 1))
+        denom = sigma2_u + sigma2_e / T_ent
+        blup = (sigma2_u / denom) * e_bar if denom > 0 else 0.0
+        entity_blup[ent] = blup
+
+    return {"const": const, "betas": betas, "entity_blup": entity_blup}
+
+
+def _run_re_cv_fold(train_df, test_df, dependent_col, X_cols, id_col):
+    if test_df.empty:
+        return None
+
+    fold_fit = _fit_re_fold(train_df, dependent_col, X_cols, id_col)
+    if fold_fit is None:
+        return None
+
+    test_df = test_df.dropna(subset=list(X_cols) + [dependent_col, id_col])
+    if test_df.empty:
+        return None
+
+    # Entities unseen during training get BLUP = 0 -- this is the
+    # theoretically correct RE prediction for a new entity, not an
+    # approximation: RE treats entity effects as random draws from a
+    # distribution with mean zero, so the expected effect for any
+    # entity you haven't observed yet is exactly zero.
+    blups = test_df[id_col].map(fold_fit["entity_blup"]).fillna(0.0)
+    y_pred = fold_fit["const"] + test_df[X_cols].values @ fold_fit["betas"].values + blups.values
+    y_true = test_df[dependent_col].values
+
+    mse = float(mean_squared_error(y_true, y_pred))
+    return {
+        "rmse": safe_round(np.sqrt(mse)),
+        "mae": safe_round(mean_absolute_error(y_true, y_pred)),
+        "r2": safe_round(r2_score(y_true, y_pred)),
+        "n_test_rows": int(len(test_df)),
+    }
+
+
+def _aggregate_cv_metrics(fold_metrics):
+    if not fold_metrics:
+        return None
+    agg = {}
+    for key in ("rmse", "mae", "r2"):
+        vals = [m[key] for m in fold_metrics if m.get(key) is not None]
+        if vals:
+            agg[key] = {
+                "mean": safe_round(np.mean(vals)),
+                "std": safe_round(np.std(vals)),
+            }
+    return agg
+
+
+def run_re_cross_validation(df, dependent_col, X_cols, id_col, time_col, cv_folds=3):
+    """
+    Cross-validate the Random Effects model.
+
+    Unlike Fixed Effects, RE can meaningfully predict for BOTH:
+      - future periods of known entities (BLUP from training residuals), and
+      - entities never seen during training (BLUP = 0, since RE treats
+        entity effects as random draws with mean zero) --
+    so time-based walk-forward and entity-based GroupKFold are both
+    legitimate validation strategies here, not one preferred and one
+    a fallback approximation. Time-based is used when a usable
+    date_column is present; entity-based otherwise.
+    """
+    fold_metrics = []
+    method = None
+
+    if time_col and df[time_col].nunique() >= cv_folds + 1:
+        method = "time_based_walk_forward"
+        unique_times = np.array(sorted(df[time_col].unique()))
+        splitter = TimeSeriesSplit(n_splits=cv_folds)
+        for train_t_idx, test_t_idx in splitter.split(unique_times):
+            train_times = set(unique_times[train_t_idx])
+            test_times = set(unique_times[test_t_idx])
+            train_df = df[df[time_col].isin(train_times)]
+            test_df = df[df[time_col].isin(test_times)]
+            result = _run_re_cv_fold(train_df, test_df, dependent_col, X_cols, id_col)
+            if result:
+                fold_metrics.append(result)
+    else:
+        n_entities = df[id_col].nunique()
+        n_splits = min(cv_folds, n_entities) if n_entities >= 2 else 0
+        if n_splits >= 2:
+            method = "entity_based_group_kfold"
+            gkf = GroupKFold(n_splits=n_splits)
+            for train_idx, test_idx in gkf.split(df, groups=df[id_col]):
+                train_df = df.iloc[train_idx]
+                test_df = df.iloc[test_idx]
+                result = _run_re_cv_fold(train_df, test_df, dependent_col, X_cols, id_col)
+                if result:
+                    fold_metrics.append(result)
+        else:
+            method = "skipped_insufficient_entities"
+
+    return {
+        "method": method,
+        "folds_requested": cv_folds,
+        "folds_used": len(fold_metrics),
+        **(_aggregate_cv_metrics(fold_metrics) or {}),
+    }
 
 
 # ─────────────────────────────────────────
@@ -353,6 +504,7 @@ async def run_random_effects_prediction(request):
         time_col         = payload.get("date_column", None)
         remove_outliers  = payload.get("outliers", False)
         run_hausman      = payload.get("hausman_test", True)
+        cv_folds         = int(payload.get("cv_folds", 3))
 
         if not raw_data:
             raise ValueError("No data provided")
@@ -362,6 +514,8 @@ async def run_random_effects_prediction(request):
             raise ValueError("Independent variables are required")
         if not id_col:
             raise ValueError("Entity ID column is required for Random Effects")
+        if cv_folds < 2:
+            raise ValueError("cv_folds must be at least 2")
 
         if isinstance(remove_outliers, str):
             remove_outliers = remove_outliers.strip().lower() in ("yes", "true", "1")
@@ -429,15 +583,17 @@ async def run_random_effects_prediction(request):
         X_cols = list(X_raw.columns)
         k      = len(X_cols)
 
+        # ── Cross-validation (before the full-sample fit, over ALL rows) ──
+        cross_validation = run_re_cross_validation(
+            df, dependent_col, X_cols, id_col, time_col, cv_folds=cv_folds
+        )
+
         # ── Variance components (Swamy-Arora) ──
         sigma2_e, sigma2_u, theta_series, theta_dict = estimate_variance_components(
             df, dependent_col, X_cols, id_col
         )
 
         # ── RE quasi-demeaning (vectorized) ──
-        # Subtract theta_i * entity_mean from y and each X
-        # theta close to 1 → behaves like FE
-        # theta close to 0 → behaves like pooled OLS
         all_cols      = [dependent_col] + X_cols
         grp_means     = df.groupby(id_col)[all_cols].transform("mean")
         theta_vals    = theta_series.values.reshape(-1, 1)
@@ -458,7 +614,6 @@ async def run_random_effects_prediction(request):
         ss_tot     = np.sum((y_re.values - y_re.values.mean()) ** 2)
         overall_r2 = safe_round(1 - ss_res / ss_tot if ss_tot != 0 else None)
 
-        # Within R²
         entity_mean_y  = grp_means[dependent_col]
         y_within_orig  = df[dependent_col] - entity_mean_y
         fitted_within  = fitted_values - theta_series.values * entity_mean_y
@@ -505,7 +660,6 @@ async def run_random_effects_prediction(request):
         hausman_result = None
         if run_hausman:
             try:
-                # FE on same data for comparison (already have demeaned vars)
                 all_cols_fe  = [dependent_col] + X_cols
                 grp_means_fe = df.groupby(id_col)[all_cols_fe].transform("mean")
                 y_fe         = df[dependent_col] - grp_means_fe[dependent_col]
@@ -564,6 +718,7 @@ async def run_random_effects_prediction(request):
             "cluster_robust_p_values": robust_p_values,
             "entity_random_effects":   entity_re_blup,
             "hausman_test":            hausman_result,
+            "cross_validation":        cross_validation,
             "diagnostics":             diagnostics,
         })
 

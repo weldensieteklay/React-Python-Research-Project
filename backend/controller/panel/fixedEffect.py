@@ -1,5 +1,6 @@
 from fastapi.responses import JSONResponse
-from sklearn.metrics import mean_squared_error, mean_absolute_error
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from sklearn.model_selection import TimeSeriesSplit, GroupKFold
 import statsmodels.api as sm
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 from statsmodels.stats.diagnostic import het_breuschpagan, het_white
@@ -142,7 +143,6 @@ def test_multicollinearity_panel(X_within):
 
 def test_serial_correlation_panel(residuals_df, entity_col="entity", time_col="time"):
     try:
-        # Sort first so shift(1) is truly the prior time period
         residuals_df = residuals_df.sort_values([entity_col, time_col]).copy()
 
         resid_lagged = (
@@ -179,7 +179,6 @@ def test_serial_correlation_panel(residuals_df, entity_col="entity", time_col="t
 
 def test_cross_sectional_dependence(residuals_df, entity_col="entity", time_col="time"):
     try:
-        # pivot_table handles duplicate time values safely (unbalanced panels)
         pivot = residuals_df.pivot_table(
             index=time_col, columns=entity_col, values="residual", aggfunc="mean"
         )
@@ -257,13 +256,150 @@ def test_normality_panel(residuals):
 def apply_within_transformation(df, y_col, X_cols, entity_col):
     """
     Vectorized entity demeaning — one groupby over all columns at once.
-    Much faster than looping column by column.
     """
     all_cols  = [y_col] + list(X_cols)
     grp_means = df.groupby(entity_col)[all_cols].transform("mean")
     y_within  = df[y_col] - grp_means[y_col]
     X_within  = df[list(X_cols)] - grp_means[list(X_cols)]
     return y_within, X_within
+
+
+# ─────────────────────────────────────────
+# CROSS-VALIDATION
+# ─────────────────────────────────────────
+
+def _fit_fe_fold(train_df, dependent_col, X_cols, id_col):
+    """
+    Fit Fixed Effects on one fold's training rows: within-transform,
+    OLS on the demeaned data, then recover each training entity's
+    fixed effect (alpha_i = mean(y_i) - X_i_mean @ beta) so it can be
+    used to predict held-out rows for that same entity.
+    """
+    y_within, X_within = apply_within_transformation(train_df, dependent_col, X_cols, id_col)
+
+    zero_var_cols = [c for c in X_within.columns if X_within[c].abs().max() < 1e-10]
+    if zero_var_cols:
+        X_within = X_within.drop(columns=zero_var_cols)
+
+    used_cols = list(X_within.columns)
+    if not used_cols:
+        return None
+
+    X_within_c = sm.add_constant(X_within, has_constant="add")
+    try:
+        model = sm.OLS(y_within, X_within_c).fit()
+    except Exception:
+        return None
+    coef = model.params.drop("const", errors="ignore")
+
+    entity_means_y = train_df.groupby(id_col)[dependent_col].mean()
+    X_col_means = train_df.groupby(id_col)[used_cols].mean()
+    entity_fe = entity_means_y - X_col_means[used_cols].dot(coef[used_cols])
+    average_fe = float(entity_fe.mean())
+
+    return {
+        "coef": coef[used_cols],
+        "entity_fe": entity_fe.to_dict(),
+        "average_fe": average_fe,
+        "used_cols": used_cols,
+    }
+
+
+def _run_fe_cv_fold(train_df, test_df, dependent_col, X_cols, id_col):
+    if train_df[id_col].nunique() < 2 or len(train_df) < 5 or test_df.empty:
+        return None
+
+    fold_fit = _fit_fe_fold(train_df, dependent_col, X_cols, id_col)
+    if fold_fit is None:
+        return None
+
+    used_cols = fold_fit["used_cols"]
+    test_df = test_df.dropna(subset=used_cols + [dependent_col, id_col])
+    if test_df.empty:
+        return None
+
+    alphas = test_df[id_col].map(fold_fit["entity_fe"]).fillna(fold_fit["average_fe"])
+    y_pred = alphas.values + test_df[used_cols].values @ fold_fit["coef"].values
+    y_true = test_df[dependent_col].values
+
+    mse = float(mean_squared_error(y_true, y_pred))
+    return {
+        "rmse": safe_round(np.sqrt(mse)),
+        "mae": safe_round(mean_absolute_error(y_true, y_pred)),
+        "r2": safe_round(r2_score(y_true, y_pred)),
+        "n_test_rows": int(len(test_df)),
+    }
+
+
+def _aggregate_cv_metrics(fold_metrics):
+    if not fold_metrics:
+        return None
+    agg = {}
+    for key in ("rmse", "mae", "r2"):
+        vals = [m[key] for m in fold_metrics if m.get(key) is not None]
+        if vals:
+            agg[key] = {
+                "mean": safe_round(np.mean(vals)),
+                "std": safe_round(np.std(vals)),
+            }
+    return agg
+
+
+def run_fe_cross_validation(df, dependent_col, X_cols, id_col, time_col, cv_folds=3):
+    """
+    Cross-validate the Fixed Effects model.
+
+    Preferred: time-based walk-forward CV -- fold boundaries are drawn
+    over unique time periods (not raw rows, so all entities sharing a
+    period stay together), each fold trains on earlier periods and
+    predicts later ones for the SAME entities using their
+    training-estimated fixed effect. This is the meaningful
+    generalization test for an FE model: it has no way to predict for
+    an entity it never saw, so "does it hold up in future periods for
+    known entities" is the right question, not "does it work on
+    unseen entities."
+
+    Fallback: if there's no time_col or too few distinct periods,
+    entity-based GroupKFold is used -- held-out entities get the
+    average fixed effect across training entities as a (necessarily
+    weaker) stand-in.
+    """
+    fold_metrics = []
+    method = None
+
+    if time_col and df[time_col].nunique() >= cv_folds + 1:
+        method = "time_based_walk_forward"
+        unique_times = np.array(sorted(df[time_col].unique()))
+        splitter = TimeSeriesSplit(n_splits=cv_folds)
+        for train_t_idx, test_t_idx in splitter.split(unique_times):
+            train_times = set(unique_times[train_t_idx])
+            test_times = set(unique_times[test_t_idx])
+            train_df = df[df[time_col].isin(train_times)]
+            test_df = df[df[time_col].isin(test_times)]
+            result = _run_fe_cv_fold(train_df, test_df, dependent_col, X_cols, id_col)
+            if result:
+                fold_metrics.append(result)
+    else:
+        n_entities = df[id_col].nunique()
+        n_splits = min(cv_folds, n_entities) if n_entities >= 2 else 0
+        if n_splits >= 2:
+            method = "entity_based_group_kfold"
+            gkf = GroupKFold(n_splits=n_splits)
+            for train_idx, test_idx in gkf.split(df, groups=df[id_col]):
+                train_df = df.iloc[train_idx]
+                test_df = df.iloc[test_idx]
+                result = _run_fe_cv_fold(train_df, test_df, dependent_col, X_cols, id_col)
+                if result:
+                    fold_metrics.append(result)
+        else:
+            method = "skipped_insufficient_entities"
+
+    return {
+        "method": method,
+        "folds_requested": cv_folds,
+        "folds_used": len(fold_metrics),
+        **(_aggregate_cv_metrics(fold_metrics) or {}),
+    }
 
 
 # ─────────────────────────────────────────
@@ -281,6 +417,7 @@ async def run_fixed_effects_prediction(request):
         id_col           = payload.get("id_column")
         time_col         = payload.get("date_column", None)
         remove_outliers  = payload.get("outliers", False)
+        cv_folds         = int(payload.get("cv_folds", 3))
 
         if not raw_data:
             raise ValueError("No data provided")
@@ -290,6 +427,8 @@ async def run_fixed_effects_prediction(request):
             raise ValueError("Independent variables are required")
         if not id_col:
             raise ValueError("Entity ID column is required for Fixed Effects")
+        if cv_folds < 2:
+            raise ValueError("cv_folds must be at least 2")
 
         if isinstance(remove_outliers, str):
             remove_outliers = remove_outliers.strip().lower() in ("yes", "true", "1")
@@ -356,6 +495,11 @@ async def run_fixed_effects_prediction(request):
 
         n_obs = len(df)
         X_cols = list(X_raw.columns)
+
+        # ── Cross-validation (before the full-sample fit, over ALL rows) ──
+        cross_validation = run_fe_cross_validation(
+            df, dependent_col, X_cols, id_col, time_col, cv_folds=cv_folds
+        )
 
         # ── Vectorized within transformation ──
         y_within, X_within = apply_within_transformation(
@@ -456,6 +600,7 @@ async def run_fixed_effects_prediction(request):
             "cluster_robust_se":       robust_se,
             "cluster_robust_p_values": robust_p_values,
             "entity_fixed_effects":    entity_fe,
+            "cross_validation":        cross_validation,
             "diagnostics":             diagnostics,
         })
 
