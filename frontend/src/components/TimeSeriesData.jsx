@@ -11,6 +11,7 @@ import LoadingOverlay from './LoadingOverlay';
 import DownloadPptxButton from './dowload/DownloadPptxButton';
 import GuidePanel from "../guideMe/GuidePanel";
 import { guideContent } from "../guideMe/Guidecontent";
+import DownloadSummaryStatsPptxButton from './dowload/SummaryStatisticsPptxDowload';
 
 const TimeSeriesData = () => {
     const [parsedData, setParsedData] = useState([]);
@@ -343,8 +344,19 @@ const TimeSeriesData = () => {
                                 Something went wrong. Try agin!!
                             </div>
                         )}
-                        {activeView === 'summary' && summaryStats.length > 0 && (
-                            <SummaryStatisticsTable stats={summaryStats} showExtended={false} />
+                      {/* Results: Summary Statistics view, now with PPT download */}
+                        {activeView === 'summary' && summaryStats.length > 0 && !loading && !error && (
+                            <>
+                                <div className="w-full flex justify-end">
+                                    <DownloadSummaryStatsPptxButton
+                                        stats={summaryStats}
+                                        title="Summary Statistics"
+                                        filenamePrefix="summary_statistics"
+                                        showExtended={false}
+                                    />
+                                </div>
+                                <SummaryStatisticsTable stats={summaryStats} showExtended={false} />
+                            </>
                         )}
 
                         {activeView === "prediction" && result && (

@@ -12,6 +12,7 @@ import DownloadPptxButton from './dowload/DownloadPptxButton';
 import GuidePanel from "../guideMe/GuidePanel";
 import { guideContent } from "../guideMe/Guidecontent";
 import MultiCheckboxDropdown from './MultiCheckboxDropdown';
+import DownloadSummaryStatsPptxButton from './dowload/SummaryStatisticsPptxDowload';
 
 const CrossSectionalData = () => {
     const [parsedData, setParsedData] = useState([]);
@@ -305,9 +306,26 @@ const CrossSectionalData = () => {
                             </div>
                         )}
 
-                        {/* Results */}
-                        {activeView === 'summary' && summaryStats.length > 0 && (
-                            <SummaryStatisticsTable stats={summaryStats} showExtended={false} />
+                        {/* Results: Summary Statistics view, now with PPT download */}
+                        {activeView === 'summary' && summaryStats.length > 0 && !loading && !error && (
+                            <>
+                                <div className="w-full flex justify-end">
+                                    <DownloadSummaryStatsPptxButton
+                                        stats={summaryStats}
+                                        title="Summary Statistics"
+                                        filenamePrefix="summary_statistics"
+                                        showExtended={false}
+                                        variables={{
+                                            dependentVar,
+                                            independentVar,
+                                            categoricalVar,
+                                            idColumn,
+                                            outliers,
+                                        }}
+                                    />
+                                </div>
+                                <SummaryStatisticsTable stats={summaryStats} showExtended={false} />
+                            </>
                         )}
 
 
