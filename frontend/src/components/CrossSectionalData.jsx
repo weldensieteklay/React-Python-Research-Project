@@ -13,6 +13,7 @@ import GuidePanel from "../guideMe/GuidePanel";
 import { guideContent } from "../guideMe/Guidecontent";
 import MultiCheckboxDropdown from './MultiCheckboxDropdown';
 import DownloadSummaryStatsPptxButton from './dowload/SummaryStatisticsPptxDowload';
+import UserGuideButton from "../guideMe/UserGuideButton";
 
 const CrossSectionalData = () => {
     const [parsedData, setParsedData] = useState([]);
@@ -164,12 +165,15 @@ const CrossSectionalData = () => {
                         Data Analysis and Prediction
                     </h2>
 
-                    <button
-                        onClick={() => setShowGuide((o) => !o)}
-                        className="absolute right-4 flex items-center gap-2 px-3 py-1.5 bg-white text-black text-sm rounded-lg shadow-sm hover:bg-gray-100 transition-colors"
-                    >
-                        <span className="font-medium">Guide Me</span>
-                    </button>
+                    <div className="absolute right-4 flex items-center gap-2">
+                        <UserGuideButton className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-black text-sm rounded-lg shadow-sm hover:bg-gray-100 transition-colors" />
+                        <button
+                            onClick={() => setShowGuide((o) => !o)}
+                            className="flex items-center gap-2 px-3 py-1.5 bg-white text-black text-sm rounded-lg shadow-sm hover:bg-gray-100 transition-colors"
+                        >
+                            <span className="font-medium">Guide Me</span>
+                        </button>
+                    </div>
                 </div>
                 {/* Guide panel — inline, no overlay */}
                 <div className="flex justify-center mt-3">
