@@ -5,6 +5,7 @@ import { useUser } from "../hooks/useUser";
 import { InformationCircleIcon } from "@heroicons/react/24/outline";
 import GuidePanel from "../guideMe/GuidePanel";
 import { guideContent } from "../guideMe/Guidecontent";
+import UserGuideButton from "../guideMe/UserGuideButton";
 
 const Dashboard = () => {
     const navigate = useNavigate();
@@ -22,7 +23,8 @@ const Dashboard = () => {
             <div className="absolute top-13 right-6 flex flex-col items-end gap-3 z-10">
 
                 <div className="flex items-start gap-3">
-                    {/* Guide Me Button */}
+                                        {/* User Guide (PDF download) + Guide Me buttons */}
+                    <UserGuideButton className="flex items-center gap-2 px-4 py-3 bg-white text-black rounded-lg shadow-md hover:bg-gray-100 transition-colors mt-8" />
                     <button
                         onClick={() => setShowGuide((o) => !o)}
                         className="flex items-center gap-2 px-4 py-3 bg-white text-black rounded-lg shadow-md hover:bg-gray-100 transition-colors mt-8"
