@@ -25,13 +25,13 @@ const Dashboard = () => {
                 <div className="flex items-start gap-3">
                                         {/* User Guide (PDF download) + Guide Me buttons */}
                     <UserGuideButton className="flex items-center gap-2 px-4 py-3 bg-white text-black rounded-lg shadow-md hover:bg-gray-100 transition-colors mt-8" />
-                    <button
+                    {/* <button
                         onClick={() => setShowGuide((o) => !o)}
                         className="flex items-center gap-2 px-4 py-3 bg-white text-black rounded-lg shadow-md hover:bg-gray-100 transition-colors mt-8"
                     >
                         <InformationCircleIcon className="h-5 w-5" />
                         <span className="font-medium">Guide Me</span>
-                    </button>
+                    </button> */}
 
                     {/* User Card */}
                     <aside className="w-64 bg-white shadow-md p-4 flex flex-col items-center space-y-2 rounded-lg">
