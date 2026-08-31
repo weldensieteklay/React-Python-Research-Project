@@ -187,6 +187,6 @@ async def hybrid_bagging_prediction(request: Request):
 async def hybrid_forest_arima_prediction(request: Request):
     return await handle_request(request)
 
-@router.post("/consents")
+@router.post("/consent")
 async def consent_endpoint(request: Request):
     return await record_consent(request)
