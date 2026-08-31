@@ -35,6 +35,9 @@ from controller.arima.HYBRIDFOREST import predict_price_hybrid_forest
 from controller.arima.HYBRIDBOOSTING import predict_price_hybrid_boosting
 from controller.arima.HYBRIDBAGGING import predict_price_hybrid_bagging
 
+#time series routes
+from controller.consent import record_consent
+
 # -----------------------------
 # Initialize router
 # -----------------------------
@@ -184,3 +187,6 @@ async def hybrid_bagging_prediction(request: Request):
 async def hybrid_forest_arima_prediction(request: Request):
     return await handle_request(request)
 
+@router.post("/consent")
+async def consent_endpoint(request: Request):
+    return await record_consent(request)
