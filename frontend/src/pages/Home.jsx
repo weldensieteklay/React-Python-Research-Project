@@ -1,14 +1,22 @@
+import React, { useState } from "react";
 import axios from "axios";
 import { GoogleLogin } from "@react-oauth/google";
 import { jwtDecode } from "jwt-decode";
 import { useNavigate } from "react-router-dom";
-import { useState } from "react";
 import { useUser } from "../hooks/useUser";
+import LegalModal from "../components/LegalModal";
 
 const Home = () => {
     const navigate = useNavigate();
     const { setUser } = useUser();
     const [agreed, setAgreed] = useState(false);
+    const [modalOpen, setModalOpen] = useState(false);
+    const [modalTab, setModalTab] = useState("terms");
+
+    const openModal = (tab) => {
+        setModalTab(tab);
+        setModalOpen(true);
+    };
 
     const handleLoginSuccess = async (credentialResponse) => {
         try {
@@ -55,13 +63,22 @@ const Home = () => {
                     I confirm the data I upload does not contain sensitive or
                     confidential information I'm not authorized to share, and I
                     agree to the{" "}
-                    <a href="/terms" target="_blank" rel="noreferrer" className="underline">
+                    <button
+                        type="button"
+                        onClick={() => openModal("terms")}
+                        className="underline text-gray-700 hover:text-gray-900"
+                    >
                         Terms of Service
-                    </a>{" "}
+                    </button>{" "}
                     and{" "}
-                    <a href="/privacy" target="_blank" rel="noreferrer" className="underline">
+                    <button
+                        type="button"
+                        onClick={() => openModal("privacy")}
+                        className="underline text-gray-700 hover:text-gray-900"
+                    >
                         Privacy Policy
-                    </a>.
+                    </button>
+                    .
                 </span>
             </label>
 
@@ -72,6 +89,12 @@ const Home = () => {
                     Please agree to the terms above to continue
                 </div>
             )}
+
+            <LegalModal
+                isOpen={modalOpen}
+                onClose={() => setModalOpen(false)}
+                initialTab={modalTab}
+            />
         </div>
     );
 };
