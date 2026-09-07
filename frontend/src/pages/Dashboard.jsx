@@ -7,6 +7,10 @@ import GuidePanel from "../guideMe/GuidePanel";
 import { guideContent } from "../guideMe/Guidecontent";
 import UserGuideButton from "../guideMe/UserGuideButton";
 
+// Emails allowed to see the Rental Data Download card.
+// Keep this in sync with the allowlist in AppRoutes.jsx.
+const RENTAL_DATA_ALLOWED_EMAILS = ["weldensieteklay@gmail.com"];
+
 const Dashboard = () => {
     const navigate = useNavigate();
     const { user, clearUser } = useUser();
@@ -16,6 +20,14 @@ const Dashboard = () => {
         clearUser();
         navigate("/");
     };
+
+    const visibleRoutes = dashboardRoute.filter((item) => {
+        const key = Object.keys(item)[0];
+        if (key === "downloadRentalData") {
+            return RENTAL_DATA_ALLOWED_EMAILS.includes(user?.email);
+        }
+        return true;
+    });
 
     return (
         <>
@@ -66,7 +78,7 @@ const Dashboard = () => {
 
                 {/* Dashboard Cards */}
                 <div className="flex flex-wrap justify-center gap-12 max-w-6xl w-full">
-                    {dashboardRoute.map((item, index) => {
+                    {visibleRoutes.map((item, index) => {
                         const key = Object.keys(item)[0];
                         const { title, route } = item[key];
 

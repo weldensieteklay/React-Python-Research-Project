@@ -1,5 +1,10 @@
 export const dashboardRoute = [
     {
+      downloadRentalData: {
+          title: "Rental Data Download",
+          route: "/dashboard/rental-data"
+      }},
+    {
       crossSectional: {
           title: "Cross-Sectional Data",
           route: "/dashboard/cross-sectional"
