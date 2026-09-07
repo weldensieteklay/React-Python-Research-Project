@@ -190,3 +190,5 @@ async def hybrid_forest_arima_prediction(request: Request):
 @router.post("/consent")
 async def consent_endpoint(request: Request):
     return await record_consent(request)
+from routes.acs_service import router as data_router
+router.include_router(data_router, prefix="/data")
