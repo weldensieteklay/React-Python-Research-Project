@@ -13,7 +13,8 @@ import os
 import httpx
 import pandas as pd
 from io import StringIO
-
+import requests
+import io
 # -----------------------------------------------------------------------
 # ACS (Census Bureau) configuration
 # -----------------------------------------------------------------------
@@ -128,7 +129,6 @@ async def _fetch_fred_series(client: httpx.AsyncClient, series_id: str, column_n
     df.columns = ["date", column_name]
     df["date"] = pd.to_datetime(df["date"])
     df[column_name] = pd.to_numeric(df[column_name], errors="coerce")
-    print(df, 'ppppp')
     return df
 
 
@@ -164,3 +164,50 @@ async def get_combined_dataframe(zips: list[str]) -> pd.DataFrame:
     combined = fred_df.merge(acs_df, on="_key").drop(columns=["_key"])
 
     return combined
+
+SAFMR_URL = "https://www.huduser.gov/portal/datasets/fmr/fmr2026/fy2026_safmrs_revised.xlsx"
+AREA_NAME_KEYWORDS = ["Dallas", "Fort Worth"]
+
+def download_safmr() -> pd.DataFrame:
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"}
+    resp = requests.get(SAFMR_URL, headers=headers, timeout=120)
+    resp.raise_for_status()
+    if not resp.content.startswith(b"PK"):
+        raise RuntimeError("HUD returned a non-xlsx response (likely an HTML error page).")
+    return pd.read_excel(io.BytesIO(resp.content), engine="openpyxl")
+
+def find_column(df, *candidates):
+    cols_lower = {c.lower(): c for c in df.columns}
+    for cand in candidates:
+        for lower, original in cols_lower.items():
+            if cand in lower:
+                return original
+    raise KeyError(f"None of {candidates} found in columns: {list(df.columns)}")
+
+def process(df: pd.DataFrame) -> list[dict]:
+    zip_col = find_column(df, "zip")
+    area_col = find_column(df, "area name", "hud fair market rent area")
+
+    bedroom_cols = {}
+    for n in range(5):
+        for col in df.columns:
+            low = col.lower().replace("\n", " ")
+            if "safmr" in low and f"{n}br" in low and "standard" not in low and "%" not in low:
+                bedroom_cols[n] = col
+                break
+
+    pattern = "|".join(AREA_NAME_KEYWORDS)
+    is_dfw_name = df[area_col].astype(str).str.contains(pattern, case=False, na=False)
+    is_texas = df[area_col].astype(str).str.contains(r"\bTX\b", case=False, na=False)
+    dfw = df[is_dfw_name & is_texas].copy()
+
+    rows = []
+    for _, row in dfw.iterrows():
+        for bd, col in bedroom_cols.items():
+            rows.append({
+                "zip_code": str(row[zip_col]).strip().zfill(5),
+                "area_name": row[area_col],
+                "bedrooms": bd,
+                "safmr_rent": row[col],
+            })
+    return rows
