@@ -181,15 +181,15 @@ HEADERS = {
 # https://huduser.gov/portal/node/6629 for each fiscal year you need.
 YEAR_URLS = {
     2026: "https://www.huduser.gov/portal/datasets/fmr/fmr2026/fy2026_safmrs_revised.xlsx",
-    2025: "https://www.huduser.gov/portal/datasets/fmr/fmr2025/fy2025_safmrs.xlsx",
-    2024: "https://www.huduser.gov/portal/datasets/fmr/fmr2024/fy2024_safmrs.xlsx",
-    2023: "https://www.huduser.gov/portal/datasets/fmr/fmr2023/fy2023_safmrs.xlsx",
-    2022: "https://www.huduser.gov/portal/datasets/fmr/fmr2022/fy2022_safmrs.xlsx",
-    2021: "https://www.huduser.gov/portal/datasets/fmr/fmr2021/fy2021_safmrs.xlsx",
-    2020: "https://www.huduser.gov/portal/datasets/fmr/fmr2020/fy2020_safmrs.xlsx",
-    2019: "https://www.huduser.gov/portal/datasets/fmr/fmr2019/fy2019_safmrs.xlsx",
-    2018: "https://www.huduser.gov/portal/datasets/fmr/fmr2018/fy2018_safmrs.xlsx",
-    2017: "https://www.huduser.gov/portal/datasets/fmr/fmr2017/fy2017_safmrs_revised.xlsx",
+    # 2025: "https://www.huduser.gov/portal/datasets/fmr/fmr2025/fy2025_safmrs.xlsx",
+    # 2024: "https://www.huduser.gov/portal/datasets/fmr/fmr2024/fy2024_safmrs.xlsx",
+    # 2023: "https://www.huduser.gov/portal/datasets/fmr/fmr2023/fy2023_safmrs.xlsx",
+    # 2022: "https://www.huduser.gov/portal/datasets/fmr/fmr2022/fy2022_safmrs.xlsx",
+    # 2021: "https://www.huduser.gov/portal/datasets/fmr/fmr2021/fy2021_safmrs.xlsx",
+    # 2020: "https://www.huduser.gov/portal/datasets/fmr/fmr2020/fy2020_safmrs.xlsx",
+    # 2019: "https://www.huduser.gov/portal/datasets/fmr/fmr2019/fy2019_safmrs.xlsx",
+    # 2018: "https://www.huduser.gov/portal/datasets/fmr/fmr2018/fy2018_safmrs.xlsx",
+    # 2017: "https://www.huduser.gov/portal/datasets/fmr/fmr2017/fy2017_safmrs_revised.xlsx",
 }
 
 def download_year(url: str) -> pd.DataFrame:

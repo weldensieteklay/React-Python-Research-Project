@@ -24,7 +24,7 @@ from functools import lru_cache
 import io
 from pathlib import Path
 
-from services.acs_service import get_acs_dataframe, download_safmr, process
+from services.acs_service import get_acs_dataframe, build_ten_year_dfw_dataset
 
 router = APIRouter()
 
@@ -159,12 +159,11 @@ async def download_csv():
 # simple in-memory cache since HUD updates this file ~yearly
 _cache = None
 @router.get("/dfw-safmr")
-def get_dfw_safmr():
+def get_dfw_safmr_history():
     global _cache
     if _cache is None:
-        try:
-            raw = download_safmr()
-            _cache = process(raw)
-        except Exception as e:
-            raise HTTPException(status_code=502, detail=str(e))
+        rows, failures = build_ten_year_dfw_dataset()
+        if not rows:
+            raise HTTPException(status_code=502, detail=f"All years failed: {failures}")
+        _cache = {"rows": rows, "failures": failures}
     return _cache
