@@ -14,6 +14,7 @@ const TimeSeriesData = lazy(() => import("../components/TimeSeriesData"));
 const PanelData = lazy(() => import("../components/PanelData"));
 const Dashboard = lazy(() => import("../pages/Dashboard"));
 const RentalDataDownload = lazy(() => import("../pages/RentalProperty/DfwRentalDashboard"));
+const RealEstateDashboard = lazy(() => import("../pages/RentalProperty/RealEstateDashboard"));
 
 // Emails allowed to access the Rental Data Download page.
 // Move this to an env var or backend-driven allowlist if the list grows.
@@ -46,6 +47,13 @@ const AppRoutes = () => {
                             <ProtectedRoute>
                                 <EmailRestrictedRoute>
                                     <RentalDataDownload />
+                                </EmailRestrictedRoute>
+                            </ProtectedRoute>
+                        } />
+                          <Route path="/dashboard/real-estate-data" element={
+                            <ProtectedRoute>
+                                <EmailRestrictedRoute>
+                                    <RealEstateDashboard />
                                 </EmailRestrictedRoute>
                             </ProtectedRoute>
                         } />
