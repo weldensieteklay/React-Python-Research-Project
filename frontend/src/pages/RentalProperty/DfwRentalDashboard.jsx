@@ -10,6 +10,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
+import SafmrGrid from "../../components/table/AgGridTable"; // adjust path to match your folder layout
 
 const BEDROOMS = [0, 1, 2, 3, 4];
 const BEDROOM_COLORS = ["#2563eb", "#16a34a", "#ea580c", "#9333ea", "#dc2626"];
@@ -18,8 +19,6 @@ const MODEL_LABELS = {
   gradient_boosting: "Gradient Boosting (sklearn GradientBoostingRegressor)",
 };
 
-// What the model actually uses as inputs — keep this in sync with
-// gradient_boosting.py's feature_cols if that ever changes.
 const MODEL_FACTORS = [
   "Bedroom size (0–4BR)",
   "Prior 3 years of SAFMR rent for the same ZIP/bedroom (autoregressive lags)",
@@ -43,7 +42,7 @@ const downloadCsv = (filename, lines) => {
 
 export default function DfwRentalDashboard() {
   const { data, loading, error, handleFetch } = useFetchData();
-  const [view, setView] = useState("table"); // "table" | "graph"
+  const [view, setView] = useState("table");
   const [selectedZip, setSelectedZip] = useState("");
 
   useEffect(() => {
@@ -98,9 +97,6 @@ export default function DfwRentalDashboard() {
     }
   }, [zipOptions, selectedZip]);
 
-  // chart data: one point per fiscal year (ascending), one field per bedroom
-  // size for actuals and a SEPARATE field for forecast years, so recharts
-  // can style them differently (solid vs. dashed) on the same chart.
   const chartData = useMemo(() => {
     if (!selectedZip) return [];
     const zipRow = grouped.find((z) => z.zip_code === selectedZip);
@@ -117,8 +113,6 @@ export default function DfwRentalDashboard() {
         const value = zipRow.years[year]?.[bd] ?? null;
         if (isForecastYear) {
           point[`${bd}BR_forecast`] = value;
-          // carry the last actual point into the forecast series so the
-          // dashed line connects seamlessly instead of starting with a gap
           if (prevYear != null && !forecastYears.has(prevYear)) {
             point[`${bd}BR_forecast`] = point[`${bd}BR_forecast`] ?? zipRow.years[prevYear]?.[bd] ?? null;
           }
@@ -212,7 +206,6 @@ export default function DfwRentalDashboard() {
         )}
       </p>
 
-      {/* Forecast methodology note — only shown when a forecast is actually present */}
       {forecastYears.size > 0 && (
         <div className="mb-3 text-sm bg-blue-50 border border-blue-200 rounded px-3 py-2">
           <span className="font-medium text-blue-900">
@@ -293,74 +286,13 @@ export default function DfwRentalDashboard() {
           )}
         </div>
       ) : (
-        <div className="overflow-x-auto border border-gray-200 rounded">
-          <table className="min-w-full text-sm border-collapse">
-            <thead>
-              <tr className="bg-gray-100 text-left">
-                <th rowSpan={2} className="px-3 py-2 border sticky left-0 bg-gray-100 z-10">
-                  ZIP
-                </th>
-                <th rowSpan={2} className="px-3 py-2 border">
-                  Area
-                </th>
-                {years.map((year) => (
-                  <th
-                    key={year}
-                    colSpan={BEDROOMS.length}
-                    className={`px-3 py-2 border text-center ${
-                      forecastYears.has(year) ? "bg-blue-100" : "bg-gray-200"
-                    }`}
-                  >
-                    FY{year}
-                    {forecastYears.has(year) && (
-                      <span className="ml-1 text-xs font-normal text-blue-700">(forecast)</span>
-                    )}
-                  </th>
-                ))}
-              </tr>
-              <tr className="bg-gray-50 text-left">
-                {years.map((year) =>
-                  BEDROOMS.map((bd) => (
-                    <th
-                      key={`${year}-${bd}`}
-                      className={`px-3 py-2 border text-right whitespace-nowrap ${
-                        forecastYears.has(year) ? "bg-blue-50" : ""
-                      }`}
-                    >
-                      {bd}BR
-                    </th>
-                  ))
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {grouped.map((row) => (
-                <tr key={row.zip_code} className="border-t">
-                  <td className="px-3 py-2 border font-mono sticky left-0 bg-white z-10">
-                    {row.zip_code}
-                  </td>
-                  <td className="px-3 py-2 border whitespace-nowrap">{row.area_name}</td>
-                  {years.map((year) =>
-                    BEDROOMS.map((bd) => {
-                      const rent = row.years[year]?.[bd];
-                      const isForecast = forecastYears.has(year);
-                      return (
-                        <td
-                          key={`${year}-${bd}`}
-                          className={`px-3 py-2 border text-right ${
-                            isForecast ? "italic text-blue-700 bg-blue-50/50" : ""
-                          }`}
-                        >
-                          {rent != null ? `$${rent.toLocaleString()}` : "—"}
-                        </td>
-                      );
-                    })
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <SafmrGrid
+          rows={grouped}
+          years={years}
+          bedrooms={BEDROOMS}
+          forecastYears={forecastYears}
+          height={500}
+        />
       )}
     </div>
   );
