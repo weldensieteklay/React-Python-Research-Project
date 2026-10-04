@@ -10,7 +10,54 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
-import SafmrGrid from "../../components/table/AgGridTable"; // adjust path to match your folder layout
+import DataGrid from "../../components/table/AgGridTable"; // adjust path to match your folder layout
+
+const currencyFormatter = (params) =>
+  params.value != null ? `$${Number(params.value).toLocaleString()}` : "—";
+
+const SAFMR_GRID_STYLES = `
+  .safmr-header-forecast { background-color: #dbeafe !important; }
+  .safmr-header-actual { background-color: #e5e7eb !important; }
+  .safmr-cell-forecast { background-color: rgba(219, 234, 254, 0.5) !important; font-style: italic; color: #1d4ed8; }
+`;
+
+/**
+ * Builds { columnDefs, rowData, extraStyles, getRowId } for DataGrid
+ * from the grouped SAFMR panel shape (ZIP -> { years: { year: { bedroom: rent } } }).
+ */
+export function buildSafmrGridProps({ rows, years, bedrooms = [0, 1, 2, 3, 4], forecastYears = new Set() }) {
+  const forecastSet = forecastYears instanceof Set ? forecastYears : new Set(forecastYears);
+  const sortedYears = [...years].sort((a, b) => b - a);
+
+  const pinnedCols = [
+    { headerName: "ZIP", field: "zip_code", pinned: "left", width: 110, cellClass: "font-mono" },
+    { headerName: "Area", field: "area_name", pinned: "left", width: 220 },
+  ];
+
+  const yearGroups = sortedYears.map((year) => {
+    const isForecast = forecastSet.has(year);
+    return {
+      headerName: isForecast ? `FY${year} (forecast)` : `FY${year}`,
+      headerClass: isForecast ? "safmr-header-forecast" : "safmr-header-actual",
+      children: bedrooms.map((bd) => ({
+        headerName: `${bd}BR`,
+        colId: `${year}_${bd}`,
+        width: 100,
+        type: "rightAligned",
+        valueGetter: (params) => params.data?.years?.[year]?.[bd] ?? null,
+        valueFormatter: currencyFormatter,
+        cellClass: isForecast ? "safmr-cell-forecast" : undefined,
+      })),
+    };
+  });
+
+  return {
+    columnDefs: [...pinnedCols, ...yearGroups],
+    rowData: rows,
+    extraStyles: SAFMR_GRID_STYLES,
+    getRowId: (params) => params.data.zip_code,
+  };
+}
 
 const BEDROOMS = [0, 1, 2, 3, 4];
 const BEDROOM_COLORS = ["#2563eb", "#16a34a", "#ea580c", "#9333ea", "#dc2626"];
@@ -49,6 +96,7 @@ export default function DfwRentalDashboard() {
     handleFetch("data/dfw-safmr");
   }, []);
 
+  
   const rows = data?.rows;
   const failures = data?.failures || {};
   const modelName = data?.model || null;
@@ -90,6 +138,11 @@ export default function DfwRentalDashboard() {
       forecastYears: forecastYearSet,
     };
   }, [rows]);
+
+  const safmrGridProps = useMemo(
+    () => buildSafmrGridProps({ rows: grouped, years, bedrooms: BEDROOMS, forecastYears }),
+    [grouped, years, forecastYears]
+  );
 
   useEffect(() => {
     if (!selectedZip && zipOptions.length > 0) {
@@ -163,6 +216,7 @@ export default function DfwRentalDashboard() {
   if (!grouped.length) {
     return <div className="p-4 text-gray-500">No data available.</div>;
   }
+
 
   return (
     <div className="p-4">
@@ -286,13 +340,7 @@ export default function DfwRentalDashboard() {
           )}
         </div>
       ) : (
-        <SafmrGrid
-          rows={grouped}
-          years={years}
-          bedrooms={BEDROOMS}
-          forecastYears={forecastYears}
-          height={500}
-        />
+          <DataGrid {...safmrGridProps} height={500} />
       )}
     </div>
   );
