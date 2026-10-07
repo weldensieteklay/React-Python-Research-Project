@@ -10,30 +10,110 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
+import DataGrid from "../../components/table/AgGridTable"; // adjust path to match your folder layout
+
+const currencyFormatter = (params) =>
+  params.value != null ? `$${Number(params.value).toLocaleString()}` : "—";
+
+const SAFMR_GRID_STYLES = `
+  .safmr-header-forecast { background-color: #dbeafe !important; }
+  .safmr-header-actual { background-color: #e5e7eb !important; }
+  .safmr-cell-forecast { background-color: rgba(219, 234, 254, 0.5) !important; font-style: italic; color: #1d4ed8; }
+`;
+
+/**
+ * Builds { columnDefs, rowData, extraStyles, getRowId } for DataGrid
+ * from the grouped SAFMR panel shape (ZIP -> { years: { year: { bedroom: rent } } }).
+ */
+export function buildSafmrGridProps({ rows, years, bedrooms = [0, 1, 2, 3, 4], forecastYears = new Set() }) {
+  const forecastSet = forecastYears instanceof Set ? forecastYears : new Set(forecastYears);
+  const sortedYears = [...years].sort((a, b) => b - a);
+
+  const pinnedCols = [
+    { headerName: "ZIP", field: "zip_code", pinned: "left", width: 110, cellClass: "font-mono" },
+    { headerName: "Area", field: "area_name", pinned: "left", width: 220 },
+  ];
+
+  const yearGroups = sortedYears.map((year) => {
+    const isForecast = forecastSet.has(year);
+    return {
+      headerName: isForecast ? `FY${year} (forecast)` : `FY${year}`,
+      headerClass: isForecast ? "safmr-header-forecast" : "safmr-header-actual",
+      children: bedrooms.map((bd) => ({
+        headerName: `${bd}BR`,
+        colId: `${year}_${bd}`,
+        width: 100,
+        type: "rightAligned",
+        valueGetter: (params) => params.data?.years?.[year]?.[bd] ?? null,
+        valueFormatter: currencyFormatter,
+        cellClass: isForecast ? "safmr-cell-forecast" : undefined,
+      })),
+    };
+  });
+
+  return {
+    columnDefs: [...pinnedCols, ...yearGroups],
+    rowData: rows,
+    extraStyles: SAFMR_GRID_STYLES,
+    getRowId: (params) => params.data.zip_code,
+  };
+}
 
 const BEDROOMS = [0, 1, 2, 3, 4];
 const BEDROOM_COLORS = ["#2563eb", "#16a34a", "#ea580c", "#9333ea", "#dc2626"];
 
+const MODEL_LABELS = {
+  gradient_boosting: "Gradient Boosting (sklearn GradientBoostingRegressor)",
+};
+
+const MODEL_FACTORS = [
+  "Bedroom size (0–4BR)",
+  "Prior 3 years of SAFMR rent for the same ZIP/bedroom (autoregressive lags)",
+];
+
+const csvEscape = (v) => {
+  if (v == null) return "";
+  const s = String(v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+
+const downloadCsv = (filename, lines) => {
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
 export default function DfwRentalDashboard() {
   const { data, loading, error, handleFetch } = useFetchData();
-  const [view, setView] = useState("table"); // "table" | "graph"
+  const [view, setView] = useState("table");
   const [selectedZip, setSelectedZip] = useState("");
 
   useEffect(() => {
     handleFetch("data/dfw-safmr");
   }, []);
 
+  
   const rows = data?.rows;
   const failures = data?.failures || {};
+  const modelName = data?.model || null;
+  const forecastError = data?.forecast_error || null;
+  const skippedZips = data?.skipped_zips || [];
 
-  const { grouped, years, zipOptions } = useMemo(() => {
-    if (!Array.isArray(rows)) return { grouped: [], years: [], zipOptions: [] };
+  const { grouped, years, zipOptions, forecastYears } = useMemo(() => {
+    if (!Array.isArray(rows)) return { grouped: [], years: [], zipOptions: [], forecastYears: new Set() };
 
     const byZip = {};
     const yearSet = new Set();
+    const forecastYearSet = new Set();
 
     for (const row of rows) {
       yearSet.add(row.fiscal_year);
+      if (row.is_forecast) forecastYearSet.add(row.fiscal_year);
+
       if (!byZip[row.zip_code]) {
         byZip[row.zip_code] = {
           zip_code: row.zip_code,
@@ -55,32 +135,68 @@ export default function DfwRentalDashboard() {
       grouped: groupedArr,
       years: Array.from(yearSet).sort((a, b) => b - a),
       zipOptions: groupedArr.map((z) => z.zip_code),
+      forecastYears: forecastYearSet,
     };
   }, [rows]);
 
-  // default the ZIP dropdown to the first one once data loads
+  const safmrGridProps = useMemo(
+    () => buildSafmrGridProps({ rows: grouped, years, bedrooms: BEDROOMS, forecastYears }),
+    [grouped, years, forecastYears]
+  );
+
   useEffect(() => {
     if (!selectedZip && zipOptions.length > 0) {
       setSelectedZip(zipOptions[0]);
     }
   }, [zipOptions, selectedZip]);
 
-  // chart data: one point per fiscal year (ascending), one field per bedroom size
   const chartData = useMemo(() => {
     if (!selectedZip) return [];
     const zipRow = grouped.find((z) => z.zip_code === selectedZip);
     if (!zipRow) return [];
 
-    return [...years]
-      .sort((a, b) => a - b) // chronological for the chart
-      .map((year) => {
-        const point = { year: `FY${year}` };
-        BEDROOMS.forEach((bd) => {
-          point[`${bd}BR`] = zipRow.years[year]?.[bd] ?? null;
-        });
-        return point;
+    const sortedYears = [...years].sort((a, b) => a - b);
+
+    return sortedYears.map((year, idx) => {
+      const point = { year: `FY${year}` };
+      const isForecastYear = forecastYears.has(year);
+      const prevYear = sortedYears[idx - 1];
+
+      BEDROOMS.forEach((bd) => {
+        const value = zipRow.years[year]?.[bd] ?? null;
+        if (isForecastYear) {
+          point[`${bd}BR_forecast`] = value;
+          if (prevYear != null && !forecastYears.has(prevYear)) {
+            point[`${bd}BR_forecast`] = point[`${bd}BR_forecast`] ?? zipRow.years[prevYear]?.[bd] ?? null;
+          }
+        } else {
+          point[`${bd}BR`] = value;
+        }
       });
-  }, [selectedZip, grouped, years]);
+      return point;
+    });
+  }, [selectedZip, grouped, years, forecastYears]);
+
+  const handleDownloadCsv = () => {
+    const lines = ["zip_code,fiscal_year,area_name,bedroom,safmr_rent,is_forecast"];
+
+    [...rows]
+      .sort(
+        (a, b) =>
+          a.zip_code.localeCompare(b.zip_code) ||
+          a.fiscal_year - b.fiscal_year ||
+          a.bedrooms - b.bedrooms
+      )
+      .forEach((r) =>
+        lines.push(
+          [r.zip_code, r.fiscal_year, r.area_name, r.bedrooms, r.safmr_rent, r.is_forecast ? "yes" : "no"]
+            .map(csvEscape)
+            .join(",")
+        )
+      );
+
+    downloadCsv("dfw_safmr_panel.csv", lines);
+  };
 
   if (loading) {
     return <div className="p-4 text-gray-500">Loading DFW rental data…</div>;
@@ -90,10 +206,7 @@ export default function DfwRentalDashboard() {
     return (
       <div className="p-4 text-red-600">
         {error}
-        <button
-          onClick={() => handleFetch("data/dfw-safmr-history")}
-          className="ml-3 underline"
-        >
+        <button onClick={() => handleFetch("data/dfw-safmr")} className="ml-3 underline">
           Retry
         </button>
       </div>
@@ -103,6 +216,7 @@ export default function DfwRentalDashboard() {
   if (!grouped.length) {
     return <div className="p-4 text-gray-500">No data available.</div>;
   }
+
 
   return (
     <div className="p-4">
@@ -130,19 +244,55 @@ export default function DfwRentalDashboard() {
           >
             {view === "table" ? "Show Graph" : "Show Table"}
           </button>
+          <button
+            onClick={handleDownloadCsv}
+            className="px-3 py-1.5 text-sm rounded border border-gray-300 bg-white hover:bg-gray-50"
+          >
+            Download CSV
+          </button>
         </div>
       </div>
 
       <p className="text-sm text-gray-500 mb-3">
         {years.length} fiscal year{years.length !== 1 ? "s" : ""} · {grouped.length} ZIP codes
+        {forecastYears.size > 0 && (
+          <> · includes {[...forecastYears].sort().map((y) => `FY${y}`).join(", ")} forecast</>
+        )}
       </p>
+
+      {forecastYears.size > 0 && (
+        <div className="mb-3 text-sm bg-blue-50 border border-blue-200 rounded px-3 py-2">
+          <span className="font-medium text-blue-900">
+            {[...forecastYears].sort().map((y) => `FY${y}`).join(" and ")} are model forecasts, not published HUD data.
+          </span>
+          <div className="text-blue-800 mt-1">
+            Model: {MODEL_LABELS[modelName] || modelName || "unknown"}
+          </div>
+          <div className="text-blue-800 mt-1">
+            Based on: {MODEL_FACTORS.join("; ")}.
+          </div>
+          <div className="text-blue-700 mt-1 text-xs">
+            Note: this model does not currently incorporate macroeconomic factors (mortgage rates, CPI, employment, etc.) — forecasts are based solely on each ZIP's own historical rent trend and bedroom size.
+          </div>
+        </div>
+      )}
+
+      {forecastError && (
+        <div className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">
+          Forecast unavailable: {forecastError}. Showing actual data only.
+        </div>
+      )}
+
+      {skippedZips.length > 0 && (
+        <div className="mb-3 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+          {skippedZips.length} ZIP code{skippedZips.length !== 1 ? "s" : ""} had too little history to forecast and {skippedZips.length !== 1 ? "were" : "was"} skipped: {skippedZips.join(", ")}
+        </div>
+      )}
 
       {Object.keys(failures).length > 0 && (
         <div className="mb-3 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
           Some years failed to load:{" "}
-          {Object.entries(failures)
-            .map(([y, msg]) => `FY${y} (${msg})`)
-            .join(", ")}
+          {Object.entries(failures).map(([y, msg]) => `FY${y} (${msg})`).join(", ")}
         </div>
       )}
 
@@ -162,73 +312,35 @@ export default function DfwRentalDashboard() {
                 <Tooltip formatter={(value) => (value != null ? `$${value.toLocaleString()}` : "—")} />
                 <Legend />
                 {BEDROOMS.map((bd, i) => (
-                  <Line
-                    key={bd}
-                    type="monotone"
-                    dataKey={`${bd}BR`}
-                    stroke={BEDROOM_COLORS[i]}
-                    connectNulls
-                    strokeWidth={2}
-                    dot={{ r: 3 }}
-                  />
+                  <React.Fragment key={bd}>
+                    <Line
+                      type="monotone"
+                      dataKey={`${bd}BR`}
+                      name={`${bd}BR (actual)`}
+                      stroke={BEDROOM_COLORS[i]}
+                      connectNulls
+                      strokeWidth={2}
+                      dot={{ r: 3 }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey={`${bd}BR_forecast`}
+                      name={`${bd}BR (forecast)`}
+                      stroke={BEDROOM_COLORS[i]}
+                      strokeDasharray="6 4"
+                      connectNulls
+                      strokeWidth={2}
+                      dot={{ r: 3, strokeDasharray: "" }}
+                      legendType="none"
+                    />
+                  </React.Fragment>
                 ))}
               </LineChart>
             </ResponsiveContainer>
           )}
         </div>
       ) : (
-        <div className="overflow-x-auto border border-gray-200 rounded">
-          <table className="min-w-full text-sm border-collapse">
-            <thead>
-              <tr className="bg-gray-100 text-left">
-                <th rowSpan={2} className="px-3 py-2 border sticky left-0 bg-gray-100 z-10">
-                  ZIP
-                </th>
-                <th rowSpan={2} className="px-3 py-2 border">
-                  Area
-                </th>
-                {years.map((year) => (
-                  <th
-                    key={year}
-                    colSpan={BEDROOMS.length}
-                    className="px-3 py-2 border text-center bg-gray-200"
-                  >
-                    FY{year}
-                  </th>
-                ))}
-              </tr>
-              <tr className="bg-gray-50 text-left">
-                {years.map((year) =>
-                  BEDROOMS.map((bd) => (
-                    <th key={`${year}-${bd}`} className="px-3 py-2 border text-right whitespace-nowrap">
-                      {bd}BR
-                    </th>
-                  ))
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {grouped.map((row) => (
-                <tr key={row.zip_code} className="border-t">
-                  <td className="px-3 py-2 border font-mono sticky left-0 bg-white z-10">
-                    {row.zip_code}
-                  </td>
-                  <td className="px-3 py-2 border whitespace-nowrap">{row.area_name}</td>
-                  {years.map((year) =>
-                    BEDROOMS.map((bd) => {
-                      const rent = row.years[year]?.[bd];
-                      return (
-                        <td key={`${year}-${bd}`} className="px-3 py-2 border text-right">
-                          {rent != null ? `$${rent.toLocaleString()}` : "—"}
-                        </td>
-                      );
-                    })
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+          <DataGrid {...safmrGridProps} height={500} />
       )}
     </div>
   );

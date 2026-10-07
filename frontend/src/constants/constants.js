@@ -4,6 +4,11 @@ export const dashboardRoute = [
           title: "Rental Data Download",
           route: "/dashboard/rental-data"
       }},
+       {
+      realEstateData: {
+          title: "Real Estate Dashboard",
+          route: "/dashboard/real-estate-data"
+      }},
     {
       crossSectional: {
           title: "Cross-Sectional Data",

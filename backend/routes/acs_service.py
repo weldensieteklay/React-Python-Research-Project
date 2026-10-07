@@ -15,16 +15,18 @@ since it is not listed in PUBLIC_PATHS.
 """
 
 import os
+import io
 import pandas as pd
 from io import BytesIO
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from typing import Optional
 from functools import lru_cache
-import io
 from pathlib import Path
 
-from services.acs_service import get_acs_dataframe, build_ten_year_dfw_dataset
+from services.acs_service import build_macro_by_fiscal_year, build_ten_year_dfw_dataset, fit_predict
+from services.macro_indicators_service import fetch_all_indicators
+from services.cycle_score_transform import compute_cycle_score
 
 router = APIRouter()
 
@@ -83,87 +85,67 @@ DATA_PATH = BASE_DIR / "services" / "dfw_safmr_full.csv"
 
 BEDROOM_LABELS = {0: "Studio", 1: "1 BR", 2: "2 BR", 3: "3 BR", 4: "4 BR"}
 
-
-@lru_cache(maxsize=1)
-def load_data() -> pd.DataFrame:
-    if not DATA_PATH.exists():
-        raise FileNotFoundError(
-            f"Rental data file not found at {DATA_PATH}. "
-            "Run process_dfw_safmr.py from backend/services/ to generate it, "
-            "or check that BASE_DIR resolves to the correct backend/ folder."
-        )
-    df = pd.read_csv(DATA_PATH, dtype={"zip_code": str})
-    df["bedroom_label"] = df["bedrooms"].map(BEDROOM_LABELS)
-    return df
-
-
-@router.get("/meta")
-async def get_metadata():
-    """Filter options for the frontend dropdowns."""
-    df = load_data()
-    return {
-        "zip_codes": sorted(df["zip_code"].unique().tolist()),
-        "areas": sorted(df["area_name"].unique().tolist()),
-        "bedroom_options": sorted(df["bedrooms"].unique().tolist()),
-    }
-
-
-@router.get("/by-zip")
-async def rent_by_zip(bedrooms: Optional[int] = None):
-    """Rent for every ZIP, optionally filtered to one bedroom count —
-    powers the main 'rent across ZIP codes' bar chart."""
-    df = load_data()
-    if bedrooms is not None:
-        df = df[df["bedrooms"] == bedrooms]
-    return (
-        df[["zip_code", "area_name", "bedrooms", "bedroom_label", "safmr_rent"]]
-        .sort_values("safmr_rent", ascending=False)
-        .to_dict(orient="records")
-    )
-
-
-@router.get("/zip/{zip_code}")
-async def rent_for_single_zip(zip_code: str):
-    """Full bedroom breakdown (studio through 4BR) for one specific ZIP —
-    powers a detail view when a user clicks/selects a ZIP."""
-    df = load_data()
-    result = df[df["zip_code"] == zip_code].sort_values("bedrooms")
-    if result.empty:
-        return {"error": f"No data for ZIP {zip_code}"}
-    return result[["bedrooms", "bedroom_label", "safmr_rent"]].to_dict(orient="records")
-
-
-@router.get("/compare")
-async def compare_zips(zips: str = Query(..., description="Comma-separated ZIP codes, e.g. 75023,75218")):
-    """Side-by-side comparison across multiple ZIPs — powers a
-    grouped bar chart when the user picks a few ZIPs to compare."""
-    zip_list = [z.strip() for z in zips.split(",")]
-    df = load_data()
-    result = df[df["zip_code"].isin(zip_list)]
-    return result[["zip_code", "area_name", "bedrooms", "bedroom_label", "safmr_rent"]].to_dict(orient="records")
-
-
-@router.get("/download")
-async def download_csv():
-    """Streams the full dataset as CSV for a 'download data' button."""
-    df = load_data()
-    stream = io.StringIO()
-    df.to_csv(stream, index=False)
-    stream.seek(0)
-    return StreamingResponse(
-        iter([stream.getvalue()]),
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=dfw_rental_by_zip.csv"},
-    )
-
 # simple in-memory cache since HUD updates this file ~yearly
 _cache = None
+_forecast_cache = None  # separate variable, same route
 @router.get("/dfw-safmr")
 def get_dfw_safmr_history():
-    global _cache
+    global _cache, _forecast_cache
+
     if _cache is None:
         rows, failures = build_ten_year_dfw_dataset()
         if not rows:
             raise HTTPException(status_code=502, detail=f"All years failed: {failures}")
         _cache = {"rows": rows, "failures": failures}
-    return _cache
+
+    if _forecast_cache is None:
+        panel = pd.DataFrame(_cache["rows"])
+        forecast_df = fit_predict(panel, horizon_years=2)  # -> 2027, 2028
+
+        actuals_df = panel.copy()
+        actuals_df["is_forecast"] = False
+        forecast_df["is_forecast"] = True
+
+        combined = pd.concat([actuals_df, forecast_df], ignore_index=True, sort=False)
+        combined = combined.sort_values(["zip_code", "bedrooms", "fiscal_year"]).reset_index(drop=True)
+
+        _forecast_cache = {
+            "rows": combined.where(combined.notna(), None).to_dict("records"),
+            "skipped_zips": forecast_df.attrs.get("skipped_zips", []),
+            "model": "gradient_boosting",
+        }
+
+    return {
+        "rows": _forecast_cache["rows"],              # actuals + 2027/2028 forecast, combined
+        "failures": _cache["failures"],
+        "skipped_zips": _forecast_cache["skipped_zips"],
+        "model": _forecast_cache["model"],
+    }
+
+
+_macro_cache = None
+def get_macro():
+    global _macro_cache
+    if _macro_cache is None:
+        _macro_cache = build_macro_by_fiscal_year()
+    return _macro_cache
+
+@router.get("/dfw-macro")
+def dfw_macro():
+    df, failures = get_macro()
+    return {"rows": df.where(df.notna(), None).to_dict("records"), "failures": failures}
+
+real_estate_cache = None
+@router.get("/macro-indicators")
+async def get_macro_indicators():
+    global real_estate_cache
+    indicators = await fetch_all_indicators()
+    indicators["cycle_score"] = compute_cycle_score(indicators["automated"])
+    real_estate_cache = indicators
+    return real_estate_cache
+
+@router.post("/macro-indicators/refresh")
+async def refresh_macro_indicators():
+    global real_estate_cache
+    real_estate_cache = await fetch_all_indicators()
+    return real_estate_cache
