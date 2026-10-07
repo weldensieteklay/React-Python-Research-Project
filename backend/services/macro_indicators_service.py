@@ -59,10 +59,6 @@ FRED_SERIES = {
     "unemployment_rate":     ("UNRATE", "Unemployment Rate"),
     "jolts_job_openings":    ("JTSJOL", "JOLTS Job Openings"),
     "avg_hourly_earnings":   ("CES0500000003", "Average Hourly Earnings, Total Private (wage proxy)"),
-    # Corrected label: this is the Fed's aggregate CRE price index, not a
-    # multifamily-specific cap rate. Sector-specific variants (office,
-    # retail, industrial) do not appear to exist as FRED series and were
-    # incorrectly included in an earlier version of this file — removed.
     "cre_price_index":       ("COMREPUSQ159N", "Commercial Real Estate Price Index, US (Fed CRE proxy)"),
     "rental_vacancy_rate":   ("RRVRUSQ156N", "Rental Vacancy Rate (Census, via FRED)"),
     "financial_stress_index": ("STLFSI4", "St. Louis Fed Financial Stress Index"),
@@ -156,25 +152,36 @@ BEA_TABLES = {
     "real_gdp":        ("T10101", "Q", "Real GDP"),
 }
 
+import asyncio
+import httpx
+import pandas as pd
+
+FRED_URL = "https://stlouisfed.org"
 async def fetch_bea_table(client: httpx.AsyncClient, table_name: str, frequency: str) -> pd.DataFrame:
     resp = await client.get(
-        "https://apps.bea.gov/api/data",
+        FRED_URL,
         params={
-            "UserID": BEA_API_KEY, "method": "GetData", "datasetname": "NIPA",
-            "TableName": table_name, "Frequency": frequency, "Year": "ALL",
-            "ResultFormat": "JSON",
+            "api_key": FRED_API_KEY,
+            "file_type": "json",
+            "series_id": table_name,
         },
         timeout=30,
     )
+    
+    # 1. ALWAYS check for HTTP errors first before parsing JSON
     resp.raise_for_status()
+
+    # 2. Safely print and read the payload now that we know it's a 200 OK response
     payload = resp.json()
-    results = payload.get("BEAAPI", {}).get("Results", {})
-    if "Error" in results:
-        raise RuntimeError(f"BEA API error: {results['Error'].get('APIErrorDescription')}")
-    rows = results["Data"]
-    df = pd.DataFrame(rows)[["TimePeriod", "DataValue"]]
-    df["DataValue"] = pd.to_numeric(df["DataValue"].str.replace(",", ""), errors="coerce")
-    return df.rename(columns={"TimePeriod": "date", "DataValue": "value"}).dropna()
+    print(payload, 'wwwww', resp)
+
+    rows = payload.get("observations", [])
+    print(rows, '4444444')
+    
+    df = pd.DataFrame(rows)[["date", "value"]]
+    df["value"] = pd.to_numeric(df["value"], errors="coerce")
+    return df.dropna()
+
 
 async def fetch_all_bea(client: httpx.AsyncClient) -> dict:
     results, failures = {}, {}
@@ -199,28 +206,93 @@ async def fetch_all_bea(client: httpx.AsyncClient) -> dict:
 # census.gov/construction/bps instead, so this is disabled pending a
 # decision on which file/geography level to pull.
 # ---------------------------------------------------------------------
-async def fetch_census_population(client: httpx.AsyncClient) -> pd.DataFrame:
-    # Vintage 2021 uses year-stamped variable names (POP_2021), not a
-    # generic "POP" column like earlier vintages (e.g. 2019) did.
-    params = {"get": "NAME,POP_2021", "for": "state:*"}
+async def fetch_census_population(client: httpx.AsyncClient, vintage: int = 2023, year: int = 2023) -> pd.DataFrame:
+    """
+    As of vintage 2022+, Census discontinued the simple pep/population
+    dataset (confirmed: /data/2022/pep/population and /data/2023/pep/population
+    do not exist) in favor of pep/charv.
+
+    Verified working pattern (against a public confirmed-working query):
+        https://api.census.gov/data/2023/pep/charv?get=NAME,POP,MEDAGE&for=state:*&YEAR=2021
+
+    `vintage` selects which dataset release to query (the URL path year);
+    `year` selects which year WITHIN that release's time series to return
+    (its own time series runs from the last census through the vintage
+    year). No API key is required for this dataset.
+    """
+    params = {
+        "get": "NAME,POP",
+        "for": "state:*",
+        "YEAR": str(year),
+    }
     if CENSUS_API_KEY:
         params["key"] = CENSUS_API_KEY
-    resp = await client.get("https://api.census.gov/data/2021/pep/population", params=params, timeout=30)
+
+    resp = await client.get(f"https://api.census.gov/data/{vintage}/pep/charv", params=params, timeout=30)
     resp.raise_for_status()
     rows = resp.json()
     df = pd.DataFrame(rows[1:], columns=rows[0])
-    df = df.rename(columns={"POP_2021": "POP"})
     df["POP"] = pd.to_numeric(df["POP"], errors="coerce")
     return df[df["state"].isin(MIDWEST_STATE_FIPS)]
+
+
+async def fetch_census_population_two_years(
+    client: httpx.AsyncClient, vintage: int = 2023, year_a: int = 2022, year_b: int = 2023
+) -> pd.DataFrame:
+    """
+    Pulls two years from the SAME vintage release and combines them, so a
+    real YoY migration % can finally be computed for the Cycle Score
+    'migration' indicator (previously excluded entirely -- only one
+    vintage was ever fetched, so no change could be calculated).
+    """
+    df_a = await fetch_census_population(client, vintage=vintage, year=year_a)
+    df_b = await fetch_census_population(client, vintage=vintage, year=year_b)
+    df_a = df_a.rename(columns={"POP": f"POP_{year_a}"})
+    df_b = df_b.rename(columns={"POP": f"POP_{year_b}"})
+    merged = df_a.merge(df_b[["state", f"POP_{year_b}"]], on="state")
+    merged["yoy_pct_change"] = (
+        (merged[f"POP_{year_b}"] - merged[f"POP_{year_a}"]) / merged[f"POP_{year_a}"] * 100
+    )
+    return merged
+MIDWEST_STATE_POP_SERIES = {
+    "IL": "ILPOP", "IN": "INPOP", "IA": "IAPOP", "KS": "KSPOP",
+    "MI": "MIPOP", "MN": "MNPOP", "MO": "MOPOP", "NE": "NEPOP",
+    "ND": "NDPOP", "OH": "OHPOP", "SD": "SDPOP", "WI": "WIPOP",
+}
+
+async def fetch_midwest_population_fred(client: httpx.AsyncClient) -> dict:
+    """
+    Replaces the Census pep/charv approach entirely. FRED republishes
+    Census's own state population estimates as simple annual series
+    (confirmed: ILPOP, MIPOP both return clean data through 2025) --
+    no DATE_CODE guessing, no demographic-breakdown predicates, and it
+    reuses the same fetch_fred_series() already used for every other
+    FRED-sourced indicator in this file.
+    """
+    tasks = [fetch_fred_series(client, series_id) for series_id in MIDWEST_STATE_POP_SERIES.values()]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    all_rows = []
+    failures = {}
+    for (state, series_id), res in zip(MIDWEST_STATE_POP_SERIES.items(), results):
+        if isinstance(res, Exception):
+            failures[state] = str(res)
+            continue
+        for _, row in res.iterrows():
+            all_rows.append({"state": state, "date": row["date"], "POP": row["value"]})
+
+    return {
+        "label": "State Population Estimates (Midwest, FRED/Census)",
+        "source": "FRED (republishing U.S. Census Bureau)",
+        "rows": all_rows,
+        "fetch_failures": failures,
+    }
 
 async def fetch_all_census(client: httpx.AsyncClient) -> dict:
     results, failures = {}, {}
     try:
-        pop = await fetch_census_population(client)
-        results["midwest_population"] = {
-            "label": "State Population Estimates (Midwest, 2021 vintage)", "source": "Census PEP",
-            "rows": pop.to_dict("records"),
-        }
+        pop = await fetch_midwest_population_fred(client)
+        results["midwest_population"] = pop
     except Exception as e:
         failures["midwest_population"] = str(e)
 
@@ -234,7 +306,6 @@ async def fetch_all_census(client: httpx.AsyncClient) -> dict:
         failures["building_permits"] = str(e)
 
     return {"data": results, "failures": failures}
-
 
 # Census BPS state-level data: since Nov 2019, Census publishes these as
 # individual monthly Excel files browsable from a listing page, not a
@@ -397,6 +468,63 @@ MANUAL_ONLY_INDICATORS = {
     },
 }
 
+async def fetch_pce_price_index(client: httpx.AsyncClient) -> dict:
+    """Fetches only the PCE Price Index data using the working FRED function."""
+    results, failures = {}, {}
+    try:
+        # Pass the working function your client and series ID
+        df = await fetch_fred_series(client, "PCEPI")
+        
+        results["pce_price_index"] = {
+            "label": "PCE Price Index",
+            "table": "T20804",
+            "source": "BEA",
+            "rows": df.rename(columns={"value": "pce_price_index"}).to_dict("records"),
+        }
+    except Exception as e:
+        failures["pce_price_index"] = str(e)
+        
+    return {"data": results, "failures": failures}
+
+
+async def fetch_real_gdp(client: httpx.AsyncClient) -> dict:
+    """Fetches only the Real GDP data using the working FRED function."""
+    results, failures = {}, {}
+    try:
+        # Pass the working function your client and series ID
+        df = await fetch_fred_series(client, "GDPC1")
+        results["real_gdp"] = {
+            "label": "Real GDP",
+            "table": "T10101",
+            "source": "BEA",
+            "rows": df.rename(columns={"value": "real_gdp"}).to_dict("records"),
+        }
+    except Exception as e:
+        failures["real_gdp"] = str(e)    
+         
+    return {"data": results, "failures": failures}
+
+async def fetch_midwest_pmi(client: httpx.AsyncClient) -> dict:
+    """
+    Fetches the Midwest PMI (Chicago PMI) data.
+    Series ID: CHPMI
+    Frequency: Monthly
+    """
+    results, failures = {}, {}
+    try:
+        # Fetching directly from your working FRED helper
+        df = await fetch_fred_series(client, "CHPMI")
+        
+        results["midwest_pmi"] = {
+            "label": "Midwest PMI (Chicago)",
+            "table": "CHPMI",
+            "source": "ISM Chicago via FRED",
+            "rows": df.rename(columns={"value": "midwest_pmi"}).to_dict("records"),
+        }
+    except Exception as e:
+        failures["midwest_pmi"] = str(e)    
+         
+    return {"data": results, "failures": failures}
 
 # ---------------------------------------------------------------------
 # Aggregator
@@ -405,10 +533,12 @@ async def fetch_all_indicators() -> dict:
     _check_required_keys()
 
     async with httpx.AsyncClient(headers=HEADERS, follow_redirects=True) as client:
-        fred, bls, bea, census, zillow, sloos_result = await asyncio.gather(
+        # ADDED 'pce' variable here to make exactly 7 variables
+        fred, bls, gdp, pce, census, zillow, sloos_result = await asyncio.gather(
             fetch_all_fred(client),
             fetch_all_bls(client),
-            fetch_all_bea(client),
+            fetch_real_gdp(client),        # Task 3
+            fetch_pce_price_index(client), # Task 4
             fetch_all_census(client),
             fetch_zillow(client),
             fetch_sloos_summary(client),
@@ -416,7 +546,8 @@ async def fetch_all_indicators() -> dict:
         )
 
     data, failures = {}, {}
-    for group in (fred, bls, bea, census, zillow):
+    # UPDATED: Included both 'gdp' and 'pce' in the loop tuple
+    for group in (fred, bls, gdp, pce, census, zillow):
         if isinstance(group, Exception):
             failures["_group_error"] = str(group)
             continue

@@ -139,10 +139,9 @@ real_estate_cache = None
 @router.get("/macro-indicators")
 async def get_macro_indicators():
     global real_estate_cache
-    if real_estate_cache is None:
-        indicators = await fetch_all_indicators()
-        indicators["cycle_score"] = compute_cycle_score(indicators["automated"])
-        real_estate_cache = indicators
+    indicators = await fetch_all_indicators()
+    indicators["cycle_score"] = compute_cycle_score(indicators["automated"])
+    real_estate_cache = indicators
     return real_estate_cache
 
 @router.post("/macro-indicators/refresh")

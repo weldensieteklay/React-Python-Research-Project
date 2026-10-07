@@ -9,6 +9,7 @@ import re
 from datetime import datetime, timedelta
 import statistics
 from services import cycle_score_service as cs
+import pandas as pd
 
 
 def _parse_date(date_str: str) -> datetime:
@@ -167,14 +168,35 @@ def compute_indicator_scores(automated: dict) -> list[cs.IndicatorScore]:
     add("midwest_pmi", "Midwest PMI (Chicago Business Barometer)", False,
         note=cs.MISSING_INDICATORS["midwest_pmi"])
 
-    # 8. Migration (annual % change, Midwest population)
+    # 8. Migration (YoY % change, Midwest total population, summed across
+    # states). Source switched from Census pep/charv to FRED's per-state
+    # population series (e.g. ILPOP, MIPOP), which publish continuous
+    # annual history through the present -- no more single-vintage
+    # staleness, and a real YoY change can finally be computed here.
     if "midwest_population" in automated:
-        rows = automated["midwest_population"]["rows"]
-        # population rows are per-state; aggregate to total Midwest population first
-        # NOTE: this is a single-vintage (2021) snapshot per the earlier fix — a true
-        # YoY % requires at least two vintages, which the current fetcher doesn't provide.
-        add("migration", "Migration (Annual Population Change)", False,
-            note="Only a single population vintage (2021) is currently fetched; a YoY change needs two vintages, which requires pulling an additional year from Census PEP.")
+        pop_rows = automated["midwest_population"]["rows"]
+        by_date = {}
+        for r in pop_rows:
+            by_date.setdefault(r["date"], 0)
+            by_date[r["date"]] += r["POP"] or 0
+
+        sorted_dates = sorted(by_date.keys())
+        if len(sorted_dates) >= 2:
+            latest_date = sorted_dates[-1]
+            latest_total = by_date[latest_date]
+
+            # find the observation closest to 365 days before the latest date
+            latest_dt = _parse_date(latest_date)
+            target = latest_dt - timedelta(days=365)
+            prior_date = min(sorted_dates[:-1], key=lambda d: abs(_parse_date(d) - target))
+            prior_total = by_date[prior_date]
+
+            yoy_pct = (latest_total - prior_total) / prior_total * 100 if prior_total else None
+            add("migration", "Migration (Annual Population Change, Midwest total)", yoy_pct is not None,
+                raw_value=yoy_pct, score=cs.score_migration(yoy_pct) if yoy_pct is not None else None)
+        else:
+            add("migration", "Migration (Annual Population Change)", False,
+                note="Insufficient history to compute YoY change")
     else:
         add("migration", "Migration (Annual Population Change)", False, note="Source data unavailable")
 
@@ -187,16 +209,48 @@ def compute_indicator_scores(automated: dict) -> list[cs.IndicatorScore]:
     else:
         add("wage_growth", "Wage Growth", False, note="Source data unavailable")
 
-    # 10. Construction Pipeline (permits vs historical average)
-    if "building_permits" in automated:
-        ratio = _ratio_to_historical_avg(automated["building_permits"], "UNITSA")
-        add("construction_pipeline", "Construction Pipeline", ratio is not None,
-            raw_value=ratio, score=cs.score_construction_pipeline(ratio) if ratio is not None else None)
-    else:
-        add("construction_pipeline", "Construction Pipeline", False, note="Source data unavailable")
+    # 10. Construction Pipeline (spending vs historical average)
+        # 10. Construction Pipeline (spending vs historical average)
+    if "construction_spending" in automated:
+        spending_data = automated["construction_spending"]
 
+        # Normalize to a DataFrame (handles DataFrame or {"rows": [...]} payloads)
+        if isinstance(spending_data, pd.DataFrame):
+            df = spending_data.copy()
+        else:
+            df = pd.DataFrame(spending_data.get("rows", []))
+
+        # Normalize the value column name
+        if "construction_spending" in df.columns:
+            df = df.rename(columns={"construction_spending": "value"})
+
+        ratio = None
+        note = None
+
+        if df.empty or "value" not in df.columns:
+            note = f"No 'value' column found. Columns: {list(df.columns)}"
+        else:
+            # Coerce to numeric so strings / "." / None don't break statistics.mean
+            df["value"] = pd.to_numeric(df["value"], errors="coerce")
+            df = df.dropna(subset=["value"])
+
+            # Rebuild the dict-with-rows shape the helper expects
+            payload = {"rows": df.to_dict("records")}
+            ratio = _ratio_to_historical_avg(payload, "value")
+
+            if ratio is None:
+                note = "Could not compute ratio to historical average"
+
+        add("construction_pipeline", "Construction Pipeline", ratio is not None,
+            raw_value=ratio,
+            score=cs.score_construction_pipeline(ratio) if ratio is not None else None,
+            note=note)
+    else:
+        add("construction_pipeline", "Construction Pipeline", False,
+            note="Source data unavailable")
+        
     # 11. Cap Rate Spread — EXCLUDED (no real cap rate series available)
-    add("cap_rate_spread", "Cap Rate Spread", False, note=cs.MISSING_INDICATORS["cap_rate_spread"])
+    # add("cap_rate_spread", "Cap Rate Spread", False, note=cs.MISSING_INDICATORS["cap_rate_spread"])
 
     # 12. Rent Growth (ZORI, monthly %, Midwest average)
     if "rent_growth_zori" in automated:
@@ -259,7 +313,6 @@ def compute_indicator_scores(automated: dict) -> list[cs.IndicatorScore]:
         add("mortgage_rate", "30-Year Mortgage Rate", False, note="Source data unavailable — add mortgage_rate_30y (MORTGAGE30US) to FRED_SERIES")
 
     return scores
-
 
 def compute_cycle_score(automated: dict) -> dict:
     scores = compute_indicator_scores(automated)

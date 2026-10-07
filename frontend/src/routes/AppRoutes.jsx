@@ -52,9 +52,7 @@ const AppRoutes = () => {
                         } />
                           <Route path="/dashboard/real-estate-data" element={
                             <ProtectedRoute>
-                                <EmailRestrictedRoute>
                                     <RealEstateDashboard />
-                                </EmailRestrictedRoute>
                             </ProtectedRoute>
                         } />
                         <Route path="/dashboard/cross-sectional" element={
