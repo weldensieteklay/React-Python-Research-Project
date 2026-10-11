@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useDispatch, useSelector } from "react-redux";
 import { useFetchData } from "../../hooks/useFetchData";
 import {
   LineChart,
@@ -10,7 +11,12 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
-import DataGrid from "../../components/table/AgGridTable"; // adjust path to match your folder layout
+import DataGrid from "../../components/table/AgGridTable";
+import PanelData from "../../components/PanelData";
+import {
+  selectBestMethod,
+  clearBestMethod,
+} from "../../features/rentalProperty/rentalPropertySlice";
 
 const currencyFormatter = (params) =>
   params.value != null ? `$${Number(params.value).toLocaleString()}` : "—";
@@ -71,6 +77,22 @@ const MODEL_FACTORS = [
   "Prior 3 years of SAFMR rent for the same ZIP/bedroom (autoregressive lags)",
 ];
 
+// Labels for the method keys used by the panel screen
+const METHOD_LABELS = {
+  fixed: "Fixed Effects",
+  random: "Random Effects",
+  lasso: "LASSO",
+  ridge: "RIDGE",
+  forest: "FOREST",
+  boosting: "BOOSTING",
+  bagging: "BAGGING",
+};
+
+const FORECAST_MODE_LABELS = {
+  carry_forward: "regressors held at their latest values",
+  future_data: "scenario regressors supplied",
+};
+
 const csvEscape = (v) => {
   if (v == null) return "";
   const s = String(v);
@@ -87,30 +109,186 @@ const downloadCsv = (filename, lines) => {
   URL.revokeObjectURL(url);
 };
 
+// ---------------------------------------------------------------------------
+// Panel-model forecast (from Redux) -> dashboard rows
+// ---------------------------------------------------------------------------
+// The panel screen returns { id, period, horizon, predicted, inputs }. The grid needs
+// { zip_code, area_name, fiscal_year, bedrooms, safmr_rent, is_forecast }, which is only
+// recoverable when the model was set up as: id = zip_code, dependent = safmr_rent,
+// and bedrooms as an independent variable (it comes back in `inputs`).
+export const toDashboardRows = (best, areaByZip = {}) => {
+  const fc = best?.forecast ?? [];
+  if (fc.length === 0) {
+    return { rows: [], reason: "This method did not return a forecast." };
+  }
+
+  const cfg = best.config || {};
+  if (
+    cfg.idColumn !== "zip_code" ||
+    cfg.dependentVar !== "safmr_rent" ||
+    !(cfg.independentVar || []).includes("bedrooms")
+  ) {
+    return {
+      rows: [],
+      reason:
+        "The forecast can only be shown in the grid when the model uses zip_code as the ID, " +
+        "safmr_rent as the dependent variable, and bedrooms as an independent variable.",
+    };
+  }
+
+  const rows = [];
+  for (const f of fc) {
+    const bedrooms = Number(f.inputs?.bedrooms);
+    const year = Number(String(f.period).slice(0, 4)); // 2026 or "2026-01-01"
+    if (!Number.isFinite(bedrooms) || !Number.isFinite(year) || f.predicted == null) continue;
+    rows.push({
+      zip_code: String(f.id),
+      area_name: areaByZip[String(f.id)] ?? "",
+      fiscal_year: year,
+      bedrooms,
+      safmr_rent: Math.round(f.predicted),
+      is_forecast: true,
+    });
+  }
+  return {
+    rows,
+    reason: rows.length > 0 ? null : "None of the forecast rows could be matched to ZIP and bedroom.",
+  };
+};
+
+// ---------------------------------------------------------------------------
+// Small report: lowest-MSE model + its most important factors
+// ---------------------------------------------------------------------------
+function ModelReport({ best, forecastRowCount, reason, onReset }) {
+  const methodLabel = METHOD_LABELS[best.method] || best.method;
+  const factors = best.factors?.items ?? [];
+  const isImportance = best.factors?.type === "importance";
+  const top = factors.slice(0, 5);
+  const totalImportance = isImportance
+    ? factors.reduce((sum, f) => sum + Math.abs(f.importance ?? 0), 0)
+    : 0;
+  const info = best.forecastInfo;
+
+  const prettyName = (v) => (v === "entity_id" ? "Entity effect (ID)" : v);
+
+  return (
+    <div className="mb-3 text-sm bg-green-50 border border-green-200 rounded px-3 py-3 text-green-900">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <div className="font-medium">Forecast model report</div>
+          <div className="mt-1">
+            Lowest MSE: <b>{methodLabel}</b> ({Number(best.mse).toPrecision(5)}, in-sample)
+          </div>
+        </div>
+        <button onClick={onReset} className="text-xs underline text-green-800">
+          Use default forecast
+        </button>
+      </div>
+
+      {forecastRowCount > 0 ? (
+        <div className="mt-2">
+          Showing {forecastRowCount.toLocaleString()} forecast values
+          {info?.periods?.length > 0 && <> for {info.periods.join(", ")}</>}
+          {info?.mode && <> ({FORECAST_MODE_LABELS[info.mode] || info.mode})</>}.
+        </div>
+      ) : (
+        <div className="mt-2 text-amber-800">
+          {reason} The default forecast is shown instead.
+        </div>
+      )}
+
+      {top.length > 0 && (
+        <div className="mt-3">
+          <div className="font-medium mb-1">
+            {isImportance ? "Most important factors" : "Most significant variables (lowest p-value)"}
+          </div>
+          <ul className="space-y-1">
+            {top.map((f) => (
+              <li key={f.variable} className="flex items-center gap-2">
+                <span className="w-44 truncate" title={f.variable}>{prettyName(f.variable)}</span>
+                {isImportance ? (
+                  <>
+                    <div className="flex-1 h-2 bg-green-100 rounded overflow-hidden">
+                      <div
+                        className="h-2 bg-green-600"
+                        style={{ width: `${totalImportance ? (Math.abs(f.importance) / totalImportance) * 100 : 0}%` }}
+                      />
+                    </div>
+                    <span className="w-12 text-right tabular-nums">
+                      {totalImportance ? `${((Math.abs(f.importance) / totalImportance) * 100).toFixed(0)}%` : "—"}
+                    </span>
+                  </>
+                ) : (
+                  <span className="tabular-nums">
+                    coef {f.coefficient.toFixed(3)} · p {f.pValue != null ? f.pValue.toFixed(3) : "—"}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {info?.warnings?.length > 0 && (
+        <ul className="mt-3 text-xs text-amber-800 list-disc pl-4 space-y-0.5">
+          {info.warnings.map((w, i) => <li key={i}>{w}</li>)}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default function DfwRentalDashboard() {
   const { data, loading, error, handleFetch } = useFetchData();
   const [view, setView] = useState("table");
   const [selectedZip, setSelectedZip] = useState("");
 
+  const dispatch = useDispatch();
+  const best = useSelector(selectBestMethod);
+
   useEffect(() => {
     handleFetch("data/dfw-safmr");
   }, []);
 
-  
   const rows = data?.rows;
   const failures = data?.failures || {};
   const modelName = data?.model || null;
   const forecastError = data?.forecast_error || null;
   const skippedZips = data?.skipped_zips || [];
 
+  // Published actuals only. The panel screen trains on these, so it never learns from forecasts.
+  const actualRows = useMemo(
+    () => (Array.isArray(rows) ? rows.filter((r) => !r.is_forecast) : []),
+    [rows]
+  );
+
+  const areaByZip = useMemo(() => {
+    const map = {};
+    actualRows.forEach((r) => { if (r.area_name) map[String(r.zip_code)] = r.area_name; });
+    return map;
+  }, [actualRows]);
+
+  // Forecast from the lowest-MSE panel model, mapped onto the grid's row shape
+  const panelForecast = useMemo(
+    () => (best ? toDashboardRows(best, areaByZip) : { rows: [], reason: null }),
+    [best, areaByZip]
+  );
+  const usingPanelForecast = panelForecast.rows.length > 0;
+
+  // When a panel forecast is loaded it replaces the default forecast rows
+  const allRows = useMemo(() => {
+    if (!Array.isArray(rows)) return rows;
+    return usingPanelForecast ? [...actualRows, ...panelForecast.rows] : rows;
+  }, [rows, actualRows, panelForecast, usingPanelForecast]);
+
   const { grouped, years, zipOptions, forecastYears } = useMemo(() => {
-    if (!Array.isArray(rows)) return { grouped: [], years: [], zipOptions: [], forecastYears: new Set() };
+    if (!Array.isArray(allRows)) return { grouped: [], years: [], zipOptions: [], forecastYears: new Set() };
 
     const byZip = {};
     const yearSet = new Set();
     const forecastYearSet = new Set();
 
-    for (const row of rows) {
+    for (const row of allRows) {
       yearSet.add(row.fiscal_year);
       if (row.is_forecast) forecastYearSet.add(row.fiscal_year);
 
@@ -137,7 +315,7 @@ export default function DfwRentalDashboard() {
       zipOptions: groupedArr.map((z) => z.zip_code),
       forecastYears: forecastYearSet,
     };
-  }, [rows]);
+  }, [allRows]);
 
   const safmrGridProps = useMemo(
     () => buildSafmrGridProps({ rows: grouped, years, bedrooms: BEDROOMS, forecastYears }),
@@ -180,7 +358,7 @@ export default function DfwRentalDashboard() {
   const handleDownloadCsv = () => {
     const lines = ["zip_code,fiscal_year,area_name,bedroom,safmr_rent,is_forecast"];
 
-    [...rows]
+    [...allRows]
       .sort(
         (a, b) =>
           a.zip_code.localeCompare(b.zip_code) ||
@@ -217,6 +395,14 @@ export default function DfwRentalDashboard() {
     return <div className="p-4 text-gray-500">No data available.</div>;
   }
 
+  if (view === "forecast") {
+    return (
+      <PanelData
+        initialData={actualRows}
+        onViewForecast={() => setView("table")}
+      />
+    );
+  }
 
   return (
     <div className="p-4">
@@ -250,6 +436,9 @@ export default function DfwRentalDashboard() {
           >
             Download CSV
           </button>
+          <button onClick={() => setView("forecast")} className="px-3 py-1.5 text-sm rounded border border-gray-300 bg-white hover:bg-gray-50">
+            Forecast Next Year
+          </button>
         </div>
       </div>
 
@@ -260,7 +449,16 @@ export default function DfwRentalDashboard() {
         )}
       </p>
 
-      {forecastYears.size > 0 && (
+      {best && (
+        <ModelReport
+          best={best}
+          forecastRowCount={panelForecast.rows.length}
+          reason={panelForecast.reason}
+          onReset={() => dispatch(clearBestMethod())}
+        />
+      )}
+
+      {!usingPanelForecast && forecastYears.size > 0 && (
         <div className="mb-3 text-sm bg-blue-50 border border-blue-200 rounded px-3 py-2">
           <span className="font-medium text-blue-900">
             {[...forecastYears].sort().map((y) => `FY${y}`).join(" and ")} are model forecasts, not published HUD data.
@@ -277,13 +475,13 @@ export default function DfwRentalDashboard() {
         </div>
       )}
 
-      {forecastError && (
+      {!usingPanelForecast && forecastError && (
         <div className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">
           Forecast unavailable: {forecastError}. Showing actual data only.
         </div>
       )}
 
-      {skippedZips.length > 0 && (
+      {!usingPanelForecast && skippedZips.length > 0 && (
         <div className="mb-3 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
           {skippedZips.length} ZIP code{skippedZips.length !== 1 ? "s" : ""} had too little history to forecast and {skippedZips.length !== 1 ? "were" : "was"} skipped: {skippedZips.join(", ")}
         </div>

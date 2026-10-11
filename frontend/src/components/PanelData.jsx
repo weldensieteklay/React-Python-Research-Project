@@ -1,6 +1,6 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import Select from "react-select";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { parseCsvFile, computeSummaryStatistics } from "../utils/utils";
 import SummaryStatisticsTable from "./SummaryStatisticsTable";
@@ -13,12 +13,61 @@ import { guideContent } from "../guideMe/Guidecontent";
 import MultiCheckboxDropdown from "./MultiCheckboxDropdown";
 import DownloadSummaryStatsPptxButton from './dowload/SummaryStatisticsPptxDowload';
 import UserGuideButton from "../guideMe/UserGuideButton";
+import { useDispatch, useSelector } from "react-redux";
+import {
+    submitMethodResult,
+    clearBestMethod,
+    selectBestMethod,
+    getMse,
+} from "../features/rentalProperty/rentalPropertySlice";
 
-const PanelData = () => {
+const methodOptions = [
+    { value: "fixed", label: "Fixed Effects" },
+    { value: "random", label: "Random Effects" },
+    { value: "lasso", label: "LASSO" },
+    { value: "ridge", label: "RIDGE" },
+    { value: "forest", label: "FOREST" },
+    { value: "boosting", label: "BOOSTING" },
+    { value: "bagging", label: "BAGGING" },
+];
+
+const outlierOptions = [
+    { value: "yes", label: "Yes" },
+    { value: "no", label: "No" },
+];
+
+const FORECAST_PERIODS = 2; // periods of the date column to forecast (2 = next two years for annual data)
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+// A usable dataset is a non-empty array whose items are plain objects.
+const isUsableData = (data) =>
+    Array.isArray(data) &&
+    data.length > 0 &&
+    data.every((r) => r !== null && typeof r === "object" && !Array.isArray(r));
+
+// Union of keys across the first rows, in first-seen order. Using more than
+// just row 0 means a column that is missing from the first object still shows up.
+const getColumns = (data, sampleSize = 200) => {
+    const cols = new Set();
+    data.slice(0, sampleSize).forEach((row) => Object.keys(row).forEach((k) => cols.add(k)));
+    return [...cols];
+};
+
+const PanelData = ({
+    initialData = null, // array of objects, e.g. [{ id: "A", year: 2020, y: 1.2, x1: 3 }, ...]
+    // Called by the "View forecast in dashboard" button. Use it when this screen is shown
+    // inside the dashboard (e.g. () => setView("table")); otherwise the button navigates.
+    onViewForecast = null,
+    rentalDashboardPath = "/dashboard/rental-property", // adjust to your route
+}) => {
     const [parsedData, setParsedData] = useState([]);
     const [columns, setColumns] = useState([]);
     const [summaryStats, setSummaryStats] = useState([]);
     const [fileUploaded, setFileUploaded] = useState(false);
+    const [dataSource, setDataSource] = useState(null); // "csv" | "initial" | null
     const [method, setMethod] = useState("");
     const [idColumn, setIdColumn] = useState("");
     const [dependentVar, setDependentVar] = useState("");
@@ -37,30 +86,87 @@ const PanelData = () => {
     const fileInputRef = useRef(null);
     const { data: result, loading, error, handlePredict: runPrediction } = usePrediction();
 
+    const dispatch = useDispatch();
+    const navigate = useNavigate();
+    const bestMethod = useSelector(selectBestMethod);
+    // Remembers which method/problem the in-flight request belongs to, so a result
+    // is never credited to a method the user selected after clicking Predict.
+    const lastRunRef = useRef(null);
+
     const columnOptions = columns.map((col) => ({ value: col, label: col }));
+    const hasInitialData = isUsableData(initialData);
 
-    const methodOptions = [
-        { value: "fixed", label: "Fixed Effects" },
-        { value: "random", label: "Random Effects" },
-        { value: "lasso", label: "LASSO" },
-        { value: "ridge", label: "RIDGE" },
-        { value: "forest", label: "FOREST" },
-        { value: "boosting", label: "BOOSTING" },
-        { value: "bagging", label: "BAGGING" },
-    ];
+    // -----------------------------------------------------------------------
+    // Loading data (shared by initialData and CSV)
+    // -----------------------------------------------------------------------
+    const resetSelections = ({ keepBest = false } = {}) => {
+        if (!keepBest) dispatch(clearBestMethod());
+        setMethod("");
+        setIdColumn("");
+        setDependentVar("");
+        setIndependentVar([]);
+        setCategoricalVar([]);
+        setOutliers("");
+        setSelectedDateColumn("");
+        setIsValidDateColumn(null);
+        setDateOptions([]);
+        setStartDate("");
+        setEndDate("");
+        setSummaryStats([]);
+        setActiveView(null);
+    };
 
-    const outlierOptions = [
-        { value: "yes", label: "Yes" },
-        { value: "no", label: "No" },
-    ];
+    const loadFromInitialData = (data, { keepBest = false } = {}) => {
+        if (!isUsableData(data)) return;
+        const cols = getColumns(data);
+
+        resetSelections({ keepBest });
+        setParsedData(data);
+        setColumns(cols);
+        setFileUploaded(true);
+        setDataSource("initial");
+
+        // Drop any previously chosen CSV file so the two sources don't conflict
+        if (fileInputRef.current) fileInputRef.current.value = null;
+    };
+
+    // Seed from initialData when it arrives or changes. The parent should pass
+    // a stable reference (state, or useMemo), not a new array on every render.
+    useEffect(() => {
+        if (isUsableData(initialData)) {
+            // keepBest: re-opening this screen with the same data shouldn't discard earlier runs
+            loadFromInitialData(initialData, { keepBest: true });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialData]);
+
+    // Submit each finished run to the store; the reducer keeps only the smallest MSE.
+    useEffect(() => {
+        if (!result || result.success === false || !lastRunRef.current) return;
+        const mse = getMse(result);
+        if (mse === null) return;
+        dispatch(submitMethodResult({ ...lastRunRef.current, mse, result }));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [result]);
 
     const onDataParsed = (data) => {
         setParsedData(data);
         if (data.length > 0) {
-            setColumns(Object.keys(data[0]));
+            setColumns(getColumns(data));
         }
     };
 
+    const handleFileChange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        resetSelections(); // old selections may not exist in the new file
+        setDataSource("csv");
+        setFileUploaded(true);
+        parseCsvFile(file, onDataParsed);
+    };
+
+    // Reads from parsedData, so it works for both CSV and initialData
+    // (the old version re-read the file input, which doesn't exist for initialData).
     const handleDateColumnChange = (selected) => {
         setSelectedDateColumn(selected?.value || "");
         setIsValidDateColumn(null);
@@ -68,43 +174,24 @@ const PanelData = () => {
         setStartDate("");
         setEndDate("");
 
-        if (!selected || !fileInputRef.current?.files[0]) return;
+        if (!selected || parsedData.length === 0) return;
 
-        const file = fileInputRef.current.files[0];
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const text = e.target.result;
-            const rows = text.split("\n").filter((r) => r.trim());
-            const headers = rows[0].split(",").map((h) => h.trim());
-            const colIndex = headers.indexOf(selected.value);
+        const values = parsedData
+            .map((r) => r[selected.value])
+            .filter((v) => v !== null && v !== undefined && v !== "")
+            .map((v) => String(v).trim());
 
-            if (colIndex === -1) {
-                setIsValidDateColumn(false);
-                return;
-            }
+        const isValid = values.some((v) => !isNaN(Date.parse(v)));
+        setIsValidDateColumn(isValid);
 
-            const values = rows
-                .slice(1)
-                .map((r) => r.split(",")[colIndex]?.trim())
-                .filter(Boolean);
-
-            const isValid = values.some((v) => !isNaN(Date.parse(v)));
-            setIsValidDateColumn(isValid);
-
-            if (isValid) {
-                const unique = [...new Set(values)].sort();
-                setDateOptions(unique.map((d) => ({ value: d, label: d })));
-            }
-        };
-        reader.readAsText(file);
+        if (isValid) {
+            const unique = [...new Set(values)].sort();
+            setDateOptions(unique.map((d) => ({ value: d, label: d })));
+        }
     };
 
     const handleSummaryStatistics = () => {
-        const selectedColumns = [
-            dependentVar,
-            ...independentVar,
-        ].filter(Boolean);
-
+        const selectedColumns = [dependentVar, ...independentVar].filter(Boolean);
         const stats = computeSummaryStatistics(parsedData, selectedColumns, categoricalVar);
         setSummaryStats(stats);
     };
@@ -132,9 +219,7 @@ const PanelData = () => {
         );
     };
 
-    // "Select All" toggles between every column and none. If everything is
-    // already selected, it deselects all (also clearing any categorical
-    // picks that depended on them); otherwise it selects every column.
+    // "Select All" toggles between every column and none.
     const handleSelectAllIndependent = (allCurrentlySelected) => {
         setIndependentVar(() => {
             const next = allCurrentlySelected ? [] : [...columns];
@@ -150,13 +235,29 @@ const PanelData = () => {
 
     const isReadyToPredict =
         fileUploaded &&
+        parsedData.length > 0 &&
         method &&
         idColumn &&
         dependentVar &&
         independentVar.length > 0 &&
-        selectedDateColumn && outliers;
+        selectedDateColumn &&
+        outliers;
 
     const handlePredict = async () => {
+        // MSE is only comparable between runs on the same problem
+        lastRunRef.current = {
+            method,
+            context: [dependentVar, idColumn, selectedDateColumn, outliers].join("|"),
+            // The dashboard needs these to map the forecast back onto its grid
+            config: {
+                idColumn,
+                dependentVar,
+                independentVar,
+                categoricalVar,
+                dateColumn: selectedDateColumn,
+                outliers,
+            },
+        };
         const payload = {
             data: parsedData,
             method,
@@ -166,28 +267,23 @@ const PanelData = () => {
             categorical_variable: categoricalVar,
             outliers,
             date_column: selectedDateColumn,
+            forecast_periods: FORECAST_PERIODS,
         };
         await runPrediction(payload, `panel/${method}`);
     };
 
     const handleClear = () => {
-        setMethod("");
-        setIdColumn("");
-        setDependentVar("");
-        setIndependentVar([]);
-        setCategoricalVar([]);
-        setOutliers("");
+        resetSelections();
         setFileUploaded(false);
         setParsedData([]);
         setColumns([]);
-        setSummaryStats([]);
-        setSelectedDateColumn("");
-        setIsValidDateColumn(null);
-        setDateOptions([]);
-        setStartDate("");
-        setEndDate("");
-        setActiveView(null);
+        setDataSource(null);
         if (fileInputRef.current) fileInputRef.current.value = null;
+    };
+
+    const handleViewForecast = () => {
+        if (onViewForecast) onViewForecast();
+        else navigate(rentalDashboardPath);
     };
 
     return (
@@ -229,6 +325,14 @@ const PanelData = () => {
                 <div className="flex justify-center">
                     <div className="flex flex-wrap justify-center gap-6 p-6 border-2 border-solid border-gray-300 rounded-lg w-full bg-white shadow-sm">
 
+                        {/* Data source banner */}
+                        {dataSource === "initial" && (
+                            <div className="w-full text-sm bg-blue-50 border border-blue-200 rounded px-3 py-2 text-blue-900">
+                                Using provided data: {parsedData.length.toLocaleString()} rows,{" "}
+                                {columns.length} columns. You can upload a CSV instead.
+                            </div>
+                        )}
+
                         {/* File Upload */}
                         <div className="flex flex-col w-48">
                             <label className="text-sm text-gray-700 mb-1">Upload File</label>
@@ -237,13 +341,7 @@ const PanelData = () => {
                                 accept=".csv"
                                 ref={fileInputRef}
                                 className="px-2 py-[5px] border border-gray-300 rounded bg-white text-sm text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 hover:border-gray-400"
-                                onChange={(e) => {
-                                    const file = e.target.files[0];
-                                    if (file) {
-                                        setFileUploaded(true);
-                                        parseCsvFile(file, onDataParsed);
-                                    }
-                                }}
+                                onChange={handleFileChange}
                             />
                         </div>
 
@@ -294,7 +392,7 @@ const PanelData = () => {
                             emptyMessage="Upload a file to see columns"
                         />
 
-                        {/* Categorical — click-to-open dropdown, options limited to chosen Independent Variables */}
+                        {/* Categorical — options limited to chosen Independent Variables */}
                         <MultiCheckboxDropdown
                             label="Categorical Variables"
                             options={independentVar}
@@ -333,6 +431,7 @@ const PanelData = () => {
                                 </p>
                             )}
                         </div>
+
                         {/* Action Buttons */}
                         <div className="w-full flex flex-wrap justify-center gap-4 mt-6">
                             <button
@@ -357,16 +456,33 @@ const PanelData = () => {
                             >
                                 Clear
                             </button>
+                            {bestMethod && (
+                                <button
+                                    className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+                                    onClick={handleViewForecast}
+                                >
+                                    View forecast in dashboard
+                                </button>
+                            )}
+                            {hasInitialData && dataSource !== "initial" && (
+                                <button
+                                    className="px-4 py-2 border border-blue-500 text-blue-600 rounded hover:bg-blue-50"
+                                    onClick={() => loadFromInitialData(initialData)}
+                                >
+                                    Use provided data
+                                </button>
+                            )}
                         </div>
+
                         {/* Loading */}
                         {loading && <LoadingOverlay />}
                         {error && activeView !== "summary" && (
                             <div className="flex flex-col items-center text-center">
-                                Something went wrong. Try agin!!
+                                Something went wrong. Try again!
                             </div>
                         )}
 
-                        {/* Results: Summary Statistics view, now with PPT download */}
+                        {/* Summary Statistics view, with PPT download */}
                         {activeView === 'summary' && summaryStats.length > 0 && !loading && !error && (
                             <>
                                 <div className="w-full flex justify-end">
@@ -392,6 +508,13 @@ const PanelData = () => {
                                 <div className="w-full flex justify-end mb-4">
                                     <DownloadPptxButton result={result} />
                                 </div>
+                                {bestMethod && (
+                                    <div className="w-full text-sm bg-green-50 border border-green-200 rounded px-3 py-2 text-green-800 mb-3">
+                                        Lowest MSE so far:{" "}
+                                        <b>{methodOptions.find((o) => o.value === bestMethod.method)?.label || bestMethod.method}</b>
+                                        {" "}({Number(bestMethod.mse).toPrecision(5)})
+                                    </div>
+                                )}
                                 <CrossSectionalTable result={result} />
                             </>
                         )}
