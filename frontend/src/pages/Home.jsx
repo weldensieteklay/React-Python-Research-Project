@@ -193,7 +193,7 @@ const Home = () => {
             <h2 className="text-3xl font-bold text-gray-800">Welcome</h2>
             <p className="text-base text-gray-600">Sign in with your Google Account</p>
             <p className="text-sm text-gray-500 max-w-md">
-                We're in a free pilot. New accounts are approved by hand, usually by the end of the day.
+                We're in a free pilot.
             </p>
 
             <label className="flex items-start gap-2 max-w-md text-sm text-gray-600 text-left">
