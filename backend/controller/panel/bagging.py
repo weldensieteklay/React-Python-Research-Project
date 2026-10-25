@@ -222,6 +222,7 @@ def _fit_predict_bagging_fold(train_df, test_df, dependent_col, X_cols, id_col, 
 
     mse = float(mean_squared_error(y_test, y_pred))
     return {
+        "mse": safe_round(mse),
         "rmse": safe_round(np.sqrt(mse)),
         "mae": safe_round(mean_absolute_error(y_test, y_pred)),
         "r2": safe_round(r2_score(y_test, y_pred)),
@@ -233,7 +234,7 @@ def _aggregate_cv_metrics(fold_metrics):
     if not fold_metrics:
         return None
     agg = {}
-    for key in ("rmse", "mae", "r2"):
+    for key in ("mse", "rmse", "mae", "r2"):
         vals = [m[key] for m in fold_metrics if m.get(key) is not None]
         if vals:
             agg[key] = {
@@ -245,7 +246,7 @@ def _aggregate_cv_metrics(fold_metrics):
 
 def run_bagging_cross_validation(df, dependent_col, X_cols, id_col, time_col, model_factory,
                                  trend_mode="none", time_map=None, use_time_index=True,
-                                 min_periods=DEFAULT_TREND_MIN_PERIODS, cv_folds=3):
+                                 min_periods=DEFAULT_TREND_MIN_PERIODS, cv_folds=5):
     """
     Time-based walk-forward CV when a usable date_column exists (each fold fits
     the SAME pipeline as the final model: trend + bagged deviation); entity-based
@@ -297,6 +298,70 @@ def run_bagging_cross_validation(df, dependent_col, X_cols, id_col, time_col, mo
         "folds_used": len(fold_metrics),
         **(_aggregate_cv_metrics(fold_metrics) or {}),
     }
+
+
+# ─────────────────────────────────────────
+# OUT-OF-SAMPLE TEST (the MSE that is reported and ranked)
+# ─────────────────────────────────────────
+
+def run_holdout_test(df, dependent_col, X_cols, id_col, time_col, time_map, fit_fn,
+                     trend_requested, min_periods, horizon):
+    """
+    Pseudo-out-of-sample test that mimics the forecasting task: train on every period except the
+    last `horizon`, then predict those held-out periods and score them against the actual values.
+    The model never sees the test periods; the entity trend is extrapolated into them exactly as
+    it is for a real forecast.
+
+    fit_fn(train_df, trend_mode) -> fitted pipeline.
+
+    Caveat: the regressors take their ACTUAL values in the test periods, while the published
+    forecast has to hold them constant. If the regressors change a lot over time, real forecast
+    error can be larger than this test shows.
+
+    Returns (result_dict_or_None, note).
+    """
+    if not time_col or time_map is None:
+        return None, "No date column, so periods cannot be held out"
+
+    ordered = sorted(time_map, key=time_map.get)           # period labels, oldest first
+    n_periods = len(ordered)
+
+    min_train = max(min_periods + 1, 3)                    # enough history to fit a trend
+    h = min(max(1, int(horizon)), n_periods - min_train)
+    if h < 1:
+        return None, f"Only {n_periods} periods; at least {min_train + 1} are needed to hold some out"
+
+    test_labels = ordered[-h:]
+    in_test = df[time_col].isin(test_labels)
+    train_df, test_df = df[~in_test], df[in_test]
+
+    # Entities that never appear in training can't be predicted fairly; leave them out and say so
+    seen = set(train_df[id_col].astype(str))
+    known = test_df[id_col].astype(str).isin(seen)
+    n_excluded = int((~known).sum())
+    test_df = test_df[known]
+    if test_df.empty:
+        return None, "No test rows for entities seen in training"
+
+    trend_mode, _ = _resolve_trend_mode(trend_requested, train_df, dependent_col, time_col, min_periods)
+    fit = fit_fn(train_df, trend_mode)
+    y_pred = _predict_rows(fit, test_df, X_cols, id_col, time_col, time_map)
+    y_test = test_df[dependent_col]
+
+    mse = float(mean_squared_error(y_test, y_pred))
+    return {
+        "basis": "holdout",
+        "train_periods": int(n_periods - h),
+        "test_periods": [p.item() if hasattr(p, "item") else p for p in test_labels],
+        "n_test_rows": int(len(test_df)),
+        "n_unseen_entity_rows_excluded": n_excluded,
+        "trend": trend_mode,
+        "regressors": "actual values in the test periods",
+        "mse": safe_round(mse),
+        "rmse": safe_round(np.sqrt(mse)),
+        "mae": safe_round(mean_absolute_error(y_test, y_pred)),
+        "r2": safe_round(r2_score(y_test, y_pred)),
+    }, None
 
 
 # ─────────────────────────────────────────
@@ -528,6 +593,7 @@ async def run_bagging_panel(request):
         use_time_index    = payload.get("use_time_index", None)   # None = automatic, see below
         forecast_periods  = int(payload.get("forecast_periods", 2))
         future_data       = payload.get("future_data", None)
+        holdout_periods   = payload.get("holdout_periods", None)   # None = same as forecast_periods
 
         # ── Bagging hyperparameters ──
         # n_estimators default raised from 10 -> 200: with only 10
@@ -712,9 +778,36 @@ async def run_bagging_panel(request):
 
         fitted = _combine(fit, model.predict(X_full), ids_full, t_full)
 
-        in_sample_r2 = safe_round(r2_score(y_full, fitted))
-        mse          = safe_round(mean_squared_error(y_full, fitted))
-        mae          = safe_round(mean_absolute_error(y_full, fitted))
+        in_sample_r2  = safe_round(r2_score(y_full, fitted))
+        in_sample_mse = safe_round(mean_squared_error(y_full, fitted))
+        in_sample_mae = safe_round(mean_absolute_error(y_full, fitted))
+
+        # ── Out-of-sample test: hold out the most recent periods, train on the rest, score the held-out
+        # periods. The reported mse/mae come from this test, NOT from the fit above, because an in-sample
+        # error rewards models that memorise the training data. In-sample figures stay available as
+        # in_sample_mse / in_sample_mae. ──
+        horizon = int(holdout_periods) if holdout_periods else (forecast_periods if forecast_periods > 0 else 2)
+        holdout, holdout_note = None, None
+        try:
+            holdout, holdout_note = run_holdout_test(
+                df, dependent_col, X_cols, id_col, time_col, time_map,
+                fit_fn=lambda tdf, tm: _fit_pipeline(
+                    tdf, dependent_col, X_cols, id_col, time_col,
+                    lambda: _make_bagging_model(cv_bagging_params, tree_params),
+                    tm, time_map, use_time_index, trend_min_periods,
+                ),
+                trend_requested=trend_requested, min_periods=trend_min_periods, horizon=horizon,
+            )
+        except Exception as he:
+            holdout_note = str(he)
+
+        if holdout:
+            mse, mae, mse_basis = holdout["mse"], holdout["mae"], "holdout"
+        elif cross_validation.get("mse") and cross_validation.get("mae"):
+            mse, mae = cross_validation["mse"]["mean"], cross_validation["mae"]["mean"]
+            mse_basis = "walk_forward_cv" if cross_validation["method"] == "time_based_walk_forward" else "entity_cv"
+        else:
+            mse, mae, mse_basis = in_sample_mse, in_sample_mae, "in_sample"
 
         # OOB R² is reported in the units of the dependent variable. With a trend, sklearn's own
         # oob_score_ refers to the deviation from trend, so that figure is kept separately.
@@ -859,8 +952,12 @@ async def run_bagging_panel(request):
             "in_sample_r2":   in_sample_r2,
             "oob_r2":         oob_r2,
             "oob_r2_deviation": oob_r2_deviation,
-            "mse":            mse,
+            "mse":            mse,                 # out-of-sample (see mse_basis)
             "mae":            mae,
+            "mse_basis":      mse_basis,           # "holdout" | "walk_forward_cv" | "entity_cv" | "in_sample"
+            "in_sample_mse":  in_sample_mse,
+            "in_sample_mae":  in_sample_mae,
+            "out_of_sample":  {**holdout, "note": None} if holdout else {"note": holdout_note},
             "cross_validation": cross_validation,
             "model_spec":     model_spec,
             "bagging": {

@@ -18,8 +18,8 @@ const RentalDataDownload = lazy(() => import("../pages/RentalProperty/DfwRentalD
 const RealEstateDashboard = lazy(() => import("../pages/RentalProperty/RealEstateDashboard"));
 
 // Emails allowed to access the Rental Data Download page.
-// Move this to an env var or backend-driven allowlist if the list grows.
-const RENTAL_DATA_ALLOWED_EMAILS = ["weldensieteklay@gmail.com"];
+const RENTAL_DATA_ALLOWED_EMAILS = ["weldensieteklay@gmail.com", 'zereyesus@gmail.com'];
+
 
 const EmailRestrictedRoute = ({ children }) => {
     const { user } = useUser();
@@ -46,16 +46,12 @@ const AppRoutes = () => {
                         } />
                         <Route path="/dashboard/rental-data" element={
                             <ProtectedRoute>
-                                <EmailRestrictedRoute>
                                     <RentalDataDownload />
-                                </EmailRestrictedRoute>
                             </ProtectedRoute>
                         } />
                          <Route path="/dashboard/real-estate-data" element={
                             <ProtectedRoute>
-                                <EmailRestrictedRoute>
                                     <DfwRentalDashboard />
-                                </EmailRestrictedRoute>
                             </ProtectedRoute>
                         } />
                         <Route path="/dashboard/cross-sectional" element={

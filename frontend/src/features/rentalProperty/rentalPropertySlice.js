@@ -13,6 +13,11 @@ const toNum = (v) => {
 // To rank by out-of-sample error instead, return e.g. result?.cross_validation?.rmse?.mean ** 2
 export const getMse = (result) => toNum(result?.mse ?? result?.metrics?.mse);
 
+// What the reported MSE was measured on: "holdout" | "walk_forward_cv" | "entity_cv" are out-of-sample;
+// "in_sample" (or a response that doesn't say) is the model's error on the data it was fitted to.
+export const getMseBasis = (result) => result?.mse_basis ?? "in_sample";
+const isOutOfSample = (basis) => basis !== "in_sample";
+
 // Ranked "important factors" from whatever the method returned:
 //  - tree/boosting models: feature importances       -> { type: "importance", items: [{ variable, importance }] }
 //  - linear models (FE/RE/...): coefficients, ranked
@@ -50,7 +55,7 @@ export const getImportantFactors = (result) => {
 };
 
 const initialState = {
-    // { method, mse, context, config, result, forecast, forecastInfo, factors } | null
+    // { method, mse, basis, context, config, result, forecast, forecastInfo, factors } | null
     best: null,
 };
 
@@ -59,18 +64,28 @@ const rentalPropertySlice = createSlice({
     initialState,
     reducers: {
         // Keeps the new result only if it is the first one, belongs to a different
-        // problem (different dependent variable / id / date / outlier setting),
-        // or has a strictly smaller MSE than the stored one. Ties keep the existing result.
+        // problem (different dependent variable / id / date / outlier setting), or beats the stored one.
+        // "Beats" means: an out-of-sample MSE always beats an in-sample one (an in-sample number says how
+        // well a model memorised its training data, so it must never displace a tested one); between two
+        // results of the same kind the strictly smaller MSE wins, and ties keep the existing result.
         // The forecast and the important factors travel with the winning result.
         submitMethodResult: (state, { payload }) => {
             const { method, mse, result, context, config } = payload;
             if (!Number.isFinite(mse)) return;
 
+            const basis = getMseBasis(result);
             const best = state.best;
-            if (!best || best.context !== context || mse < best.mse) {
+            const beatsBest =
+                !best ||
+                best.context !== context ||
+                (isOutOfSample(basis) && !isOutOfSample(best.basis)) ||
+                (isOutOfSample(basis) === isOutOfSample(best.basis) && mse < best.mse);
+
+            if (beatsBest) {
                 state.best = {
                     method,
                     mse,
+                    basis,
                     context,
                     config: config || null,
                     result,

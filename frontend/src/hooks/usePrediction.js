@@ -1,10 +1,14 @@
 import { useState } from "react";
 import axios from "axios";
+import { useUser } from "./useUser"; 
 
 export const usePrediction = () => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  
+  // 2. Extract the user object containing the in-memory token
+  const { user } = useUser(); 
 
   const handlePredict = async (payload, method) => {
     if (!payload || !method) {
@@ -12,11 +16,19 @@ export const usePrediction = () => {
       return;
     }
 
+    // 3. Fail early if the user is unauthenticated or the in-memory token is gone
+    if (!user || !user.accessToken) {
+      setError("Your session has expired. Please sign in again.");
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
-      const token = localStorage.getItem("credential");
+      // 4. Extract token entirely from volatile RAM state
+      const token = user.accessToken; 
+      
       const response = await axios.post(
         `${import.meta.env.VITE_API_URL}/api/${method}`,
         payload,
@@ -28,23 +40,14 @@ export const usePrediction = () => {
       );
       setData(response.data);
     } catch (err) {
-      console.log(err, "Error logs");
+      console.error("[PREDICTION ERROR] Logs:", err);
 
-      if (err) {
-        // Server responded with a status code outside 2xx (401, 500, etc.)
-        const serverMessage =
-          err.message || 'Some thing is wrong. Try again!!'
-          setError(serverMessage || "Your session has expired. Please sign in again.");
-
-        // if (err?.response?.status === 401) {
-        //   setError(serverMessage || "Your session has expired. Please sign in again.");
-        // } else {
-        //   setError(serverMessage || `Request failed with status ${err.response.status}.`);
-        // }
+      if (err.response) {
+        // Server responded with a status code outside the 2xx range
+        const serverMessage = err.response.data?.detail || err.response.data?.error || err.message;
+        setError(serverMessage || "Request processing failed.");
       } else if (err.request) {
-        // Request was sent but no response came back at all.
-        // This is what a CORS-blocked response or a dead server looks like
-        // (axios reports it as a generic "Network Error").
+        // Request was sent but no response came back (Network/CORS faults)
         setError(
           "Could not reach the server. This is usually a network issue or a CORS " +
           "configuration problem on the backend — please try again or contact support."

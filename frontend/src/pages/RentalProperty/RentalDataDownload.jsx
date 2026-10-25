@@ -5,11 +5,13 @@ const RentalDataDownload = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(false);
+    const [warning, setWarning] = useState(null);
 
     const handleDownload = async () => {
         setIsLoading(true);
         setError(null);
         setSuccess(false);
+        setWarning(null);
 
         try {
             const token = localStorage.getItem("credential");
@@ -33,6 +35,11 @@ const RentalDataDownload = () => {
             link.remove();
             window.URL.revokeObjectURL(url);
 
+            // Server lists sources that failed (e.g. "acs_2024, gazetteer"); those columns are blank
+            const failed = response.headers["x-data-failures"];
+            if (failed) {
+                setWarning(`Some sources didn't load, so their columns are blank: ${failed}. Try again in a few minutes.`);
+            }
             setSuccess(true);
         } catch (err) {
             console.error("Failed to download rental data:", err);
@@ -50,9 +57,10 @@ const RentalDataDownload = () => {
         <main className="flex flex-col items-center mt-16 px-6 text-center space-y-6">
             <h1 className="text-3xl font-bold text-gray-800">Rental Data Download</h1>
             <p className="text-gray-600 max-w-xl">
-                Download the Dallas-Fort Worth zip-code-level rental price panel, merged
-                with income, population, and housing demographic data from the U.S.
-                Census Bureau (American Community Survey).
+                Download the Dallas-Fort Worth ZIP-code-level monthly rent panel (Zillow ZORI)
+                with monthly macro indicators, merged with distance to downtown, income,
+                renter share, density and new-construction data from the U.S. Census Bureau
+                (American Community Survey).
             </p>
 
             <button
@@ -94,6 +102,7 @@ const RentalDataDownload = () => {
             </button>
 
             {error && <p className="text-sm text-red-500">{error}</p>}
+            {warning && <p className="text-sm text-amber-600 max-w-md">{warning}</p>}
             {success && (
                 <p className="text-sm text-green-600">
                     Download complete — check your browser's downloads folder.
