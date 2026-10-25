@@ -34,3 +34,4 @@ const timeSeriesResultsMapping = [
     label: 'P Value', key: 'p_value',
   }
 ]
+export const RENTAL_DATA_ALLOWED_EMAILS = ["weldensieteklay@gmail.com", 'zereyesus@gmail.com'];

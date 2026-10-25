@@ -17,19 +17,7 @@ const Dashboard = lazy(() => import("../pages/Dashboard"));
 const RentalDataDownload = lazy(() => import("../pages/RentalProperty/DfwRentalDashboard"));
 const RealEstateDashboard = lazy(() => import("../pages/RentalProperty/RealEstateDashboard"));
 
-// Emails allowed to access the Rental Data Download page.
-const RENTAL_DATA_ALLOWED_EMAILS = ["weldensieteklay@gmail.com", 'zereyesus@gmail.com'];
 
-
-const EmailRestrictedRoute = ({ children }) => {
-    const { user } = useUser();
-    const isAllowed = RENTAL_DATA_ALLOWED_EMAILS.includes(user?.email);
-
-    if (!isAllowed) {
-        return <Navigate to="/dashboard" replace />;
-    }
-    return children;
-};
 
 const AppRoutes = () => {
     const { user, setUser, clearUser } = useUser();

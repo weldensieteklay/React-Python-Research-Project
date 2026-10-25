@@ -6,11 +6,15 @@ import DataGrid from "../../components/table/AgGridTable";
 import PanelData from "../../components/PanelData";
 import { selectBestMethod, clearBestMethod } from "../../features/rentalProperty/rentalPropertySlice";
 
+//hooks
+import { useUser } from '../../hooks/useUser';
+
 // Import custom sub-modules
 import { csvEscape, downloadCsv } from "./utils";
 import { buildZoriGridProps, toDashboardRows } from "./transformer";
 import { ModelReport } from "./reports";
 import RentDivergenceReport from "./RentDivergenceReport";
+import { RENTAL_DATA_ALLOWED_EMAILS } from '../../constants/constants';
 
 // Exported panel columns. Rates are in percent; real_gdp is joined on HUD fiscal year (Oct-Sep).
 const EXPORT_COLUMNS = [
@@ -27,6 +31,8 @@ export default function DfwRentalDashboard() {
 
   const dispatch = useDispatch();
   const best = useSelector(selectBestMethod);
+  const { user } = useUser();
+  const isAllowed = RENTAL_DATA_ALLOWED_EMAILS.includes(user?.email);
 
   useEffect(() => {
     handleFetch("data/dfw-zori");
@@ -108,7 +114,7 @@ export default function DfwRentalDashboard() {
           <button onClick={() => setView(view === "table" ? "graph" : "table")} className="px-4 py-1.5 text-sm font-semibold rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-colors">
             {view === "table" ? "📊 Trend Charts" : "📋 Relational Grid"}
           </button>
-          <button onClick={handleDownloadCsv} className="px-4 py-1.5 text-sm font-semibold rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-colors">📥 Export CSV</button>
+          {isAllowed && <button onClick={handleDownloadCsv} className="px-4 py-1.5 text-sm font-semibold rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-colors">📥 Download CSV</button>}
           <button onClick={() => setView("research")} className="px-4 py-1.5 text-sm font-semibold rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-colors">🔬 Boom Divergence</button>
           <button onClick={() => setView("forecast")} className="px-4 py-1.5 text-sm font-semibold rounded-md bg-emerald-600 hover:bg-emerald-700 text-white transition-colors">⚡ Train Forecast Engine</button>
         </div>
