@@ -114,7 +114,7 @@ export default function DfwRentalDashboard() {
           <button onClick={() => setView(view === "table" ? "graph" : "table")} className="px-4 py-1.5 text-sm font-semibold rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-colors">
             {view === "table" ? "📊 Trend Charts" : "📋 Relational Grid"}
           </button>
-          {isAllowed && <button onClick={handleDownloadCsv} className="px-4 py-1.5 text-sm font-semibold rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-colors">📥 Export CSV</button>}
+          {isAllowed && <button onClick={handleDownloadCsv} className="px-4 py-1.5 text-sm font-semibold rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-colors">📥 Download CSV</button>}
           <button onClick={() => setView("research")} className="px-4 py-1.5 text-sm font-semibold rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-colors">🔬 Boom Divergence</button>
           <button onClick={() => setView("forecast")} className="px-4 py-1.5 text-sm font-semibold rounded-md bg-emerald-600 hover:bg-emerald-700 text-white transition-colors">⚡ Train Forecast Engine</button>
         </div>
