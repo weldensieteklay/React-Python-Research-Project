@@ -1,7 +1,7 @@
 export const dashboardRoute = [
     {
       downloadRentalData: {
-          title: "Rental Data Download",
+          title: "DFW ZIP-Level Rent Data",
           route: "/dashboard/rental-data"
       }},
        {
@@ -9,21 +9,21 @@ export const dashboardRoute = [
           title: "Real Estate Dashboard",
           route: "/dashboard/real-estate-data"
       }},
-    {
-      crossSectional: {
-          title: "Cross-Sectional Data",
-          route: "/dashboard/cross-sectional"
-      }},
-    {timeSeries: {
-        title: "Time Series Data",
-        route: "/dashboard/time-series"
-    }},
-    {
-      panelData: {
-        title: "Panel Data",
-        route: "/dashboard/panel-data"
-      }
-    },
+    // {
+    //   crossSectional: {
+    //       title: "Cross-Sectional Data",
+    //       route: "/dashboard/cross-sectional"
+    //   }},
+    // {timeSeries: {
+    //     title: "Time Series Data",
+    //     route: "/dashboard/time-series"
+    // }},
+    // {
+    //   panelData: {
+    //     title: "Panel Data",
+    //     route: "/dashboard/panel-data"
+    //   }
+    // },
 ]
 
 const timeSeriesResultsMapping = [

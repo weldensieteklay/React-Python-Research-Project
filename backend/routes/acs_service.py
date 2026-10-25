@@ -1,151 +1,229 @@
-"""
-routes/data_routes.py
-
-One endpoint: reads the DFW rent panel bundled with the backend, pulls
-matching ACS features live using the backend-configured Census API key,
-merges them, and returns the merged CSV as the response body.
-
-Add to your main router (e.g. in routes/routes.py):
-
-    from routes.data_routes import router as data_router
-    router.include_router(data_router, prefix="/data")
-
-Sits behind your existing verify_google_token middleware automatically,
-since it is not listed in PUBLIC_PATHS.
-"""
-
-import os
+import asyncio
 import io
+
 import pandas as pd
-from io import BytesIO
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from typing import Optional
-from functools import lru_cache
-from pathlib import Path
 
-from services.acs_service import build_macro_by_fiscal_year, build_ten_year_dfw_dataset, fit_predict
-from services.macro_indicators_service import fetch_all_indicators
+from services.acs_service import (
+    build_macro_by_fiscal_year,
+    build_historical_dfw_zori_dataset,
+    build_zip_covariates,
+)
 from services.cycle_score_transform import compute_cycle_score
+from services.macro_indicators_service import (
+    fetch_all_indicators,
+    get_gdp_by_year,
+    get_monthly_macro,
+    NO_GDP,
+    NO_MONTHLY_MACRO,
+)
+from services.rent_divergence_model import fit_divergence_model
+
 
 router = APIRouter()
 
-# Path to the rent panel file bundled with the backend deployment.
-# Place dfw_rent_panel.csv in a `data/` folder at the project root.
-PANEL_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "dfw_rent_panel.csv")
+
+def _records(df: pd.DataFrame) -> list[dict]:
+    """JSON-safe rows: NaN -> None (NaN is not valid JSON)."""
+    return df.astype(object).where(df.notna(), None).to_dict("records")
 
 
-@router.get("/rent-panel-with-acs")
-async def get_rent_panel_with_acs():
-    """
-    Reads the bundled DFW rent panel, fetches ACS demographic/housing
-    features for every zip code in it, merges them together, and returns
-    the merged dataset as a downloadable CSV.
-    """
-    if not os.path.exists(PANEL_PATH):
-        raise HTTPException(status_code=500, detail="Rent panel file not found on backend.")
+# ---------------------------------------------------------------------------
+# Zillow ZORI (cached in memory; Zillow updates monthly, restart to refresh)
+# ---------------------------------------------------------------------------
+_zori_cache = None
+_zori_lock = asyncio.Lock()
 
-    panel = pd.read_csv(PANEL_PATH, dtype={"zip_code": str})
-    panel["zip_code"] = panel["zip_code"].str.zfill(5)
-    zip_list = panel["zip_code"].unique().tolist()
 
-    try:
-        acs_df = await get_acs_dataframe(zip_list)
-    except ValueError as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Failed to fetch ACS data: {e}")
+async def _get_zori() -> dict:
+    global _zori_cache
+    if _zori_cache is None:
+        async with _zori_lock:
+            if _zori_cache is None:
+                rows, failures = await asyncio.to_thread(build_historical_dfw_zori_dataset)
+                if not rows:
+                    raise HTTPException(status_code=502, detail=f"Zillow ingestion failed: {failures}")
+                _zori_cache = {"rows": rows, "failures": failures}
+    return _zori_cache
 
-    merged = panel.merge(acs_df, on="zip_code", how="left")
 
-    buf = BytesIO()
-    merged.to_csv(buf, index=False)
-    buf.seek(0)
+async def _joined_zori_rows() -> tuple[pd.DataFrame, dict]:
+    """ZORI rows with monthly macro joined on month and real GDP on HUD fiscal year."""
+    zori = await _get_zori()
+    gdp_cache, macro_cache = await asyncio.gather(get_gdp_by_year(), get_monthly_macro())
+    gdp_by_year = gdp_cache.get("by_year", {})
+    macro_by_month = macro_cache.get("by_month", {})
 
-    return StreamingResponse(
-        buf,
-        media_type="text/csv",
-        headers={"Content-Disposition": 'attachment; filename="dfw_rent_panel_with_acs.csv"'},
-    )
-
-"""
-DFW Rental Dashboard API — ZIP-code level.
-File: backend/routes/acs_service.py
-Data:  backend/services/dfw_safmr_full.csv
-
-Drop into your existing FastAPI app:
-    from routes.acs_service import router as dfw_router
-    app.include_router(dfw_router, prefix="/api/dfw-rentals")
-
-Data file expected columns: zip_code, area, bedrooms, safmr_rent
-"""
-
-BASE_DIR = Path(__file__).resolve().parent.parent  # -> backend/
-DATA_PATH = BASE_DIR / "services" / "dfw_safmr_full.csv"
-
-BEDROOM_LABELS = {0: "Studio", 1: "1 BR", 2: "2 BR", 3: "3 BR", 4: "4 BR"}
-
-# simple in-memory cache since HUD updates this file ~yearly
-_cache = None
-_forecast_cache = None  # separate variable, same route
-@router.get("/dfw-safmr")
-def get_dfw_safmr_history():
-    global _cache, _forecast_cache
-
-    if _cache is None:
-        rows, failures = build_ten_year_dfw_dataset()
-        if not rows:
-            raise HTTPException(status_code=502, detail=f"All years failed: {failures}")
-        _cache = {"rows": rows, "failures": failures}
-
-    if _forecast_cache is None:
-        panel = pd.DataFrame(_cache["rows"])
-        forecast_df = fit_predict(panel, horizon_years=2)  # -> 2027, 2028
-
-        actuals_df = panel.copy()
-        actuals_df["is_forecast"] = False
-        forecast_df["is_forecast"] = True
-
-        combined = pd.concat([actuals_df, forecast_df], ignore_index=True, sort=False)
-        combined = combined.sort_values(["zip_code", "bedrooms", "fiscal_year"]).reset_index(drop=True)
-
-        _forecast_cache = {
-            "rows": combined.where(combined.notna(), None).to_dict("records"),
-            "skipped_zips": forecast_df.attrs.get("skipped_zips", []),
-            "model": "gradient_boosting",
+    joined_rows = [
+        {
+            **r,
+            **NO_GDP,
+            **NO_MONTHLY_MACRO,
+            **gdp_by_year.get(int(r["fiscal_year"]), {}),
+            **macro_by_month.get(r["month_year"], {}),
         }
+        for r in zori["rows"]
+    ]
 
+    failures = dict(zori["failures"])
+    if gdp_cache.get("error"):
+        failures["real_gdp"] = gdp_cache["error"]
+    failures.update({f"macro_{k}": v for k, v in macro_cache.get("errors", {}).items()})
+    return pd.DataFrame(joined_rows), failures
+
+
+@router.get("/dfw-zori")
+async def get_dfw_zori_history():
+    """
+    Zillow Observed Rent Index actuals for DFW, one row per ZIP code x calendar month.
+    Monthly macro values are joined on the same month; real GDP is joined on the HUD
+    fiscal year the month falls in (Oct-Sep).
+    """
+    df, failures = await _joined_zori_rows()
+    return {"rows": _records(df), "failures": failures}
+
+
+# ---------------------------------------------------------------------------
+# ZIP-level covariates (Census Gazetteer + ACS); change ~yearly, cached in memory
+# ---------------------------------------------------------------------------
+_covariate_cache = None
+_covariate_lock = asyncio.Lock()
+
+
+async def _get_zip_covariates() -> dict:
+    global _covariate_cache
+    if _covariate_cache is None:
+        async with _covariate_lock:
+            if _covariate_cache is None:
+                zori = await _get_zori()
+                zips = {r["zip_code"] for r in zori["rows"]}
+                df, failures = await asyncio.to_thread(build_zip_covariates, list(zips))
+                # Don't cache a result where a whole source failed; retry next request
+                if any(k.startswith(("gazetteer", "acs_")) for k in failures):
+                    return {"df": df, "failures": failures}
+                _covariate_cache = {"df": df, "failures": failures}
+    return _covariate_cache
+
+
+@router.get("/dfw-zip-covariates")
+async def dfw_zip_covariates():
+    """One row per DFW ZIP: distance to downtown, pre-boom income / renter share /
+    density, and new-supply measures."""
+    cov = await _get_zip_covariates()
+    df = cov["df"]
     return {
-        "rows": _forecast_cache["rows"],              # actuals + 2027/2028 forecast, combined
-        "failures": _cache["failures"],
-        "skipped_zips": _forecast_cache["skipped_zips"],
-        "model": _forecast_cache["model"],
+        "rows": _records(df),
+        "acs_baseline_year": df.attrs.get("acs_baseline_year"),
+        "acs_recent_year": df.attrs.get("acs_recent_year"),
+        "failures": cov["failures"],
     }
 
 
+PANEL_CSV_COLUMNS = [
+    "zip_code", "City", "county", "month_year", "fiscal_year", "zori_rent",
+    "real_gdp", "real_gdp_growth",
+    "unemployment_rate", "unemployment_rate_change", "unemployment_rate_lag_6m",
+    "interest_rate", "interest_rate_change", "mortgage_rate_30y", "inflation_rate",
+]
+COVARIATE_CSV_COLUMNS = [
+    "dist_downtown_mi", "nearest_downtown", "land_area_sqmi",
+    "population", "pop_density_sqmi", "median_household_income", "renter_share",
+    "median_gross_rent_acs", "new_build_share", "renter_stock_growth",
+]
+
+
+@router.get("/rent-panel-with-acs")
+async def rent_panel_with_acs():
+    """CSV download: the ZORI x month panel with macro columns plus the ZIP-level
+    Census covariates (repeated on every month of a ZIP). Census columns are blank,
+    not missing, if a Census source failed; the reason is in the X-Data-Failures header."""
+    df, failures = await _joined_zori_rows()
+    cov = await _get_zip_covariates()
+    failures.update(cov["failures"])
+
+    cov_df = cov["df"].reindex(columns=["zip_code", *COVARIATE_CSV_COLUMNS])
+    out = df.reindex(columns=PANEL_CSV_COLUMNS).merge(cov_df, on="zip_code", how="left")
+    out = out.sort_values(["zip_code", "month_year"])
+
+    buf = io.StringIO()
+    out.to_csv(buf, index=False)
+    headers = {"Content-Disposition": 'attachment; filename="dfw_rent_panel_with_acs.csv"'}
+    if failures:
+        headers["X-Data-Failures"] = ", ".join(sorted(failures))   # source names only
+        headers["Access-Control-Expose-Headers"] = "X-Data-Failures"
+    return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv", headers=headers)
+
+
+# ---------------------------------------------------------------------------
+# Research question: did the 2021-22 boom end differently across ZIPs, and why?
+# ---------------------------------------------------------------------------
+@router.get("/dfw-rent-divergence")
+async def dfw_rent_divergence(
+    spec: str = Query("full", pattern="^(base|full)$",
+                      description="base = boom, rent level, county; full = adds Census traits"),
+    event_study: bool = Query(False, description="Separate post-peak effects by year"),
+    rate_interaction: bool = Query(True, description="Add mortgage rate x pre-boom rent level"),
+    start: str = Query("2020-01", pattern=r"^\d{4}-\d{2}$"),
+    end: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"),
+    post_after: str = Query("2022-08", pattern=r"^\d{4}-\d{2}$",
+                            description="Last month of the boom; Post = months after this"),
+    compare_from: str = Query("2022-03", pattern=r"^\d{4}-\d{2}$",
+                              description="Start of the near-peak comparison period"),
+):
+    zori = await _get_zori()
+    panel = pd.DataFrame(zori["rows"])
+
+    failures = {}
+    covariates = None
+    if spec == "full":
+        cov = await _get_zip_covariates()
+        covariates, failures = cov["df"], dict(cov["failures"])
+
+    macro_by_month = None
+    if rate_interaction:
+        macro_cache = await get_monthly_macro()
+        macro_by_month = macro_cache.get("by_month") or None
+        failures.update({f"macro_{k}": v for k, v in macro_cache.get("errors", {}).items()})
+
+    try:
+        result = await asyncio.to_thread(
+            fit_divergence_model, panel, covariates, macro_by_month, spec, event_study,
+            start=start, end=end, post_after=post_after, compare_from=compare_from,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    result["data_failures"] = failures
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Existing routes
+# ---------------------------------------------------------------------------
 _macro_cache = None
+
+
 def get_macro():
     global _macro_cache
     if _macro_cache is None:
         _macro_cache = build_macro_by_fiscal_year()
     return _macro_cache
 
+
 @router.get("/dfw-macro")
 def dfw_macro():
     df, failures = get_macro()
-    return {"rows": df.where(df.notna(), None).to_dict("records"), "failures": failures}
+    return {"rows": _records(df), "failures": failures}
+
 
 real_estate_cache = None
+
+
 @router.get("/macro-indicators")
 async def get_macro_indicators():
     global real_estate_cache
     indicators = await fetch_all_indicators()
     indicators["cycle_score"] = compute_cycle_score(indicators["automated"])
     real_estate_cache = indicators
-    return real_estate_cache
-
-@router.post("/macro-indicators/refresh")
-async def refresh_macro_indicators():
-    global real_estate_cache
-    real_estate_cache = await fetch_all_indicators()
     return real_estate_cache

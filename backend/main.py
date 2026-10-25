@@ -1,34 +1,33 @@
-from fastapi import FastAPI, Request
+import os
+from typing import Annotated
+from fastapi import FastAPI, Request, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.security import OAuth2PasswordBearer
 from dotenv import load_dotenv
-from routes.routes import router
 
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 from controller.common.rate_limiter import limiter
 from slowapi.errors import RateLimitExceeded
-import os
+from routes.routes import router
 
+# Load environment configuration variables
 load_dotenv()
-
-app = FastAPI()
-
-app.state.limiter = limiter
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 
-PUBLIC_PATHS = {
-    "/",
-    "/docs",
-    "/redoc",
-    "/openapi.json",
-}
+app = FastAPI(
+    title="Econ Web Cast API",
+    description="Secure enterprise backend with Google OIDC authentication.",
+    version="1.0.0"
+)
 
-# ─────────────────────────────────────────
-# CORS — must be added BEFORE auth middleware
-# so preflight OPTIONS responses include the
-# correct headers before auth run
-# ─────────────────────────────────────────
+# Initialize global rate limiting engine
+app.state.limiter = limiter
+
+# ───────────────────────────────────────────────
+# 🛡️ CORS MIDDLEWARE CONFIGURATION
+# ───────────────────────────────────────────────
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
@@ -43,64 +42,75 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ───────────────────────────────────────────────
+# 🔐 AUTHENTICATION SECURITY DEPENDENCY
+# ───────────────────────────────────────────────
+# Automatically handles extracting the 'Bearer <token>' substring from request headers
+# auto_error=False ensures native CORS processing parameters operate unimpeded
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
+
+async def verify_google_token(
+    request: Request, 
+    token: Annotated[str, Depends(oauth2_scheme)]
+) -> dict:
+    """
+    Dependency validator that verifies the incoming Google OIDC ID token.
+    Attaches the verified user information payload directly to the request state context.
+    """
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or structurally invalid Authorization bearer token header."
+        )
+
+    try:
+        # Cryptographically verifies the signature locally using cached Google certs
+        decoded_user = id_token.verify_oauth2_token(
+            token, 
+            google_requests.Request(), 
+            GOOGLE_CLIENT_ID
+        )
+        
+        # Mount the payload to request.state so existing controllers can access it unchanged
+        request.state.user = decoded_user
+        return decoded_user
+
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="The provided authentication token has expired or is invalid."
+        )
+    except Exception as e:
+        print(f"[AUTH ERROR] Unexpected token resolution failure: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal authentication framework processing failure."
+        )
+
+# ───────────────────────────────────────────────
+# ❌ SYSTEM GLOBAL EXCEPTION HANDLERS
+# ───────────────────────────────────────────────
 @app.exception_handler(RateLimitExceeded)
 async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
     return JSONResponse(
-        status_code=429,
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
         content={
             "success": False,
             "error": "Too many requests. Please try again in one minute."
         },
     )
 
-@app.middleware("http")
-async def verify_google_token(request: Request, call_next):
-     # Allow CORS preflight requests
-    if request.method == "OPTIONS":
-        return await call_next(request)
-    
-    if request.url.path in PUBLIC_PATHS:
-        return await call_next(request)
-    
-    auth_header = request.headers.get("Authorization")
+# ───────────────────────────────────────────────
+# 🔌 APPLICATION ROUTES
+# ───────────────────────────────────────────────
+# Protects ALL routes under /api automatically by injecting the dependency gateway.
+# Public endpoints like /, /docs, /redoc, and /openapi.json naturally stay accessible.
+app.include_router(
+    router, 
+    prefix="/api", 
+    dependencies=[Depends(verify_google_token)]
+)
 
-    if not auth_header or not auth_header.startswith("Bearer "):
-        return JSONResponse(
-            status_code=401,
-            content={"success": False, "error": "Missing or invalid Authorization header"},
-        )
-
-    token = auth_header[len("Bearer "):].strip()
-
-    if not token:
-        return JSONResponse(
-            status_code=401,
-            content={"success": False, "error": "Empty bearer token"},
-        )
-
-    try:
-        decoded = id_token.verify_oauth2_token(token, google_requests.Request(), GOOGLE_CLIENT_ID)
-        request.state.user = decoded
-    except ValueError:
-        return JSONResponse(
-            status_code=401,
-            content={"success": False, "error": "Invalid or expired token"},
-        )
-    except Exception as e:
-        # Catch-all so an unexpected error never bypasses CORS headers
-        print(f"[AUTH] Unexpected error: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={"success": False, "error": "Internal authentication error"},
-        )
-
-    return await call_next(request)
-# ─────────────────────────────────────────
-# ROUTES
-# ─────────────────────────────────────────
-app.include_router(router, prefix="/api")
-
-
-@app.get("/")
+@app.get("/", tags=["System Monitoring"])
 def root():
-    return {"message": "Backend is running"}
+    return {"message": "Backend is running smoothly"}

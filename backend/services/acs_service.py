@@ -1,24 +1,38 @@
 """
 services/acs_service.py
 
-Combined async service for pulling:
-  - ACS 5-Year zip-code-level demographic/housing variables (Census Bureau)
-  - DFW metro-level macroeconomic series (FRED)
+Data builders used by the DFW routes:
+  - DFW metro macroeconomic series from FRED, averaged by HUD fiscal year
+  - Zillow Observed Rent Index (ZORI) ZIP-level monthly history for DFW
+  - ZIP-level covariates for the rent-divergence model:
+      * distance to downtown Dallas / Fort Worth and land area (Census Gazetteer)
+      * pre-boom income, renter share, population (ACS 5-year, baseline vintage)
+      * new supply: renter-stock growth and share of units built 2020+ (ACS, recent vintage)
 
-The Census API key is read from the backend environment only — never
-passed by the client. No key is required for the FRED CSV endpoint.
+API keys are read from the backend environment only (FRED_API_KEY required,
+CENSUS_API_KEY optional), never passed by the client.
 """
 
-import os
-import httpx
-import pandas as pd
-from io import StringIO
-import requests
 import io
+import os
+import re
+
 import numpy as np
-from sklearn.ensemble import GradientBoostingRegressor
-from sklearn.model_selection import TimeSeriesSplit
-from sklearn.metrics import mean_squared_error
+import pandas as pd
+import requests
+
+
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    )
+}
+
+
+# ---------------------------------------------------------------------------
+# FRED macro series (fiscal-year, used by /dfw-macro)
+# ---------------------------------------------------------------------------
 
 FRED_URL = "https://api.stlouisfed.org/fred/series/observations"
 
@@ -33,6 +47,7 @@ MACRO_SERIES = {
     "fed_funds_rate":      "FEDFUNDS",
     "unemployment_us":     "UNRATE",
 }
+
 
 def fetch_fred(series_id: str) -> pd.Series:
     resp = requests.get(
@@ -51,10 +66,12 @@ def fetch_fred(series_id: str) -> pd.Series:
     )
     return s.dropna()
 
+
 def to_fiscal_year(s: pd.Series) -> pd.Series:
     """HUD FY runs Oct-Sep: FY2026 = Oct 2025 through Sep 2026."""
     fy = s.index.year + (s.index.month >= 10).astype(int)
     return s.groupby(fy).mean()
+
 
 def build_macro_by_fiscal_year() -> tuple[pd.DataFrame, dict]:
     cols, failures = {}, {}
@@ -73,262 +90,218 @@ def build_macro_by_fiscal_year() -> tuple[pd.DataFrame, dict]:
             df[f"{c}_yoy"] = df[c].pct_change() * 100
     return df.reset_index(), failures
 
-AREA_NAME_KEYWORDS = ["Dallas", "Fort Worth"]
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-    )
-}
 
-# Confirm/replace these with the exact hrefs from
-# https://huduser.gov/portal/node/6629 for each fiscal year you need.
-YEAR_URLS = {
-    2026: "https://www.huduser.gov/portal/datasets/fmr/fmr2026/fy2026_safmrs_revised.xlsx",
-    2025: "https://www.huduser.gov/portal/datasets/fmr/fmr2025/fy2025_safmrs.xlsx",
-    2024: "https://www.huduser.gov/portal/datasets/fmr/fmr2024/fy2024_safmrs.xlsx",
-    2023: "https://www.huduser.gov/portal/datasets/fmr/fmr2023/fy2023_safmrs.xlsx",
-    2022: "https://www.huduser.gov/portal/datasets/fmr/fmr2022/fy2022_safmrs.xlsx",
-    2021: "https://www.huduser.gov/portal/datasets/fmr/fmr2021/fy2021_safmrs.xlsx",
-    2020: "https://www.huduser.gov/portal/datasets/fmr/fmr2020/fy2020_safmrs.xlsx",
-    2019: "https://www.huduser.gov/portal/datasets/fmr/fmr2019/fy2019_safmrs.xlsx",
-    2018: "https://www.huduser.gov/portal/datasets/fmr/fmr2018/fy2018_safmrs.xlsx",
-    2017: "https://www.huduser.gov/portal/datasets/fmr/fmr2017/fy2017_safmrs_revised.xlsx",
-}
+# ---------------------------------------------------------------------------
+# Zillow ZORI
+# ---------------------------------------------------------------------------
 
-def download_year(url: str) -> pd.DataFrame:
-    resp = requests.get(url, headers=HEADERS, timeout=120)
-    resp.raise_for_status()
-    if not resp.content.startswith(b"PK"):
-        raise RuntimeError(f"Non-xlsx response from {url}")
-    return pd.read_excel(io.BytesIO(resp.content), engine="openpyxl")
+# Zillow Observed Rent Index (ZORI) - smoothed (NOT seasonally adjusted), ZIP-level
+ZILLOW_ZORI_ZIP_URL = "https://files.zillowstatic.com/research/public_csvs/zori/Zip_zori_uc_sfrcondomfr_sm_month.csv"
 
-def find_column(df, *candidates):
-    cols_lower = {c.lower(): c for c in df.columns}
-    for cand in candidates:
-        for lower, original in cols_lower.items():
-            if cand in lower:
-                return original
-    raise KeyError(f"None of {candidates} found in columns: {list(df.columns)}")
+DATE_COL = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
-def process_year(df: pd.DataFrame, year: int) -> list[dict]:
-    zip_col = find_column(df, "zip")
-    area_col = find_column(df, "area name", "hud fair market rent area")
 
-    bedroom_cols = {}
-    for n in range(5):
-        for col in df.columns:
-            low = col.lower().replace("\n", " ")
-            if "safmr" in low and f"{n}br" in low and "standard" not in low and "%" not in low:
-                bedroom_cols[n] = col
-                break
-
-    pattern = "|".join(AREA_NAME_KEYWORDS)
-    is_dfw_name = df[area_col].astype(str).str.contains(pattern, case=False, na=False)
-    is_texas = df[area_col].astype(str).str.contains(r"\bTX\b", case=False, na=False)
-    dfw = df[is_dfw_name & is_texas].copy()
-
-    rows = []
-    for _, row in dfw.iterrows():
-        for bd, col in bedroom_cols.items():
-            rows.append({
-                "fiscal_year": year,
-                "zip_code": str(row[zip_col]).strip().zfill(5),
-                "area_name": row[area_col],
-                "bedrooms": bd,
-                "safmr_rent": row[col],
-            })
-    return rows
-
-def build_ten_year_dfw_dataset() -> tuple[list[dict], dict]:
+def build_historical_dfw_zori_dataset() -> tuple[list[dict], dict]:
+    """
+    Downloads Zillow's wide monthly matrix, slices out the DFW metro,
+    and melts it into normalized long-form rows.
+    """
     all_rows = []
     failures = {}
-    for year, url in YEAR_URLS.items():
-        try:
-            df = download_year(url)
-            all_rows.extend(process_year(df, year))
-        except Exception as e:
-            failures[year] = str(e)
+    try:
+        resp = requests.get(ZILLOW_ZORI_ZIP_URL, headers=HEADERS, timeout=120)
+        resp.raise_for_status()
+
+        # Verify the response is plain-text CSV, not a zipped archive
+        if resp.content.startswith(b"PK"):
+            raise RuntimeError("Unexpected compressed binary payload received from Zillow.")
+
+        df = pd.read_csv(io.BytesIO(resp.content))
+        all_rows = process_zillow_dfw_matrix(df)
+
+    except Exception as e:
+        failures["zori_pipeline"] = str(e)
+
     return all_rows, failures
 
 
-"""
-services/panel_models/gradient_boosting.py
+def process_zillow_dfw_matrix(df: pd.DataFrame) -> list[dict]:
+    missing = {"RegionName", "Metro"} - set(df.columns)
+    if missing:
+        raise ValueError(f"Zillow file is missing columns {sorted(missing)}; "
+                         f"first columns found: {list(df.columns[:10])}")
 
-Gradient boosting forecast for the DFW SAFMR panel, matching the
-fit_predict(panel, horizon_years) interface used by linear_trend.py
-and random_forest.py so it plugs into the same MODEL_REGISTRY.
+    df = df.rename(columns={"RegionName": "zip_code", "Metro": "msa_name",
+                            "StateName": "state", "CountyName": "county"})
+    df_dfw = df[df["msa_name"].str.contains("Dallas-Fort Worth", case=False, na=False)].copy()
 
-Design, per the specified config:
-    independent_variable: ["bedroom"]
-    date_column:          "fiscal_year"
-    dependent_variable:   "safmr_rent"
-    outliers:             "no"  (no clipping/winsorization applied)
+    id_cols = [c for c in ["RegionID", "SizeRank", "zip_code", "RegionType",
+                           "state", "City", "county", "msa_name"] if c in df_dfw.columns]
+    date_cols = [c for c in df_dfw.columns if DATE_COL.match(str(c))]   # real dates only
+    if not date_cols:
+        raise ValueError("No date columns found in the Zillow file")
 
-Each ZIP code is fit as its OWN pooled model across its 5 bedroom
-sizes (bedroom is the one exogenous feature), rather than one tiny
-model per (zip, bedroom) pair. With ~10 fiscal years x 5 bedrooms,
-that's ~50 training rows per ZIP instead of ~10 — still thin for
-boosting, but meaningfully better than fitting GradientBoostingRegressor
-on 10 points.
-
-Forecasting 2+ years ahead is done RECURSIVELY: since the model's own
-features are lags of the target, predicting FY2028 requires first
-predicting FY2027 and feeding that prediction back in as lag_1 before
-predicting FY2028. This step doesn't exist in a single-series fit/eval
-endpoint and is the main addition here.
-"""
-
-MODEL_NAME = "gradient_boosting"
-
-NUM_LAGS = 3
-MIN_YEARS_REQUIRED = NUM_LAGS + 2  # need lags + at least 2 points to fit/validate on
+    long = df_dfw.melt(id_vars=id_cols, value_vars=date_cols,
+                       var_name="raw_date", value_name="zori_rent").dropna(subset=["zori_rent"])
+    long["datetime"] = pd.to_datetime(long["raw_date"])
+    long["month_year"] = long["datetime"].dt.strftime("%Y-%m")
+    long["year"] = long["datetime"].dt.year
+    long["fiscal_year"] = long["year"] + (long["datetime"].dt.month >= 10).astype(int)
+    long["zip_code"] = long["zip_code"].astype(str).str.zfill(5)
+    return long.to_dict(orient="records")
 
 
-def _create_lag_features(df: pd.DataFrame, target_col: str, group_col: str, num_lags: int) -> pd.DataFrame:
-    """Lags computed WITHIN each bedroom group (so FY2020's 1BR lag_1 is
-    FY2019's 1BR rent, never another bedroom size's value), then the
-    groups are left pooled together as one training frame."""
-    df = df.sort_values(["fiscal_year"]).copy()
-    for lag in range(1, num_lags + 1):
-        df[f"{target_col}_lag_{lag}"] = df.groupby(group_col)[target_col].shift(lag)
-    return df
+# ---------------------------------------------------------------------------
+# ZIP-level covariates for the rent-divergence model
+# ---------------------------------------------------------------------------
+# Notes on geography: Zillow reports USPS ZIP codes; Census reports ZCTAs (ZIP Code
+# Tabulation Areas). For residential DFW ZIPs these almost always share the same
+# 5-digit code, so the join is on the code. ZIPs with no matching ZCTA (PO-box or
+# single-building ZIPs) come back with NaN covariates and are reported, not dropped
+# silently.
+
+CENSUS_API_KEY = os.environ.get("CENSUS_API_KEY", "")
+
+# Downtown reference points (city hall areas)
+DOWNTOWN_POINTS = {
+    "Dallas":     (32.7767, -96.7970),
+    "Fort Worth": (32.7555, -97.3308),
+}
+
+GAZETTEER_URL = os.environ.get(
+    "ZCTA_GAZETTEER_URL",
+    "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2023_Gazetteer/2023_Gaz_zcta_national.zip",
+)
+
+# Baseline = pre-boom (2015-2019 survey window), so covariates are not themselves
+# outcomes of the 2021-22 boom. Recent = the window that covers the 2023-24 supply wave.
+ACS_BASELINE_YEAR = int(os.environ.get("ACS_BASELINE_YEAR", "2019"))
+ACS_RECENT_YEAR = int(os.environ.get("ACS_RECENT_YEAR", "2024"))
+
+ACS_BASELINE_VARS = {
+    "B01003_001E": "population",
+    "B19013_001E": "median_household_income",
+    "B25003_001E": "occupied_units",
+    "B25003_003E": "renter_units",
+    "B25064_001E": "median_gross_rent_acs",
+}
+ACS_RECENT_VARS = {
+    "B25003_003E": "renter_units",
+    "B25034_001E": "total_units_by_year_built",
+    "B25034_002E": "units_built_2020_or_later",
+}
+ZCTA_GEO = "zip code tabulation area"
 
 
-def _fit_boosting(X_train, y_train, n_estimators=300, learning_rate=0.05, max_depth=3, subsample=0.8):
-    model = GradientBoostingRegressor(
-        n_estimators=n_estimators,
-        learning_rate=learning_rate,
-        max_depth=max_depth,
-        subsample=subsample,
-        random_state=42,
-    )
-    model.fit(X_train, y_train)
-    return model
+def _haversine_miles(lat1, lon1, lat2, lon2):
+    lat1, lon1, lat2, lon2 = map(np.radians, (lat1, lon1, lat2, lon2))
+    a = (np.sin((lat2 - lat1) / 2) ** 2
+         + np.cos(lat1) * np.cos(lat2) * np.sin((lon2 - lon1) / 2) ** 2)
+    return 3958.8 * 2 * np.arcsin(np.sqrt(a))
 
 
-def _evaluate_zip_model(df_zip: pd.DataFrame, lag_cols: list, cv_folds: int = 3) -> dict | None:
-    """Walk-forward CV + holdout MSE for one ZIP's pooled model.
-    Mirrors the TimeSeriesSplit approach in predict_price_boosting —
-    no shuffled k-fold, since that would leak future rows (and lags
-    built from them) into training."""
-    feature_cols = ["bedrooms"] + lag_cols
-    data = df_zip.dropna(subset=feature_cols + ["safmr_rent"]).reset_index(drop=True)
-
-    if len(data) < max(8, cv_folds * 4):
-        return None  # not enough pooled rows for this ZIP to CV reliably
-
-    X, y = data[feature_cols], data["safmr_rent"]
-
-    outer_cv = TimeSeriesSplit(n_splits=min(cv_folds, max(2, len(data) // 6)))
-    fold_mses = []
-    for train_idx, test_idx in outer_cv.split(X):
-        try:
-            fold_model = _fit_boosting(X.iloc[train_idx], y.iloc[train_idx])
-            preds = fold_model.predict(X.iloc[test_idx])
-            fold_mses.append(mean_squared_error(y.iloc[test_idx], preds))
-        except Exception:
-            continue
-
-    if not fold_mses:
-        return None
-
-    return {"cv_mse_mean": float(np.mean(fold_mses)), "folds_used": len(fold_mses)}
+def fetch_zcta_gazetteer() -> pd.DataFrame:
+    """One row per ZCTA: land area and internal point (lat/lon)."""
+    resp = requests.get(GAZETTEER_URL, headers=HEADERS, timeout=120)
+    resp.raise_for_status()
+    df = pd.read_csv(io.BytesIO(resp.content), sep="\t", dtype={"GEOID": str},
+                     compression="zip")
+    df.columns = [c.strip() for c in df.columns]   # last header carries trailing spaces
+    needed = {"GEOID", "ALAND_SQMI", "INTPTLAT", "INTPTLONG"}
+    if needed - set(df.columns):
+        raise ValueError(f"Gazetteer file missing {sorted(needed - set(df.columns))}; "
+                         f"columns found: {list(df.columns)}")
+    df["zip_code"] = df["GEOID"].str.zfill(5)
+    return df[["zip_code", "ALAND_SQMI", "INTPTLAT", "INTPTLONG"]].rename(columns={
+        "ALAND_SQMI": "land_area_sqmi", "INTPTLAT": "lat", "INTPTLONG": "lon",
+    })
 
 
-def _recursive_forecast_zip(df_zip: pd.DataFrame, lag_cols: list, horizon_years: int) -> list[dict]:
-    """Forecast each bedroom size forward `horizon_years`, feeding each
-    predicted value back in as next year's lag_1 (true multi-step
-    recursive forecasting, not just repeating the last trend)."""
-    feature_cols = ["bedrooms"] + lag_cols
-    train_data = df_zip.dropna(subset=feature_cols + ["safmr_rent"]).reset_index(drop=True)
-    if train_data.empty:
-        return []
-
-    model = _fit_boosting(train_data[feature_cols], train_data["safmr_rent"])
-
-    last_year = int(df_zip["fiscal_year"].max())
-    area_name = df_zip["area_name"].iloc[-1]
-    zip_code = df_zip["zip_code"].iloc[0]
-
-    # running history of actual (then predicted) rents, per bedroom size
-    history = {
-        bd: df_zip[df_zip["bedrooms"] == bd].sort_values("fiscal_year")["safmr_rent"].tolist()
-        for bd in df_zip["bedrooms"].unique()
-    }
-
-    forecasts = []
-    for step in range(1, horizon_years + 1):
-        year = last_year + step
-        for bd, series in history.items():
-            if len(series) < len(lag_cols):
-                continue  # not enough history for this bedroom size to build lags
-            row = {"bedrooms": bd}
-            for i, lag_col in enumerate(lag_cols, start=1):
-                row[lag_col] = series[-i]  # most recent values become lag_1, lag_2, ...
-            X_pred = pd.DataFrame([row])[feature_cols]
-            pred = float(model.predict(X_pred)[0])
-
-            forecasts.append({
-                "zip_code": zip_code,
-                "bedrooms": int(bd),
-                "area_name": area_name,
-                "fiscal_year": year,
-                "safmr_rent": round(pred, 2),
-                "model_name": MODEL_NAME,
-            })
-            series.append(pred)  # feed prediction back in for the NEXT step's lag
-
-    return forecasts
+def _check_acs_label(year: int, variable: str, must_contain: str) -> None:
+    """Census occasionally renumbers year-built bins between vintages. Confirm the
+    variable still means what we think before using it."""
+    url = f"https://api.census.gov/data/{year}/acs/acs5/variables/{variable}.json"
+    resp = requests.get(url, timeout=60)
+    resp.raise_for_status()
+    label = resp.json().get("label", "")
+    if must_contain.lower() not in label.lower():
+        raise ValueError(f"ACS {year} {variable} is '{label}', expected it to mention "
+                         f"'{must_contain}'. Update ACS_RECENT_VARS for this vintage.")
 
 
-def fit_predict(panel: pd.DataFrame, horizon_years: int = 2) -> pd.DataFrame:
-    """Entry point matching the shared panel-model interface. Fits one
-    pooled gradient boosting model per ZIP (across its bedroom sizes)
-    and recursively forecasts `horizon_years` beyond the latest
-    fiscal year in the panel (e.g. 2026 -> 2027, 2028)."""
-    df = panel.dropna(subset=["safmr_rent"]).copy()
-    lag_cols = [f"safmr_rent_lag_{i}" for i in range(1, NUM_LAGS + 1)]
-
-    all_forecasts = []
-    skipped_zips = []
-
-    for zip_code, df_zip in df.groupby("zip_code"):
-        n_years = df_zip["fiscal_year"].nunique()
-        if n_years < MIN_YEARS_REQUIRED:
-            skipped_zips.append(zip_code)
-            continue
-
-        df_zip_lagged = _create_lag_features(df_zip, "safmr_rent", "bedrooms", NUM_LAGS)
-        zip_forecasts = _recursive_forecast_zip(df_zip_lagged, lag_cols, horizon_years)
-        all_forecasts.extend(zip_forecasts)
-
-    result = pd.DataFrame(all_forecasts)
-    if skipped_zips:
-        result.attrs["skipped_zips"] = skipped_zips  # surfaced by the router, not lost silently
-    return result
+def fetch_acs_zcta(year: int, variables: dict) -> pd.DataFrame:
+    """All ZCTAs nationally in one request, filtered locally afterwards. Asking for a
+    list of specific ZCTAs fails if any one of them doesn't exist in that vintage."""
+    params = {"get": ",".join(variables), "for": f"{ZCTA_GEO}:*"}
+    if CENSUS_API_KEY:
+        params["key"] = CENSUS_API_KEY
+    resp = requests.get(f"https://api.census.gov/data/{year}/acs/acs5", params=params, timeout=180)
+    resp.raise_for_status()
+    data = resp.json()
+    df = pd.DataFrame(data[1:], columns=data[0])
+    df["zip_code"] = df[ZCTA_GEO].astype(str).str.zfill(5)
+    for var in variables:
+        df[var] = pd.to_numeric(df[var], errors="coerce")
+        df.loc[df[var] < 0, var] = np.nan   # Census sentinels such as -666666666
+    return df[["zip_code", *variables]].rename(columns=variables)
 
 
-def evaluate(panel: pd.DataFrame, cv_folds: int = 3) -> dict:
-    """Separate from fit_predict: returns per-ZIP and overall CV MSE,
-    for comparing this model against linear_trend / random_forest by
-    the same metric before picking a 'best' model."""
-    df = panel.dropna(subset=["safmr_rent"]).copy()
-    lag_cols = [f"safmr_rent_lag_{i}" for i in range(1, NUM_LAGS + 1)]
+def build_zip_covariates(zip_codes: list[str]) -> tuple[pd.DataFrame, dict]:
+    """
+    Returns one row per requested ZIP with:
+      dist_downtown_mi, nearest_downtown, land_area_sqmi            (Gazetteer)
+      population, median_household_income, renter_share,
+      pop_density_sqmi, median_gross_rent_acs                       (ACS baseline)
+      renter_stock_growth, new_build_share                          (ACS recent vs baseline)
+    Each source fails independently; failures are reported, columns left NaN.
+    """
+    zips = sorted({str(z).zfill(5) for z in zip_codes})
+    out = pd.DataFrame({"zip_code": zips})
+    failures = {}
 
-    per_zip_results = {}
-    all_mses = []
+    # 1. Location
+    try:
+        gaz = fetch_zcta_gazetteer()
+        out = out.merge(gaz, on="zip_code", how="left")
+        dists = {
+            name: _haversine_miles(out["lat"], out["lon"], lat, lon)
+            for name, (lat, lon) in DOWNTOWN_POINTS.items()
+        }
+        dist_df = pd.DataFrame(dists)
+        out["dist_downtown_mi"] = dist_df.min(axis=1)
+        out["nearest_downtown"] = dist_df.idxmin(axis=1).where(dist_df.notna().any(axis=1))
+    except Exception as e:
+        failures["gazetteer"] = str(e)
 
-    for zip_code, df_zip in df.groupby("zip_code"):
-        df_zip_lagged = _create_lag_features(df_zip, "safmr_rent", "bedrooms", NUM_LAGS)
-        result = _evaluate_zip_model(df_zip_lagged, lag_cols, cv_folds)
-        if result:
-            per_zip_results[zip_code] = result
-            all_mses.append(result["cv_mse_mean"])
+    # 2. Pre-boom demographics
+    try:
+        base = fetch_acs_zcta(ACS_BASELINE_YEAR, ACS_BASELINE_VARS)
+        out = out.merge(base, on="zip_code", how="left")
+        out["renter_share"] = out["renter_units"] / out["occupied_units"]
+        if "land_area_sqmi" in out:
+            out["pop_density_sqmi"] = out["population"] / out["land_area_sqmi"]
+    except Exception as e:
+        failures[f"acs_{ACS_BASELINE_YEAR}"] = str(e)
 
-    return {
-        "model": MODEL_NAME,
-        "zips_evaluated": len(per_zip_results),
-        "overall_mse_mean": float(np.mean(all_mses)) if all_mses else None,
-        "per_zip": per_zip_results,
-    }
+    # 3. New supply
+    try:
+        _check_acs_label(ACS_RECENT_YEAR, "B25034_002E", "2020")
+        recent = fetch_acs_zcta(ACS_RECENT_YEAR, ACS_RECENT_VARS).rename(
+            columns={"renter_units": "renter_units_recent"})
+        out = out.merge(recent, on="zip_code", how="left")
+        out["new_build_share"] = out["units_built_2020_or_later"] / out["total_units_by_year_built"]
+        if "renter_units" in out:
+            out["renter_stock_growth"] = out["renter_units_recent"] / out["renter_units"] - 1
+    except Exception as e:
+        failures[f"acs_{ACS_RECENT_YEAR}"] = str(e)
+
+    out = out.replace([np.inf, -np.inf], np.nan)
+    # Only meaningful when the sources themselves loaded; otherwise every ZIP looks unmatched
+    unmatched = []
+    if "lat" in out:
+        unmatched = out.loc[out["lat"].isna(), "zip_code"].tolist()
+    if unmatched:
+        failures["zips_without_census_match"] = unmatched
+    out.attrs["acs_baseline_year"] = ACS_BASELINE_YEAR
+    out.attrs["acs_recent_year"] = ACS_RECENT_YEAR
+    return out, failures

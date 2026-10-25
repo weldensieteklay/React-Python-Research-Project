@@ -70,6 +70,109 @@ def _time_numeric(values):
     return 1970.0 + (dt - pd.Timestamp("1970-01-01")).dt.days.to_numpy() / 365.25
 
 
+def _sorted_periods(values):
+    """Distinct period labels, oldest first, ordered by actual time rather than as text.
+    Sorting as text puts '10/1/2020' before '2/1/2020' and '9/1/2024' after '12/1/2025',
+    which would hold out (and cross-validate on) the wrong periods."""
+    uniq = pd.Series(pd.unique(pd.Series(values).dropna()))
+    try:
+        t = _time_numeric(uniq)
+    except ValueError:
+        return sorted(uniq.tolist(), key=str)
+    return uniq.iloc[np.argsort(t, kind="stable")].tolist()
+
+
+def _json_label(v):
+    """JSON-safe period label."""
+    if isinstance(v, (pd.Timestamp, np.datetime64)):
+        return pd.Timestamp(v).strftime("%Y-%m-%d")
+    return v.item() if hasattr(v, "item") else v
+
+
+NA_TOKENS = {"": None, "NA": None, "N/A": None, "na": None, "n/a": None, "null": None,
+             "NULL": None, "None": None, "nan": None, "NaN": None, ".": None, "-": None}
+
+
+def _check_text_predictors(raw_df, independent_cols, categorical_cols):
+    """A predictor that holds text but isn't marked categorical becomes all-missing when it is
+    converted to numbers, every row is then dropped, and the user only sees 'dataset too
+    small'. Name the column instead."""
+    bad = []
+    for c in independent_cols:
+        if c in categorical_cols or c not in raw_df.columns:
+            continue
+        s = raw_df[c].replace(NA_TOKENS)
+        text = s.notna() & pd.to_numeric(s, errors="coerce").isna()
+        if text.any():
+            bad.append(f"'{c}' (e.g. {s[text].iloc[0]!r})")
+    if bad:
+        raise ValueError(
+            f"Independent variable(s) {', '.join(bad)} contain text. Mark them as categorical "
+            f"variables, or remove them."
+        )
+
+
+def _missing_report(before, after, cols, time_col):
+    """What dropping rows with missing values cost: rows lost, the columns responsible, and
+    whether recent periods were lost. If the latest period is lost, the model ends earlier
+    than the data and the 'forecast' starts at a period that already has actual values."""
+    rep = {
+        "rows_in": int(len(before)),
+        "rows_used": int(len(after)),
+        "rows_dropped_missing": int(len(before) - len(after)),
+        "missing_by_column": {str(c): int(n) for c, n in before[cols].isna().sum().items() if n > 0},
+        "latest_period_in_data": None,
+        "latest_period_used": None,
+        "periods_lost": [],
+        "warning": None,
+    }
+    if time_col and len(before):
+        all_p = _sorted_periods(before[time_col])
+        used = set(after[time_col].tolist()) if len(after) else set()
+        lost = [p for p in all_p if p not in used]
+        rep["latest_period_in_data"] = _json_label(all_p[-1])
+        rep["latest_period_used"] = _json_label([p for p in all_p if p in used][-1]) if used else None
+        rep["periods_lost"] = [_json_label(p) for p in lost][:24]
+        if lost and lost[-1] == all_p[-1]:
+            tail = []
+            for p in reversed(all_p):
+                if p in used:
+                    break
+                tail.append(_json_label(p))
+            cols_txt = ", ".join(rep["missing_by_column"]) or "the model columns"
+            rep["warning"] = (
+                f"The latest period(s) {list(reversed(tail))} have missing values ({cols_txt}) in every "
+                f"row, so they were left out: the model ends at {rep['latest_period_used']} and the "
+                f"forecast starts right after it, inside periods that already have data. Fill those "
+                f"values (e.g. carry the previous period forward) or drop the predictor."
+            )
+        elif lost:
+            rep["warning"] = (
+                f"{len(lost)} period(s) have no complete rows and were left out of the model "
+                f"(e.g. {rep['periods_lost'][:3]})."
+            )
+    return rep
+
+
+def _calendar_step_periods(idx, horizon):
+    """Continue a date axis pandas couldn't assign a frequency to (usually because a period is
+    missing). When every date is the 1st of a month, or every date is a month end, step by the
+    most common number of whole months; a plain '31 days' step drifts (Oct 2, Nov 2, Dec 3).
+    Otherwise use the most common gap in days."""
+    months = pd.Series(idx.year * 12 + idx.month)
+    steps = months.diff().dropna()
+    steps = steps[steps > 0]
+    month_start = bool((idx.day == 1).all())
+    month_end = bool(idx.is_month_end.all())
+    if len(steps) and (month_start or month_end):
+        step = int(steps.mode().iloc[0])
+        if month_end and not month_start:
+            return pd.DatetimeIndex([idx[-1] + pd.offsets.MonthEnd(step * h) for h in range(1, horizon + 1)])
+        return pd.DatetimeIndex([idx[-1] + pd.DateOffset(months=step * h) for h in range(1, horizon + 1)])
+    delta = pd.Series(idx[1:] - idx[:-1]).mode().iloc[0]
+    return pd.DatetimeIndex([idx[-1] + delta * h for h in range(1, horizon + 1)])
+
+
 def _resolve_trend_mode(requested, df, dependent_col, time_col, min_periods):
     """Returns (mode, note). 'auto' = log trend for strictly positive targets,
     linear otherwise; falls back to 'none' when there is no usable time axis."""
@@ -140,7 +243,7 @@ def _design(fit, X_part, ids, time_index):
     )
     X = pd.concat([pd.DataFrame(X_part).reset_index(drop=True), dummies], axis=1)
     if fit["use_time_index"]:
-        X["time_index"] = np.asarray(time_index)
+        X[fit["time_feature"]] = np.asarray(time_index)
     return X.reindex(columns=fit["feature_cols"], fill_value=0)
 
 
@@ -157,10 +260,16 @@ def _fit_pipeline(train_df, dependent_col, X_cols, id_col, time_col, gb_params,
     ids = train_df[id_col].reset_index(drop=True)
     entity_cols = list(pd.get_dummies(ids, prefix="entity").columns)
     use_ti = bool(time_col) and bool(use_time_index) and time_map is not None
+    # The period rank the trees see. Named time_index unless a user column already has that
+    # name (two columns with one name crash the feature matrix).
+    time_feature = "time_index"
+    while time_feature in X_cols or time_feature in entity_cols:
+        time_feature = "_" + time_feature
     fit = {
         "entity_cols": entity_cols,
         "use_time_index": use_ti,
-        "feature_cols": list(X_cols) + entity_cols + (["time_index"] if use_ti else []),
+        "time_feature": time_feature,
+        "feature_cols": list(X_cols) + entity_cols + ([time_feature] if use_ti else []),
         "trend_mode": trend_mode,
         "trend": None,
     }
@@ -208,6 +317,7 @@ def _fit_predict_boosting_fold(train_df, test_df, dependent_col, X_cols, id_col,
 
     mse = float(mean_squared_error(y_test, y_pred))
     return {
+        "mse": safe_round(mse),
         "rmse": safe_round(np.sqrt(mse)),
         "mae": safe_round(mean_absolute_error(y_test, y_pred)),
         "r2": safe_round(r2_score(y_test, y_pred)),
@@ -219,7 +329,7 @@ def _aggregate_cv_metrics(fold_metrics):
     if not fold_metrics:
         return None
     agg = {}
-    for key in ("rmse", "mae", "r2"):
+    for key in ("mse", "rmse", "mae", "r2"):
         vals = [m[key] for m in fold_metrics if m.get(key) is not None]
         if vals:
             agg[key] = {
@@ -231,7 +341,7 @@ def _aggregate_cv_metrics(fold_metrics):
 
 def run_boosting_cross_validation(df, dependent_col, X_cols, id_col, time_col, gb_params,
                                   trend_mode="none", time_map=None, use_time_index=True,
-                                  min_periods=DEFAULT_TREND_MIN_PERIODS, cv_folds=3):
+                                  min_periods=DEFAULT_TREND_MIN_PERIODS, cv_folds=5):
     """
     Time-based walk-forward CV when a usable date_column exists (each fold fits
     the SAME pipeline as the final model: trend + boosted residual); entity-based
@@ -245,7 +355,7 @@ def run_boosting_cross_validation(df, dependent_col, X_cols, id_col, time_col, g
     if time_col and df[time_col].nunique() >= cv_folds + 1:
         method = "time_based_walk_forward"
         trend_used = trend_mode
-        unique_times = np.array(sorted(df[time_col].unique()))
+        unique_times = np.array(_sorted_periods(df[time_col]), dtype=object)
         splitter = TimeSeriesSplit(n_splits=cv_folds)
         for train_t_idx, test_t_idx in splitter.split(unique_times):
             train_times = set(unique_times[train_t_idx])
@@ -283,6 +393,70 @@ def run_boosting_cross_validation(df, dependent_col, X_cols, id_col, time_col, g
         "folds_used": len(fold_metrics),
         **(_aggregate_cv_metrics(fold_metrics) or {}),
     }
+
+
+# ─────────────────────────────────────────
+# OUT-OF-SAMPLE TEST (the MSE that is reported and ranked)
+# ─────────────────────────────────────────
+
+def run_holdout_test(df, dependent_col, X_cols, id_col, time_col, time_map, fit_fn,
+                     trend_requested, min_periods, horizon):
+    """
+    Pseudo-out-of-sample test that mimics the forecasting task: train on every period except the
+    last `horizon`, then predict those held-out periods and score them against the actual values.
+    The model never sees the test periods; the entity trend is extrapolated into them exactly as
+    it is for a real forecast.
+
+    fit_fn(train_df, trend_mode) -> fitted pipeline.
+
+    Caveat: the regressors take their ACTUAL values in the test periods, while the published
+    forecast has to hold them constant. If the regressors change a lot over time, real forecast
+    error can be larger than this test shows.
+
+    Returns (result_dict_or_None, note).
+    """
+    if not time_col or time_map is None:
+        return None, "No date column, so periods cannot be held out"
+
+    ordered = sorted(time_map, key=time_map.get)           # period labels, oldest first
+    n_periods = len(ordered)
+
+    min_train = max(min_periods + 1, 3)                    # enough history to fit a trend
+    h = min(max(1, int(horizon)), n_periods - min_train)
+    if h < 1:
+        return None, f"Only {n_periods} periods; at least {min_train + 1} are needed to hold some out"
+
+    test_labels = ordered[-h:]
+    in_test = df[time_col].isin(test_labels)
+    train_df, test_df = df[~in_test], df[in_test]
+
+    # Entities that never appear in training can't be predicted fairly; leave them out and say so
+    seen = set(train_df[id_col].astype(str))
+    known = test_df[id_col].astype(str).isin(seen)
+    n_excluded = int((~known).sum())
+    test_df = test_df[known]
+    if test_df.empty:
+        return None, "No test rows for entities seen in training"
+
+    trend_mode, _ = _resolve_trend_mode(trend_requested, train_df, dependent_col, time_col, min_periods)
+    fit = fit_fn(train_df, trend_mode)
+    y_pred = _predict_rows(fit, test_df, X_cols, id_col, time_col, time_map)
+    y_test = test_df[dependent_col]
+
+    mse = float(mean_squared_error(y_test, y_pred))
+    return {
+        "basis": "holdout",
+        "train_periods": int(n_periods - h),
+        "test_periods": [p.item() if hasattr(p, "item") else p for p in test_labels],
+        "n_test_rows": int(len(test_df)),
+        "n_unseen_entity_rows_excluded": n_excluded,
+        "trend": trend_mode,
+        "regressors": "actual values in the test periods",
+        "mse": safe_round(mse),
+        "rmse": safe_round(np.sqrt(mse)),
+        "mae": safe_round(mean_absolute_error(y_test, y_pred)),
+        "r2": safe_round(r2_score(y_test, y_pred)),
+    }, None
 
 
 # ─────────────────────────────────────────
@@ -337,8 +511,7 @@ def _next_periods(time_values, horizon):
     if freq:
         future = pd.date_range(start=idx[-1], periods=horizon + 1, freq=freq)[1:]
     else:
-        delta = pd.Series(idx[1:] - idx[:-1]).mode().iloc[0]
-        future = pd.DatetimeIndex([idx[-1] + delta * h for h in range(1, horizon + 1)])
+        future = _calendar_step_periods(idx, horizon)
     return [d.strftime("%Y-%m-%d") for d in future]
 
 
@@ -514,6 +687,7 @@ async def run_boosting_panel(request):
         use_time_index   = payload.get("use_time_index", None)   # None = automatic, see below
         forecast_periods = int(payload.get("forecast_periods", 2))
         future_data      = payload.get("future_data", None)
+        holdout_periods  = payload.get("holdout_periods", None)   # None = same as forecast_periods
 
         # ── Gradient Boosting hyperparameters ──
         n_estimators      = int(payload.get("n_estimators", 200))
@@ -589,16 +763,23 @@ async def run_boosting_panel(request):
         if id_col not in raw_df_aligned.columns:
             raise ValueError(f"id_column '{id_col}' not found in input data")
 
+        _check_text_predictors(raw_df_aligned, independent_cols, categorical_cols or [])
+
         df[id_col] = raw_df_aligned[id_col].values
         if time_col and time_col in raw_df_aligned.columns:
             df[time_col] = raw_df_aligned[time_col].values
         else:
             time_col = None
 
+        df_before_dropna = df
         df = df.dropna()
+        data_quality = _missing_report(df_before_dropna, df, [dependent_col] + list(X_raw.columns), time_col)
 
         if len(df) < 5:
-            raise ValueError("Dataset too small for panel Boosting")
+            raise ValueError(
+                f"Only {len(df)} complete rows remain after dropping rows with missing values "
+                f"(missing per column: {data_quality['missing_by_column']}), too few for panel Boosting"
+            )
 
         n_entities = df[id_col].nunique()
         if n_entities < 2:
@@ -622,8 +803,7 @@ async def run_boosting_panel(request):
         # the forecast, so a given period always has the same time_index.
         time_map = None
         if time_col:
-            _, uniques = pd.factorize(df[time_col], sort=True)
-            time_map = {u: i for i, u in enumerate(uniques)}
+            time_map = {u: i for i, u in enumerate(_sorted_periods(df[time_col]))}
 
         trend_mode, trend_note = _resolve_trend_mode(
             trend_requested, df, dependent_col, time_col, trend_min_periods
@@ -673,9 +853,35 @@ async def run_boosting_panel(request):
 
         n_estimators_used = model.n_estimators_
 
-        in_sample_r2 = safe_round(r2_score(y_full, fitted))
-        mse          = safe_round(mean_squared_error(y_full, fitted))
-        mae          = safe_round(mean_absolute_error(y_full, fitted))
+        in_sample_r2  = safe_round(r2_score(y_full, fitted))
+        in_sample_mse = safe_round(mean_squared_error(y_full, fitted))
+        in_sample_mae = safe_round(mean_absolute_error(y_full, fitted))
+
+        # ── Out-of-sample test: hold out the most recent periods, train on the rest, score the held-out
+        # periods. The reported mse/mae come from this test, NOT from the fit above, because an in-sample
+        # error rewards models that memorise the training data. In-sample figures stay available as
+        # in_sample_mse / in_sample_mae. ──
+        horizon = int(holdout_periods) if holdout_periods else (forecast_periods if forecast_periods > 0 else 2)
+        holdout, holdout_note = None, None
+        try:
+            holdout, holdout_note = run_holdout_test(
+                df, dependent_col, X_cols, id_col, time_col, time_map,
+                fit_fn=lambda tdf, tm: _fit_pipeline(
+                    tdf, dependent_col, X_cols, id_col, time_col, gb_params,
+                    tm, time_map, use_time_index, trend_min_periods,
+                ),
+                trend_requested=trend_requested, min_periods=trend_min_periods, horizon=horizon,
+            )
+        except Exception as he:
+            holdout_note = str(he)
+
+        if holdout:
+            mse, mae, mse_basis = holdout["mse"], holdout["mae"], "holdout"
+        elif cross_validation.get("mse") and cross_validation.get("mae"):
+            mse, mae = cross_validation["mse"]["mean"], cross_validation["mae"]["mean"]
+            mse_basis = "walk_forward_cv" if cross_validation["method"] == "time_based_walk_forward" else "entity_cv"
+        else:
+            mse, mae, mse_basis = in_sample_mse, in_sample_mae, "in_sample"
 
         # ── Forecast the next `forecast_periods` periods ──
         # A forecasting problem must not break the model results, so any
@@ -699,6 +905,8 @@ async def run_boosting_panel(request):
                 )
                 forecast = fc["rows"]
                 forecast_info = fc["info"]
+                if data_quality["warning"]:
+                    forecast_info["warnings"].insert(0, data_quality["warning"])
             except Exception as fe:
                 forecast_error = str(fe)
 
@@ -781,8 +989,12 @@ async def run_boosting_panel(request):
             "n_observations": n_obs,
             "time_periods":   df[time_col].nunique() if time_col else None,
             "in_sample_r2":   in_sample_r2,
-            "mse":            mse,
+            "mse":            mse,                 # out-of-sample (see mse_basis)
             "mae":            mae,
+            "mse_basis":      mse_basis,           # "holdout" | "walk_forward_cv" | "entity_cv" | "in_sample"
+            "in_sample_mse":  in_sample_mse,
+            "in_sample_mae":  in_sample_mae,
+            "out_of_sample":  {**holdout, "note": None} if holdout else {"note": holdout_note},
             "cross_validation": cross_validation,
             "model_spec":     model_spec,
             "boosting": {
@@ -815,6 +1027,7 @@ async def run_boosting_panel(request):
             "forecast":        forecast,
             "forecast_info":   forecast_info,
             "forecast_error":  forecast_error,
+            "data_quality":    data_quality,
         }))
 
     except Exception as e:

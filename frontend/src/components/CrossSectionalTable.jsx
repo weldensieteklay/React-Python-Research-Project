@@ -10,28 +10,35 @@ const fmt = (v) => {
   return String(v);
 };
 
-const PBadge = ({ p }) => {
-  if (p === null || p === undefined) return <span>-</span>;
+// Diagnostic tests: p < 0.05 means a PROBLEM was found (red, ✕).
+// Coefficients (coef): p < 0.05 means the variable IS significant (green, ✓).
+const PBadge = ({ p, coef = false }) => {
+  if (p === null || p === undefined || typeof p !== "number") return <span>-</span>;
   const sig = p < 0.05;
+  const good = coef ? sig : !sig;
   return (
     <span
       className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-        sig ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"
+        good ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
       }`}
     >
-      {p.toFixed(4)} {sig ? "✕" : "✓"}
+      {p.toFixed(4)} {good ? "✓" : "✕"}
     </span>
   );
 };
 
 const ConclusionBadge = ({ text }) => {
   if (!text) return null;
+  const lower = text.toLowerCase();
+  // "No significant ... detected." is a PASS, so it must not be flagged
   const isWarning =
-    text.toLowerCase().includes("detected") ||
-    text.toLowerCase().includes("deviate") ||
-    text.toLowerCase().includes("misspecified") ||
-    text.toLowerCase().includes("non-linearity") ||
-    text.toLowerCase().includes("influential");
+    !lower.startsWith("no ") &&
+    (lower.includes("detected") ||
+      lower.includes("deviate") ||
+      lower.includes("misspecified") ||
+      lower.includes("non-linearity") ||
+      lower.includes("influential") ||
+      lower.includes("not normally"));
   return (
     <span
       className={`inline-block mt-1 px-2 py-0.5 rounded text-xs font-medium ${
@@ -196,6 +203,31 @@ const AutocorrelationSection = ({ data }) => {
   );
 };
 
+// Panel models (fixed / random effects) return these instead of Durbin-Watson
+const SerialCorrelationSection = ({ data }) => {
+  if (!data || data.error) return null;
+  return (
+    <SectionCard title="Serial Correlation (AR(1) of residuals)">
+      <DiagRow label="AR(1) Coefficient" value={data.ar1_coefficient} />
+      <DiagRow label="P-Value" value={data.p_value} isP />
+      {data.conclusion && <ConclusionBadge text={data.conclusion} />}
+    </SectionCard>
+  );
+};
+
+const CrossSectionalDependenceSection = ({ data }) => {
+  if (!data || data.error) return null;
+  return (
+    <SectionCard title="Cross-Sectional Dependence (Pesaran CD)">
+      <DiagRow label="CD Statistic" value={data.cd_statistic} />
+      <DiagRow label="P-Value" value={data.p_value} isP />
+      <DiagRow label="Entities (N)" value={data.n_entities} />
+      <DiagRow label="Periods (T)" value={data.t_periods} />
+      {data.conclusion && <ConclusionBadge text={data.conclusion} />}
+    </SectionCard>
+  );
+};
+
 const SpecificationSection = ({ data }) => {
   if (!data) return null;
   return (
@@ -250,17 +282,41 @@ const CrossSectionalTable = ({ result }) => {
   const featureImportance = result.feature_importance ? Object.entries(result.feature_importance) : [];
   const pValues = result.p_values || {};
   const standardErrors = result.standard_errors || {};
-  const robustSE = result.robust_standard_errors_hc3 || {};
-  const robustP = result.robust_p_values_hc3 || {};
   const diag = result.diagnostics || {};
+
+  // Panel models send cluster-robust SEs; the cross-sectional OLS model sends HC3.
+  const hasCluster =
+    result.cluster_robust_se && Object.keys(result.cluster_robust_se).length > 0;
+  const robustSE = hasCluster
+    ? result.cluster_robust_se
+    : result.robust_standard_errors_hc3 || {};
+  const robustP = hasCluster
+    ? result.cluster_robust_p_values || {}
+    : result.robust_p_values_hc3 || {};
+  const robustLabel = hasCluster ? "Cluster-Robust SE" : "Robust SE (HC3)";
+
+  // After the within transformation the fixed-effects constant is zero by construction
+  const isFixedEffects = result.model === "FIXED EFFECTS";
+  const coefRows = coefficients.filter(([key]) => !(isFixedEffects && key === "const"));
+
+  // mse / mae from the panel models are out-of-sample; say which kind
+  const mseBasisLabel = {
+    holdout: "held-out periods",
+    walk_forward_cv: "walk-forward CV",
+    entity_cv: "entity CV",
+    in_sample: "in-sample",
+  }[result.mse_basis];
+  const withBasis = (name) => (mseBasisLabel ? `${name} (${mseBasisLabel})` : name);
 
   const metrics = [
     { label: "Model", value: result.model },
     { label: "Rows Used", value: result.rows_used },
     { label: "R²", value: result.r2_score },
     { label: "Adj. R²", value: result.adj_r2 },
-    { label: "MSE", value: result.mse },
-    { label: "MAE", value: result.mae },
+    { label: "Within R²", value: result.within_r2 },
+    { label: "In-sample R²", value: result.in_sample_r2 },
+    { label: withBasis("MSE"), value: result.mse },
+    { label: withBasis("MAE"), value: result.mae },
     { label: "F-Statistic", value: result.f_statistic },
     { label: "F P-Value", value: result.f_pvalue },
     { label: "AIC", value: result.aic },
@@ -288,7 +344,7 @@ const CrossSectionalTable = ({ result }) => {
       </div>
 
       {/* ── Linear Model Coefficients ── */}
-      {!isTreeModel && coefficients.length > 0 && (
+      {!isTreeModel && coefRows.length > 0 && (
         <div className="mb-6">
           <h3 className="text-lg font-semibold text-gray-800 mb-2">Model Coefficients</h3>
           <div className="overflow-x-auto">
@@ -299,19 +355,19 @@ const CrossSectionalTable = ({ result }) => {
                   <th className="px-4 py-2 text-left text-gray-600">Coefficient</th>
                   <th className="px-4 py-2 text-left text-gray-600">Std. Error</th>
                   <th className="px-4 py-2 text-left text-gray-600">P-Value</th>
-                  <th className="px-4 py-2 text-left text-gray-600">Robust SE (HC3)</th>
+                  <th className="px-4 py-2 text-left text-gray-600">{robustLabel}</th>
                   <th className="px-4 py-2 text-left text-gray-600">Robust P</th>
                 </tr>
               </thead>
               <tbody>
-                {coefficients.map(([key, value], idx) => (
+                {coefRows.map(([key, value], idx) => (
                   <tr key={idx} className="border-t hover:bg-gray-50">
                     <td className="px-4 py-2 text-gray-700 font-medium">{key}</td>
                     <td className="px-4 py-2 text-gray-700">{fmt(value)}</td>
                     <td className="px-4 py-2 text-gray-700">{fmt(standardErrors[key])}</td>
-                    <td className="px-4 py-2"><PBadge p={pValues[key]} /></td>
+                    <td className="px-4 py-2"><PBadge p={pValues[key]} coef /></td>
                     <td className="px-4 py-2 text-gray-700">{fmt(robustSE[key])}</td>
-                    <td className="px-4 py-2"><PBadge p={robustP[key]} /></td>
+                    <td className="px-4 py-2"><PBadge p={robustP[key]} coef /></td>
                   </tr>
                 ))}
               </tbody>
@@ -353,6 +409,8 @@ const CrossSectionalTable = ({ result }) => {
           <MulticollinearitySection data={diag.multicollinearity} />
           <NormalitySection data={diag.normality_of_residuals} />
           <AutocorrelationSection data={diag.autocorrelation} />
+          <SerialCorrelationSection data={diag.serial_correlation} />
+          <CrossSectionalDependenceSection data={diag.cross_sectional_dependence} />
           <SpecificationSection data={diag.model_specification} />
           <InfluentialSection data={diag.influential_observations} />
           <LinearitySection data={diag.linearity} />

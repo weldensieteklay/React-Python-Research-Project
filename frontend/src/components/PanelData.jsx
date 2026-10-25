@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import Select from "react-select";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
@@ -12,6 +12,8 @@ import GuidePanel from "../guideMe/GuidePanel";
 import { guideContent } from "../guideMe/Guidecontent";
 import MultiCheckboxDropdown from "./MultiCheckboxDropdown";
 import DownloadSummaryStatsPptxButton from './dowload/SummaryStatisticsPptxDowload';
+import DataFilters, { EMPTY_FILTERS, applyFilters, filtersSignature, filterableColumns, activeFilterCount } from "./DataFilters";
+import { checkPanel, buildPanelRows } from "./panelPayload";
 import UserGuideButton from "../guideMe/UserGuideButton";
 import { useDispatch, useSelector } from "react-redux";
 import {
@@ -36,11 +38,37 @@ const outlierOptions = [
     { value: "no", label: "No" },
 ];
 
-const FORECAST_PERIODS = 2; // periods of the date column to forecast (2 = next two years for annual data)
+// How far ahead to forecast, in steps of the date column (months for YYYY-MM data).
+const HORIZON_CHOICES = [1, 2, 3, 6, 12, 18, 24];
+const DEFAULT_HORIZON = { monthly: 6, other: 2 };
+
+// Smallest panel worth fitting: enough entities and periods for the methods to estimate anything.
+const MIN_IDS = 2;
+const MIN_PERIODS = 4;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+// Trend stage of the panel models (sent as `trend`). Without a trend, a forecast with the
+// predictors held at their latest values is the same number in every future period.
+const TREND_OPTIONS = [
+    { value: "auto", label: "Auto (recommended)" },
+    { value: "log", label: "Log (steady % growth)" },
+    { value: "linear", label: "Linear (steady $ growth)" },
+    { value: "none", label: "None (flat forecast)" },
+];
+
+// Smallest number of complete rows the backends accept
+const MIN_ROWS = 5;
+
+// "2026-09" or "2026-09-01" -> monthly; anything else (years, quarters) -> other
+const detectFrequency = (values) => {
+    const iso = values.filter((v) => /^\d{4}-\d{2}(-\d{2})?$/.test(v));
+    if (iso.length !== values.length || iso.length < 2) return "other";
+    const months = [...new Set(iso.map((v) => v.slice(0, 7)))];
+    return months.length === iso.length ? "monthly" : "other";   // one value per month
+};
 
 // A usable dataset is a non-empty array whose items are plain objects.
 const isUsableData = (data) =>
@@ -82,6 +110,12 @@ const PanelData = ({
     const [startDate, setStartDate] = useState("");
     const [endDate, setEndDate] = useState("");
     const [showGuide, setShowGuide] = useState(false);
+    const [filters, setFilters] = useState(EMPTY_FILTERS);
+    const [horizon, setHorizon] = useState(DEFAULT_HORIZON.other);
+    const [trend, setTrend] = useState("auto");
+    // Rows missing any predictor are dropped by the model. Forward-filling predictors within
+    // each ID keeps the latest period when a series (e.g. inflation) is published late.
+    const [fillGaps, setFillGaps] = useState(true);
 
     const fileInputRef = useRef(null);
     const { data: result, loading, error, handlePredict: runPrediction } = usePrediction();
@@ -95,6 +129,75 @@ const PanelData = ({
 
     const columnOptions = columns.map((col) => ({ value: col, label: col }));
     const hasInitialData = isUsableData(initialData);
+
+    // Everything downstream (summary statistics, prediction) uses the filtered rows
+    const filteredData = useMemo(
+        () => applyFilters(parsedData, filters, selectedDateColumn),
+        [parsedData, filters, selectedDateColumn]
+    );
+    const filterColumns = useMemo(() => filterableColumns(parsedData, columns), [parsedData, columns]);
+
+    // The target, the ID and the date can't also be predictors. Picking the target as a
+    // predictor (easy with "Select All") gives a near-zero MSE and wins "best method".
+    const reserved = useMemo(
+        () => new Set([dependentVar, idColumn, selectedDateColumn].filter(Boolean)),
+        [dependentVar, idColumn, selectedDateColumn]
+    );
+    const predictorOptions = useMemo(() => columns.filter((c) => !reserved.has(c)), [columns, reserved]);
+
+    useEffect(() => {
+        setIndependentVar((prev) => {
+            const next = prev.filter((c) => !reserved.has(c));
+            if (next.length !== prev.length) setCategoricalVar((cat) => cat.filter((c) => next.includes(c)));
+            return next.length === prev.length ? prev : next;
+        });
+    }, [reserved]);
+
+    // Panel shape after filtering, checked before allowing a run
+    const panelShape = useMemo(() => {
+        if (!idColumn || !selectedDateColumn) return null;
+        const ids = new Set();
+        const periods = new Set();
+        for (const r of filteredData) {
+            ids.add(r[idColumn]);
+            periods.add(r[selectedDateColumn]);
+        }
+        return { ids: ids.size, periods: periods.size };
+    }, [filteredData, idColumn, selectedDateColumn]);
+    const panelTooSmall = panelShape && (panelShape.ids < MIN_IDS || panelShape.periods < MIN_PERIODS);
+
+    // Fixed effects give every ID its own intercept, which absorbs any predictor that never
+    // changes within an ID (county, distance to downtown, 2019 income...). Those get no
+    // coefficient, so say so before the user wonders where they went.
+    const absorbedByFixedEffects = useMemo(() => {
+        if (method !== "fixed" || !idColumn || independentVar.length === 0) return [];
+        return independentVar.filter((col) => {
+            const firstById = new Map();
+            for (const r of filteredData) {
+                const id = r[idColumn];
+                const v = r[col];
+                if (v === null || v === undefined || v === "") continue;
+                if (!firstById.has(id)) firstById.set(id, v);
+                else if (firstById.get(id) !== v) return false;
+            }
+            return firstById.size > 0;
+        });
+    }, [method, idColumn, independentVar, filteredData]);
+    const allAbsorbed = absorbedByFixedEffects.length > 0 && absorbedByFixedEffects.length === independentVar.length;
+
+    // Everything the backend would reject or silently drop, found before the request
+    const check = useMemo(
+        () => checkPanel(filteredData, {
+            idColumn, dateColumn: selectedDateColumn, dependentVar,
+            predictors: independentVar, categorical: categoricalVar, fill: fillGaps,
+        }),
+        [filteredData, idColumn, selectedDateColumn, dependentVar, independentVar, categoricalVar, fillGaps]
+    );
+    const markTextAsCategorical = () =>
+        setCategoricalVar((prev) => [...new Set([...prev, ...check.textPredictors])]);
+    const dataBlocked =
+        check.duplicates > 0 || check.textPredictors.length > 0 || allAbsorbed ||
+        (dependentVar && independentVar.length > 0 && check.rowsUsable < MIN_ROWS);
 
     // -----------------------------------------------------------------------
     // Loading data (shared by initialData and CSV)
@@ -114,6 +217,10 @@ const PanelData = ({
         setEndDate("");
         setSummaryStats([]);
         setActiveView(null);
+        setFilters(EMPTY_FILTERS);
+        setHorizon(DEFAULT_HORIZON.other);
+        setTrend("auto");
+        setFillGaps(true);
     };
 
     const loadFromInitialData = (data, { keepBest = false } = {}) => {
@@ -173,6 +280,8 @@ const PanelData = ({
         setDateOptions([]);
         setStartDate("");
         setEndDate("");
+        // a date range set for the previous date column doesn't apply to the new one
+        setFilters((f) => ({ ...f, start: "", end: "" }));
 
         if (!selected || parsedData.length === 0) return;
 
@@ -187,12 +296,16 @@ const PanelData = ({
         if (isValid) {
             const unique = [...new Set(values)].sort();
             setDateOptions(unique.map((d) => ({ value: d, label: d })));
+            setHorizon(DEFAULT_HORIZON[detectFrequency(unique)]);
         }
     };
 
+    const frequency = detectFrequency(dateOptions.map((o) => o.value));
+    const horizonUnit = frequency === "monthly" ? "months" : "periods";
+
     const handleSummaryStatistics = () => {
         const selectedColumns = [dependentVar, ...independentVar].filter(Boolean);
-        const stats = computeSummaryStatistics(parsedData, selectedColumns, categoricalVar);
+        const stats = computeSummaryStatistics(filteredData, selectedColumns, categoricalVar);
         setSummaryStats(stats);
     };
 
@@ -219,10 +332,10 @@ const PanelData = ({
         );
     };
 
-    // "Select All" toggles between every column and none.
+    // "Select All" toggles between every allowed predictor and none.
     const handleSelectAllIndependent = (allCurrentlySelected) => {
         setIndependentVar(() => {
-            const next = allCurrentlySelected ? [] : [...columns];
+            const next = allCurrentlySelected ? [] : [...predictorOptions];
             setCategoricalVar((prevCat) => prevCat.filter((c) => next.includes(c)));
             return next;
         });
@@ -235,19 +348,31 @@ const PanelData = ({
 
     const isReadyToPredict =
         fileUploaded &&
-        parsedData.length > 0 &&
+        filteredData.length > 0 &&
         method &&
         idColumn &&
         dependentVar &&
         independentVar.length > 0 &&
         selectedDateColumn &&
-        outliers;
+        outliers &&
+        !panelTooSmall &&
+        !dataBlocked;
 
     const handlePredict = async () => {
-        // MSE is only comparable between runs on the same problem
+        // MSE is only comparable between runs on the same problem: same target, same
+        // predictors, same rows (filters) and same horizon. Anything else is a different
+        // problem, and the "best method" comparison restarts.
         lastRunRef.current = {
             method,
-            context: [dependentVar, idColumn, selectedDateColumn, outliers].join("|"),
+            context: [
+                dependentVar, idColumn, selectedDateColumn, outliers,
+                [...independentVar].sort().join("+"),
+                [...categoricalVar].sort().join("+"),
+                filtersSignature(filters),
+                `h=${horizon}`,
+                `trend=${trend}`,
+                `fill=${fillGaps}`,
+            ].join("|"),
             // The dashboard needs these to map the forecast back onto its grid
             config: {
                 idColumn,
@@ -256,10 +381,18 @@ const PanelData = ({
                 categoricalVar,
                 dateColumn: selectedDateColumn,
                 outliers,
+                filters,
+                horizon,
+                trend,
+                fillGaps,
+                rowsUsed: check.rowsUsable,
             },
         };
         const payload = {
-            data: parsedData,
+            data: buildPanelRows(filteredData, {
+                idColumn, dateColumn: selectedDateColumn, dependentVar,
+                predictors: independentVar, fill: fillGaps,
+            }),
             method,
             id_column: idColumn,
             dependent_variable: dependentVar,
@@ -267,7 +400,8 @@ const PanelData = ({
             categorical_variable: categoricalVar,
             outliers,
             date_column: selectedDateColumn,
-            forecast_periods: FORECAST_PERIODS,
+            forecast_periods: horizon,
+            trend,
         };
         await runPrediction(payload, `panel/${method}`);
     };
@@ -330,6 +464,9 @@ const PanelData = ({
                             <div className="w-full text-sm bg-blue-50 border border-blue-200 rounded px-3 py-2 text-blue-900">
                                 Using provided data: {parsedData.length.toLocaleString()} rows,{" "}
                                 {columns.length} columns. You can upload a CSV instead.
+                                {activeFilterCount(filters) > 0 && (
+                                    <> Filters active: the model will use {filteredData.length.toLocaleString()} rows.</>
+                                )}
                             </div>
                         )}
 
@@ -384,7 +521,7 @@ const PanelData = ({
                         {/* Independent — click-to-open dropdown with checkboxes */}
                         <MultiCheckboxDropdown
                             label="Independent Variables"
-                            options={columns}
+                            options={predictorOptions}
                             selected={independentVar}
                             onToggle={handleIndependentToggle}
                             onSelectAll={handleSelectAllIndependent}
@@ -432,6 +569,106 @@ const PanelData = ({
                             )}
                         </div>
 
+                        {/* Forecast horizon */}
+                        <div className="flex flex-col w-48">
+                            <label className="text-sm text-gray-700 mb-1">Forecast Ahead</label>
+                            <Select
+                                options={HORIZON_CHOICES.map((h) => ({ value: h, label: `${h} ${horizonUnit}` }))}
+                                value={{ value: horizon, label: `${horizon} ${horizonUnit}` }}
+                                onChange={(selected) => setHorizon(selected.value)}
+                                classNamePrefix="react-select"
+                                className="text-sm"
+                            />
+                        </div>
+
+                        {/* Trend stage */}
+                        <div className="flex flex-col w-48">
+                            <label className="text-sm text-gray-700 mb-1">Trend</label>
+                            <Select
+                                options={TREND_OPTIONS}
+                                value={TREND_OPTIONS.find((o) => o.value === trend)}
+                                onChange={(selected) => setTrend(selected.value)}
+                                classNamePrefix="react-select"
+                                className="text-sm"
+                            />
+                        </div>
+
+                        <label className="w-full flex items-start gap-2 text-sm text-gray-700"
+                               title="Within each ID, a missing predictor value takes the ID's previous value. The dependent variable is never filled.">
+                            <input type="checkbox" className="mt-0.5" checked={fillGaps} onChange={(e) => setFillGaps(e.target.checked)} />
+                            <span>
+                                Fill missing predictor values from the previous period (per {idColumn || "ID"}).
+                                <span className="text-gray-500"> Rows with any missing value are otherwise left out of the model.</span>
+                            </span>
+                        </label>
+
+                        {/* Filters: summary statistics and the model only see the matching rows */}
+                        {fileUploaded && parsedData.length > 0 && (
+                            <DataFilters
+                                rows={parsedData}
+                                filters={filters}
+                                onChange={setFilters}
+                                columns={filterColumns}
+                                dateColumn={isValidDateColumn ? selectedDateColumn : ""}
+                                matchCount={filteredData.length}
+                            />
+                        )}
+                        {panelTooSmall && (
+                            <div className="w-full text-sm bg-amber-50 border border-amber-200 rounded px-3 py-2 text-amber-900">
+                                After filtering there are {panelShape.ids} {idColumn} value(s) and {panelShape.periods} period(s).
+                                A panel model needs at least {MIN_IDS} and {MIN_PERIODS}; widen the filters.
+                            </div>
+                        )}
+                        {check.duplicates > 0 && (
+                            <div className="w-full text-sm bg-red-50 border border-red-200 rounded px-3 py-2 text-red-800">
+                                {check.duplicates.toLocaleString()} {idColumn}/{selectedDateColumn} pair(s) appear more than once
+                                (e.g. {check.duplicateExample}). A panel needs one row per {idColumn} per period: choose a
+                                finer date column (e.g. month instead of year), or filter to one row per period.
+                            </div>
+                        )}
+                        {check.textPredictors.length > 0 && (
+                            <div className="w-full text-sm bg-red-50 border border-red-200 rounded px-3 py-2 text-red-800 flex flex-wrap items-center gap-3">
+                                <span>
+                                    {check.textPredictors.join(", ")} {check.textPredictors.length === 1 ? "contains" : "contain"} text.
+                                    Text predictors must be categorical variables.
+                                </span>
+                                <button className="px-2 py-1 text-xs font-semibold rounded border border-red-300 bg-white hover:bg-red-100"
+                                        onClick={markTextAsCategorical}>
+                                    Mark as categorical
+                                </button>
+                            </div>
+                        )}
+                        {dependentVar && independentVar.length > 0 && check.rowsUsable < MIN_ROWS && check.duplicates === 0 && (
+                            <div className="w-full text-sm bg-red-50 border border-red-200 rounded px-3 py-2 text-red-800">
+                                Only {check.rowsUsable} row(s) have values for {dependentVar} and every predictor.{" "}
+                                {check.emptyColumns.length > 0
+                                    ? <>{check.emptyColumns.join(", ")} {check.emptyColumns.length === 1 ? "has" : "have"} no values at all; remove {check.emptyColumns.length === 1 ? "it" : "them"}.</>
+                                    : "Remove predictors with many gaps or widen the filters."}
+                            </div>
+                        )}
+                        {Object.keys(check.missingByColumn).length > 0 && check.rowsUsable >= MIN_ROWS && (
+                            <div className="w-full text-sm bg-amber-50 border border-amber-200 rounded px-3 py-2 text-amber-900">
+                                Missing values: {Object.entries(check.missingByColumn).map(([c, n]) => `${c} ${n.toLocaleString()}`).join(" · ")}.{" "}
+                                The model will use {check.rowsUsable.toLocaleString()} of {filteredData.length.toLocaleString()} rows
+                                {fillGaps ? " after filling predictor gaps" : ""}.
+                                {check.latestLost && (
+                                    <b> The latest period ({String(check.latestPeriod)}) has no complete rows, so the model would end at{" "}
+                                    {String(check.latestUsable)} and the forecast would start inside periods that already have data.
+                                    {fillGaps ? " Remove the predictor that is missing there." : " Turn on gap filling above."}</b>
+                                )}
+                            </div>
+                        )}
+                        {absorbedByFixedEffects.length > 0 && (
+                            <div className="w-full text-sm bg-amber-50 border border-amber-200 rounded px-3 py-2 text-amber-900">
+                                With Fixed Effects, {absorbedByFixedEffects.join(", ")}{" "}
+                                {absorbedByFixedEffects.length === 1 ? "doesn't" : "don't"} change within each {idColumn}, so
+                                the {idColumn} effect absorbs {absorbedByFixedEffects.length === 1 ? "it" : "them"} and no
+                                coefficient can be estimated. Use Random Effects or a tree method (Forest, Boosting) to measure{" "}
+                                {absorbedByFixedEffects.length === 1 ? "its" : "their"} effect.
+                                {allAbsorbed && <b> Add at least one predictor that changes over time to run Fixed Effects.</b>}
+                            </div>
+                        )}
+
                         {/* Action Buttons */}
                         <div className="w-full flex flex-wrap justify-center gap-4 mt-6">
                             <button
@@ -476,9 +713,10 @@ const PanelData = ({
 
                         {/* Loading */}
                         {loading && <LoadingOverlay />}
-                        {error && activeView !== "summary" && (
-                            <div className="flex flex-col items-center text-center">
-                                Something went wrong. Try again!
+                        {activeView !== "summary" && (error || result?.success === false) && (
+                            <div className="w-full text-sm bg-red-50 border border-red-200 rounded px-3 py-2 text-red-800 text-center">
+                                The model couldn't run.{" "}
+                                {result?.details || error?.response?.data?.details || (typeof error === "string" ? error : error?.message) || "Try again."}
                             </div>
                         )}
 
@@ -503,7 +741,7 @@ const PanelData = ({
                                 <SummaryStatisticsTable stats={summaryStats} showExtended={false} />
                             </>
                         )}
-                        {activeView === "prediction" && result && (
+                        {activeView === "prediction" && result && result.success !== false && (
                             <>
                                 <div className="w-full flex justify-end mb-4">
                                     <DownloadPptxButton result={result} />

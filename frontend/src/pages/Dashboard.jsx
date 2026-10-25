@@ -9,7 +9,7 @@ import UserGuideButton from "../guideMe/UserGuideButton";
 
 // Emails allowed to see the Rental Data Download card.
 // Keep this in sync with the allowlist in AppRoutes.jsx.
-const RENTAL_DATA_ALLOWED_EMAILS = ["weldensieteklay@gmail.com"];
+const RENTAL_DATA_ALLOWED_EMAILS = ["weldensieteklay@gmail.com", 'zereyesus@gmail.com'];
 
 const Dashboard = () => {
     const navigate = useNavigate();
@@ -23,7 +23,8 @@ const Dashboard = () => {
 
     const visibleRoutes = dashboardRoute.filter((item) => {
         const key = Object.keys(item)[0];
-        if (key === "downloadRentalData") {
+        console.log(key, 'oooo', item)
+        if (key === "realEstateData") {
             return RENTAL_DATA_ALLOWED_EMAILS.includes(user?.email);
         }
         return true;
@@ -36,7 +37,7 @@ const Dashboard = () => {
 
                 <div className="flex items-start gap-3">
                                         {/* User Guide (PDF download) + Guide Me buttons */}
-                    <UserGuideButton className="flex items-center gap-2 px-4 py-3 bg-white text-black rounded-lg shadow-md hover:bg-gray-100 transition-colors mt-8" />
+                    {/* <UserGuideButton className="flex items-center gap-2 px-4 py-3 bg-white text-black rounded-lg shadow-md hover:bg-gray-100 transition-colors mt-8" /> */}
             
                     {/* User Card */}
                     <aside className="w-64 bg-white shadow-md p-4 flex flex-col items-center space-y-2 rounded-lg">
