@@ -39,7 +39,7 @@ MESSAGES = {
     "granted": "Access granted.",
     "pending": (
         "Thanks for signing up! Your access request is waiting for approval. "
-        "We review new requests at the end of each day, so please check back tomorrow."
+        "Please check back tomorrow."
     ),
     "expired": "Your free pilot period has ended. Please contact us to continue using the app.",
     "paused": "Your access is currently paused. Please contact us if you think this is a mistake.",
