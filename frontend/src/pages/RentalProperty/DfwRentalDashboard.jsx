@@ -14,6 +14,7 @@ import { csvEscape, downloadCsv } from "./utils";
 import { buildZoriGridProps, toDashboardRows } from "./transformer";
 import { ModelReport } from "./reports";
 import RentDivergenceReport from "./RentDivergenceReport";
+import RentByGroupChart from "./RentByGroupChart";
 import { RENTAL_DATA_ALLOWED_EMAILS } from '../../constants/constants';
 
 // Exported panel columns. Rates are in percent; real_gdp is joined on HUD fiscal year (Oct-Sep).
@@ -111,9 +112,16 @@ export default function DfwRentalDashboard() {
               </select>
             </div>
           )}
-          <button onClick={() => setView(view === "table" ? "graph" : "table")} className="px-4 py-1.5 text-sm font-semibold rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-colors">
-            {view === "table" ? "📊 Trend Charts" : "📋 Relational Grid"}
-          </button>
+          {[
+            ["table", "📋 Relational Grid"],
+            ["graph", "📊 ZIP Charts"],
+            ["county", "🏙️ County Charts"],
+          ].map(([v, label]) => (
+            <button key={v} onClick={() => setView(v)}
+                    className={`px-4 py-1.5 text-sm font-semibold rounded-md border transition-colors ${view === v ? "bg-gray-800 text-white border-gray-800" : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"}`}>
+              {label}
+            </button>
+          ))}
           {isAllowed && <button onClick={handleDownloadCsv} className="px-4 py-1.5 text-sm font-semibold rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-colors">📥 Download CSV</button>}
           <button onClick={() => setView("research")} className="px-4 py-1.5 text-sm font-semibold rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-colors">🔬 Boom Divergence</button>
           <button onClick={() => setView("forecast")} className="px-4 py-1.5 text-sm font-semibold rounded-md bg-emerald-600 hover:bg-emerald-700 text-white transition-colors">⚡ Train Forecast Engine</button>
@@ -122,7 +130,9 @@ export default function DfwRentalDashboard() {
 
       {best && <ModelReport best={best} forecastRowCount={panelForecast.rows.length} reason={panelForecast.reason} onReset={() => dispatch(clearBestMethod())} />}
 
-      {view === "graph" ? (
+      {view === "county" ? (
+        <RentByGroupChart rows={gridRows} groupField="county" groupLabel="County" />
+      ) : view === "graph" ? (
         <div className="border border-gray-200 bg-white rounded-lg p-6">
           <div className="mb-4">
             <h3 className="text-md font-bold text-gray-800">Rent Term Structures: Market-Rate Growth Index for ZIP {selectedZip}</h3>

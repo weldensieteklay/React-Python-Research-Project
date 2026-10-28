@@ -43,7 +43,7 @@ app.add_middleware(
 )
 
 # ───────────────────────────────────────────────
-# 🔐 AUTHENTICATION SECURITY DEPENDENCY
+# AUTHENTICATION SECURITY DEPENDENCY
 # ───────────────────────────────────────────────
 # Automatically handles extracting the 'Bearer <token>' substring from request headers
 # auto_error=False ensures native CORS processing parameters operate unimpeded
@@ -88,7 +88,7 @@ async def verify_google_token(
         )
 
 # ───────────────────────────────────────────────
-# ❌ SYSTEM GLOBAL EXCEPTION HANDLERS
+# SYSTEM GLOBAL EXCEPTION HANDLERS
 # ───────────────────────────────────────────────
 @app.exception_handler(RateLimitExceeded)
 async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
