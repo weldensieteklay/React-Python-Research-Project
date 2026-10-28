@@ -1,20 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-// ===========================================================================
-// Reusable modal for analysis write-ups.
-//
-//   <AnalysisModal open={open} onClose={close} report={report} />
-//
-// report = {
-//   title, subtitle?,
-//   verdict?: { tone: "positive" | "mixed" | "caution" | "neutral", text },
-//   sections: [{ heading, items: [ "plain text" | { label?, text, badge?: {label, tone}, detail? } ] }]
-// }
-// Optional: copyText (string) enables a "Copy summary" button; children render below the sections.
-// Closes on Escape, backdrop click and the close button; returns focus to whatever opened it.
-// ===========================================================================
-
 const VERDICT_STYLES = {
   positive: "bg-emerald-50 border-emerald-200 text-emerald-950",
   mixed: "bg-amber-50 border-amber-200 text-amber-950",
