@@ -20,6 +20,10 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 // distinguishable, including for colour-blind readers, with the end labels as backup.
 const LINE_COLORS = ["#2a78d6", "#eda100", "#e34948", "#1baf7a"];
 const MAX_LINES = LINE_COLORS.length;
+// "All" view: every line grey; the one being pointed at turns blue and comes to the front
+const ALL_BASE = "#9ca3af";
+const ALL_FADED = "#d1d5db";
+const ALL_HIGHLIGHT = "#2a78d6";
 
 const RANGES = [
   ["2", "Last 2 years"],
@@ -73,7 +77,7 @@ function niceAxis(values) {
   return { domain: [lo, hi], ticks };
 }
 
-function ChartTooltip({ active, payload, label, selected, colorOf, data, groupLabel }) {
+function ChartTooltip({ active, payload, label, selected, colorOf, data, groupLabel, focus }) {
   if (!active || !payload?.length) return null;
   const items = selected
     .map((g) => {
@@ -89,7 +93,7 @@ function ChartTooltip({ active, payload, label, selected, colorOf, data, groupLa
         {monthName(label)}{items.some((i) => i.forecast) ? " (forecast)" : ""}
       </div>
       {items.map((i) => (
-        <div key={i.g} className="flex items-center gap-2 text-gray-700">
+        <div key={i.g} className={`flex items-center gap-2 ${focus === i.g ? "text-blue-800 font-semibold" : "text-gray-700"}`}>
           <span className="w-3 h-0.5 rounded" style={{ background: colorOf[i.g] }} />
           <span className="flex-1">{shortName(i.g)}</span>
           <b className="tabular-nums text-gray-900">{usd(i.value)}</b>
@@ -132,7 +136,16 @@ export default function RentByGroupChart({
 
   // Selected groups and their colours. A group keeps its colour while selected.
   const [colorOf, setColorOf] = useState({});
-  const selected = useMemo(() => groups.filter((g) => colorOf[g]), [groups, colorOf]);
+  const [showAll, setShowAll] = useState(false);
+  const [hovered, setHovered] = useState(null);   // pointed at (All view)
+  const [pinned, setPinned] = useState(null);     // clicked (All view)
+  const focusGroup = hovered ?? pinned;
+  const selected = useMemo(() => (showAll ? groups : groups.filter((g) => colorOf[g])), [groups, colorOf, showAll]);
+  // Line colour per group for the current view
+  const strokeOf = (g) => (showAll ? (focusGroup === g ? ALL_HIGHLIGHT : focusGroup ? ALL_FADED : ALL_BASE) : colorOf[g]);
+  const widthOf = (g) => (showAll ? (focusGroup === g ? 3.5 : 1.75) : 2.5);
+  // Draw the highlighted line last so it sits on top
+  const drawOrder = showAll && focusGroup ? [...selected.filter((g) => g !== focusGroup), focusGroup] : selected;
   useEffect(() => {
     // first load, or the groups changed (different data): start from the defaults
     if (!groups.length) return;
@@ -152,7 +165,8 @@ export default function RentByGroupChart({
     const free = LINE_COLORS.find((c) => !used.has(c));
     return free ? { ...prev, [g]: free } : prev;
   });
-  const full = selected.length >= MAX_LINES;
+  const full = !showAll && selected.length >= MAX_LINES;
+  const plural = groupLabel === "County" ? "counties" : `${groupLabel.toLowerCase()}s`;
 
   const [range, setRange] = useState("5");
   const shownMonths = useMemo(() => {
@@ -237,16 +251,40 @@ export default function RentByGroupChart({
 
       {/* Group picker: also the legend */}
       <div className="mb-3">
-        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-          Compare up to {MAX_LINES} {groupLabel === "County" ? "counties" : `${groupLabel.toLowerCase()}s`} · click to add or remove
+        <div className="flex flex-wrap items-center gap-3 mb-2">
+          <div role="group" aria-label="Which lines to show" className="inline-flex rounded-md border border-gray-300 overflow-hidden bg-white">
+            {[[false, `Compare up to ${MAX_LINES}`], [true, `All ${plural}`]].map(([v, text]) => (
+              <button key={String(v)} onClick={() => { setShowAll(v); setHovered(null); setPinned(null); }} aria-pressed={showAll === v}
+                      className={`px-3 py-1 text-sm font-semibold border-r last:border-r-0 border-gray-300 ${showAll === v ? "bg-gray-800 text-white" : "text-gray-700 hover:bg-gray-50"}`}>
+                {text}
+              </button>
+            ))}
+          </div>
+          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+            {showAll ? `Point at a ${groupLabel.toLowerCase()} to highlight its line · click to keep it highlighted` : "Click to add or remove"}
+          </span>
         </div>
         <div className="flex flex-wrap gap-2">
           {groups.map((g) => {
+            if (showAll) {
+              const on = focusGroup === g;
+              return (
+                <button key={g} aria-pressed={pinned === g}
+                        onMouseEnter={() => setHovered(g)} onMouseLeave={() => setHovered(null)}
+                        onFocus={() => setHovered(g)} onBlur={() => setHovered(null)}
+                        onClick={() => setPinned((p) => (p === g ? null : g))}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-sm transition-colors ${on ? "bg-blue-50 border-blue-400 text-blue-900 font-semibold" : "bg-white border-gray-300 text-gray-800 hover:border-gray-400"}`}>
+                  <span className="w-3 h-0.5 rounded" style={{ background: strokeOf(g) }} />
+                  {shortName(g)}
+                  {latest[g] && <span className="tabular-nums text-gray-500 font-normal">{usd(latest[g].rent)}</span>}
+                </button>
+              );
+            }
             const on = Boolean(colorOf[g]);
             const disabled = !on && full;
             return (
               <button key={g} onClick={() => toggle(g)} disabled={disabled} aria-pressed={on}
-                      title={disabled ? `Remove one to add another (up to ${MAX_LINES} at a time)` : on ? "Click to remove" : "Click to add"}
+                      title={disabled ? `Remove one to add another (up to ${MAX_LINES} at a time), or choose All ${plural}` : on ? "Click to remove" : "Click to add"}
                       className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-sm transition-colors ${
                         on ? "bg-white border-gray-400 text-gray-900 font-semibold"
                           : disabled ? "bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed"
@@ -273,14 +311,14 @@ export default function RentByGroupChart({
                      tickFormatter={(m) => (m.endsWith("-01") ? m.slice(0, 4) : monthName(m))} />
               <YAxis domain={axis.domain} ticks={axis.ticks} allowDataOverflow tickFormatter={(v) => `$${v.toLocaleString()}`}
                      stroke="#9ca3af" tick={{ fontSize: 12, fill: "#4b5563" }} width={64} />
-              <Tooltip content={<ChartTooltip selected={selected} colorOf={colorOf} data={data} groupLabel={groupLabel} />}
+              <Tooltip content={<ChartTooltip selected={selected} colorOf={Object.fromEntries(selected.map((g) => [g, strokeOf(g)]))} data={data} groupLabel={groupLabel} focus={showAll ? focusGroup : null} />}
                        cursor={{ stroke: "#9ca3af", strokeDasharray: "3 3" }} />
-              {selected.map((g) => (
-                <Line key={g} type="monotone" dataKey={g} name={g} stroke={colorOf[g]} strokeWidth={2.5}
+              {drawOrder.map((g) => (
+                <Line key={g} type="monotone" dataKey={g} name={g} stroke={strokeOf(g)} strokeWidth={widthOf(g)}
                       dot={false} activeDot={{ r: 5, strokeWidth: 2, stroke: "#fff" }} connectNulls isAnimationActive={false} />
               ))}
-              {selected.map((g) => (
-                <Line key={`${g}__f`} type="monotone" dataKey={`${g}__f`} name={`${g} (forecast)`} stroke={colorOf[g]} strokeWidth={2.5}
+              {drawOrder.map((g) => (
+                <Line key={`${g}__f`} type="monotone" dataKey={`${g}__f`} name={`${g} (forecast)`} stroke={strokeOf(g)} strokeWidth={widthOf(g)}
                       strokeDasharray="6 4" dot={false} activeDot={{ r: 5, strokeWidth: 2, stroke: "#fff" }} connectNulls isAnimationActive={false}
                       legendType="none" />
               ))}
@@ -290,9 +328,14 @@ export default function RentByGroupChart({
           {/* Direct labels at the right end of each line */}
           <div className="absolute top-0 right-0 pointer-events-none" style={{ width: MARGIN.right - 8, height }} aria-hidden="true">
             {endLabels.map((l) => (
-              <div key={l.g} className="absolute left-2 flex items-center gap-1.5 text-sm whitespace-nowrap -translate-y-1/2" style={{ top: l.y }}>
-                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: colorOf[l.g] }} />
-                <span className="font-semibold text-gray-900">{shortName(l.g)}</span>
+              <div key={l.g}
+                   onMouseEnter={showAll ? () => setHovered(l.g) : undefined}
+                   onMouseLeave={showAll ? () => setHovered(null) : undefined}
+                   onClick={showAll ? () => setPinned((p) => (p === l.g ? null : l.g)) : undefined}
+                   className={`absolute left-2 flex items-center gap-1.5 whitespace-nowrap -translate-y-1/2 ${showAll ? "pointer-events-auto cursor-pointer text-[13px]" : "text-sm"} ${showAll && focusGroup && focusGroup !== l.g ? "opacity-50" : ""}`}
+                   style={{ top: l.y }}>
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: strokeOf(l.g) }} />
+                <span className={`font-semibold ${showAll && focusGroup === l.g ? "text-blue-800" : "text-gray-900"}`}>{shortName(l.g)}</span>
                 <span className={`tabular-nums text-gray-600 ${l.forecast ? "italic" : ""}`}>{l.forecast ? "≈" : ""}{usd(l.v)}</span>
               </div>
             ))}

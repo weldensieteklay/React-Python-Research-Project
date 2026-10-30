@@ -200,7 +200,7 @@ export default function RentDivergenceReport({ onBack, onTrainForecast }) {
           </label>
           {onTrainForecast && (
             <button onClick={onTrainForecast} className="px-4 py-1.5 text-sm font-semibold rounded-md bg-emerald-600 hover:bg-emerald-700 text-white transition-colors">
-              ⚡ Train Forecast Engine
+              ⚡ Want to try yourself
             </button>
           )}
         </div>

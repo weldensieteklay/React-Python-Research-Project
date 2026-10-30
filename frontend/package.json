@@ -3,12 +3,16 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": "^22.12.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "jest"
+    "test": "jest",
+    "audit:prod": "npm audit --omit=dev --audit-level=high"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
@@ -23,14 +27,17 @@
     "jwt-decode": "^4.0.0",
     "leaflet": "^1.9.4",
     "papaparse": "^5.5.3",
-    "pptxgenjs": "^4.0.1",
+    "pptxgenjs": "^4.0.0",
     "react": "^19.1.1",
     "react-chartjs-2": "^5.3.1",
     "react-dom": "^19.1.1",
     "react-redux": "^9.2.0",
-    "react-router-dom": "^6.30.1",
+    "react-router-dom": "^7.18.5",
     "react-select": "^5.10.2",
     "recharts": "^3.10.1"
+  },
+  "overrides": {
+    "image-size": "^2.0.4"
   },
   "devDependencies": {
     "@babel/preset-env": "^7.28.5",
