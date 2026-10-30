@@ -21,6 +21,7 @@
     "axios": "^1.13.2",
     "chart.js": "^4.5.1",
     "jwt-decode": "^4.0.0",
+    "leaflet": "^1.9.4",
     "papaparse": "^5.5.3",
     "pptxgenjs": "^4.0.1",
     "react": "^19.1.1",

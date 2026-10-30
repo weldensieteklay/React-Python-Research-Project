@@ -16,7 +16,7 @@ export const useFetchData = () => {
       console.error("[FETCH ERROR] Missing endpoint specification.");
       return;
     }
-console.log(user, 'rrrrrrr')
+
     // 3. Fail fast if the user is unauthenticated or the in-memory token is absent
     if (!user || !user.accessToken) {
       setError("Your session has expired. Please sign in again.");
