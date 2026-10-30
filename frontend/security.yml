@@ -1,0 +1,50 @@
+name: Security checks
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 13 * * 1"   # Mondays 8am Central: new advisories appear even when code doesn't change
+  workflow_dispatch:        # "Run workflow" button on the Actions tab
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    name: Frontend (npm)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      # Fails the job on a high or critical issue in code that ships to users
+      - run: npm audit --omit=dev --audit-level=high
+      # Development tools: reported, but doesn't fail the job
+      - run: npm audit --audit-level=high || echo "::warning::Development dependencies have known vulnerabilities (not shipped to users). Run 'npm audit' locally."
+      # The app must still build after dependency updates (Dependabot PRs)
+      - run: npm run build
+
+  backend:
+    name: Backend (pip)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pip-audit bandit
+      # Known vulnerabilities in the Python libraries
+      - run: pip-audit -r requirements.txt
+      # Risky patterns in your own code (medium and high severity)
+      - run: bandit -r . -ll -x ./tests,./venv,./.venv

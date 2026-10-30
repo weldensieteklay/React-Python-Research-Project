@@ -23,7 +23,6 @@ const Dashboard = () => {
 
     const visibleRoutes = dashboardRoute.filter((item) => {
         const key = Object.keys(item)[0];
-        console.log(key, 'oooo', item)
         if (key === "realEstateData") {
             return RENTAL_DATA_ALLOWED_EMAILS.includes(user?.email);
         }
@@ -84,15 +83,16 @@ const Dashboard = () => {
                         const { title, route } = item[key];
 
                         return (
-                            <div
-                                key={index}
-                                className="w-80 h-40 bg-gray-50 flex items-center justify-center rounded-lg shadow-md hover:shadow-lg transition-all cursor-pointer"
+                            <button
+                                key={key}
+                                type="button"
+                                className="w-80 h-40 px-6 bg-gray-50 flex items-center justify-center rounded-lg shadow-md hover:shadow-lg transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0071CE]"
                                 onClick={() => navigate(route)}
                             >
-                                <h3 className="text-lg font-semibold text-gray-800">
+                                <h3 className="text-lg font-semibold text-gray-800 text-center leading-snug">
                                     {title}
                                 </h3>
-                            </div>
+                            </button>
                         );
                     })}
                 </div>

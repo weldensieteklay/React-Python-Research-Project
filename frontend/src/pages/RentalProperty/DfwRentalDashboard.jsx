@@ -37,13 +37,15 @@ const VIEWS = [
 
 function ViewPicker({ onOpen }) {
   return (
-    <section aria-labelledby="explore-title" className="mb-4">
-      <h2 id="explore-title" className="text-xl font-bold text-gray-900">Explore the rent data</h2>
-      <p className="text-base text-gray-600 mt-1 mb-3">Choose how you'd like to see it.</p>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+    // Same card style as the Market research summary above it
+    <section aria-labelledby="explore-title" className="mb-6 bg-white border border-gray-200 rounded-lg px-6 py-5">
+      <div className="text-sm font-semibold uppercase tracking-wider text-blue-700">Data views</div>
+      <h2 id="explore-title" className="text-xl font-bold text-gray-900 mt-1">Explore the rent data</h2>
+      <p className="text-base text-gray-600 mt-1 mb-4">Choose how you'd like to see it.</p>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {VIEWS.map((v) => (
           <button key={v.id} onClick={() => onOpen(v.id)}
-                  className="flex flex-col text-left rounded-lg border-2 border-gray-200 bg-white px-4 py-3 transition-colors hover:border-blue-300 hover:bg-blue-50/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+                  className="flex flex-col text-left rounded-lg border-2 border-gray-200 bg-gray-50 px-4 py-3 transition-colors hover:border-blue-300 hover:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
             <div className="flex items-center gap-2">
               <span className="text-2xl" aria-hidden="true">{v.icon}</span>
               <span className="text-lg font-bold text-gray-900">{v.title}</span>
@@ -60,7 +62,8 @@ function ViewPicker({ onOpen }) {
 /** Full-screen page: ← at the top left, title, optional controls on the right. */
 function DataPage({ title, subtitle, onBack, actions, children }) {
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
+    // pb-28: room at the bottom so the last section scrolls clear of the fixed footer
+    <div className="p-6 pb-28 bg-gray-50 min-h-screen">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-4 mb-4 border-b border-gray-200">
         <div className="flex items-start gap-2">
           <BackButton onClick={onBack} />
@@ -217,10 +220,11 @@ export default function DfwRentalDashboard() {
   }
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
+    // pb-28: room below Data views so it scrolls clear of the fixed footer
+    <div className="p-6 pb-28 bg-gray-50 min-h-screen">
       <div className="flex flex-col md:flex-row md:items-center justify-between pb-4 mb-4 border-b border-gray-200 gap-4">
         <div>
-          <h1 className="text-xl font-bold text-gray-900 tracking-tight">Dallas-Fort Worth Institutional Property Analytics Portal</h1>
+          <h1 className="text-xl font-bold text-gray-900 tracking-tight">Dallas-Fort Worth (DFW) Rental Property Portal</h1>
           <p className="text-sm text-gray-500 mt-1">Powered by Zillow Observed Rent Index (ZORI) & Macroeconomic Transmissions</p>
         </div>
       </div>
