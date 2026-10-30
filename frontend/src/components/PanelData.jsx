@@ -15,13 +15,17 @@ import DownloadSummaryStatsPptxButton from './dowload/SummaryStatisticsPptxDowlo
 import DataFilters, { EMPTY_FILTERS, applyFilters, filtersSignature, filterableColumns, activeFilterCount } from "./DataFilters";
 import { checkPanel, buildPanelRows } from "./panelPayload";
 import UserGuideButton from "../guideMe/UserGuideButton";
+import AnalysisModal from "../pages/RentalProperty/AnalysisModal";
+import { reportToText } from "../pages/RentalProperty/interpretDivergence";
+import { interpretModel } from "./interpretModel";
 import { useDispatch, useSelector } from "react-redux";
 import {
     submitMethodResult,
     clearBestMethod,
     selectBestMethod,
     getMse,
-} from "../features/rentalProperty/rentalPropertySlice";
+} from "../store/reducers/rentalProperty/rentalPropertySlice";
+import { saveLastRun, clearLastRun, selectLastRun } from "../store/reducers/panelRunSlice";
 
 const methodOptions = [
     { value: "fixed", label: "Fixed Effects" },
@@ -89,6 +93,9 @@ const PanelData = ({
     // Called by the "View forecast in dashboard" button. Use it when this screen is shown
     // inside the dashboard (e.g. () => setView("table")); otherwise the button navigates.
     onViewForecast = null,
+    // Called by the ← button. Pass it when this screen is shown inside another page (the
+    // dashboard passes "go back to the previous screen"); without it, ← links to /dashboard.
+    onBack = null,
     rentalDashboardPath = "/dashboard/rental-property", // adjust to your route
 }) => {
     const [parsedData, setParsedData] = useState([]);
@@ -123,9 +130,19 @@ const PanelData = ({
     const dispatch = useDispatch();
     const navigate = useNavigate();
     const bestMethod = useSelector(selectBestMethod);
+    // The latest run, saved in full (see panelRunSlice); reopened before the best run
+    const lastRun = useSelector(selectLastRun);
     // Remembers which method/problem the in-flight request belongs to, so a result
     // is never credited to a method the user selected after clicking Predict.
     const lastRunRef = useRef(null);
+    // "Explain these results": plain-language reading of the run on screen
+    const [explainOpen, setExplainOpen] = useState(false);
+    // The run reopened from Redux when this screen loads with the same data: the latest
+    // run if it was saved, otherwise the best one. Shown until a new prediction or Start over.
+    const [restored, setRestored] = useState(null);
+    const restoreTriedRef = useRef(false);
+    // What the results area shows: the live run if there is one, otherwise the saved one
+    const shownResult = result ?? restored?.result ?? null;
 
     const columnOptions = columns.map((col) => ({ value: col, label: col }));
     const hasInitialData = isUsableData(initialData);
@@ -247,10 +264,59 @@ const PanelData = ({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialData]);
 
+    // Reopen the saved best run: fill in its settings and show its results. Runs once, after the
+    // provided data has loaded, and only if every column the run used exists in that data
+    // (a run trained on an uploaded CSV can't be shown against different data).
+    useEffect(() => {
+        if (restoreTriedRef.current) return;
+        if (dataSource !== "initial" || parsedData.length === 0 || columns.length === 0) return;
+        restoreTriedRef.current = true;
+        const fits = (run) => {
+            const c = run?.config;
+            if (!run?.result || run.result.success === false || !c) return false;
+            const needed = [c.idColumn, c.dependentVar, c.dateColumn, ...(c.independentVar ?? [])].filter(Boolean);
+            return needed.length > 0 && needed.every((col) => columns.includes(col));
+        };
+        const run = [lastRun, bestMethod].find(fits);
+        if (!run) return;
+        const cfg = run.config;
+
+        setMethod(run.method);
+        setIdColumn(cfg.idColumn);
+        setDependentVar(cfg.dependentVar);
+        setIndependentVar(cfg.independentVar ?? []);
+        setCategoricalVar(cfg.categoricalVar ?? []);
+        setOutliers(cfg.outliers ?? "");
+        handleDateColumnChange({ value: cfg.dateColumn });   // fills the date options; resets filters and horizon...
+        setFilters(cfg.filters ?? EMPTY_FILTERS);            // ...so set those after it
+        if (cfg.horizon) setHorizon(cfg.horizon);
+        if (cfg.trend) setTrend(cfg.trend);
+        if (typeof cfg.fillGaps === "boolean") setFillGaps(cfg.fillGaps);
+        if (Array.isArray(run.summaryStats) && run.summaryStats.length) setSummaryStats(run.summaryStats);
+        lastRunRef.current = { method: run.method, context: run.context ?? null, config: cfg };
+        setRestored(run);
+        setActiveView("prediction");
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [dataSource, parsedData, columns, bestMethod, lastRun]);
+
+    const startNewModel = () => {
+        resetSelections({ keepBest: true });   // the saved model stays the dashboard's forecast
+        setRestored(null);
+        lastRunRef.current = null;
+    };
+
     // Submit each finished run to the store; the reducer keeps only the smallest MSE.
     useEffect(() => {
         if (!result || result.success === false || !lastRunRef.current) return;
         const mse = getMse(result);
+        // Keep the whole run (prediction table, coefficients, forecast...) so it can be reopened
+        dispatch(saveLastRun({
+            ...lastRunRef.current,
+            mse,
+            result,
+            summaryStats,
+            savedAt: Date.now(),
+        }));
         if (mse === null) return;
         dispatch(submitMethodResult({ ...lastRunRef.current, mse, result }));
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -358,7 +424,26 @@ const PanelData = ({
         !panelTooSmall &&
         !dataBlocked;
 
+    // Built from the run that produced `result` (lastRunRef), not the method selected now,
+    // so changing the dropdown after Predict can't mislabel the explanation.
+    const explainReport = useMemo(() => {
+        if (!explainOpen || !shownResult || shownResult.success === false) return null;
+        const run = lastRunRef.current ?? {};
+        return interpretModel({
+            method: run.method ?? method,
+            result: shownResult,
+            config: run.config ?? { idColumn, dependentVar, categoricalVar },
+            best: bestMethod,
+            context: run.context ?? null,
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [explainOpen, shownResult, bestMethod]);
+    const explainText = useMemo(() => (explainReport ? reportToText(explainReport) : ""), [explainReport]);
+    // A new result closes an open explanation
+    useEffect(() => { setExplainOpen(false); }, [result]);
+
     const handlePredict = async () => {
+        setRestored(null);
         // MSE is only comparable between runs on the same problem: same target, same
         // predictors, same rows (filters) and same horizon. Anything else is a different
         // problem, and the "best method" comparison restarts.
@@ -408,6 +493,8 @@ const PanelData = ({
 
     const handleClear = () => {
         resetSelections();
+        setRestored(null);
+        dispatch(clearLastRun());
         setFileUploaded(false);
         setParsedData([]);
         setColumns([]);
@@ -425,12 +512,24 @@ const PanelData = ({
             {/* Header */}
             <div className="w-full px-4 my-6">
                 <div className="relative bg-blue-100 py-3 rounded shadow-sm flex items-center justify-center">
-                    <Link
-                        to="/dashboard"
-                        className="absolute left-4 text-gray-700 hover:text-gray-900"
-                    >
-                        <ArrowLeftIcon className="h-6 w-6" />
-                    </Link>
+                    {onBack ? (
+                        <button
+                            onClick={onBack}
+                            aria-label="Back"
+                            title="Back"
+                            className="absolute left-4 text-gray-700 hover:text-gray-900"
+                        >
+                            <ArrowLeftIcon className="h-6 w-6" />
+                        </button>
+                    ) : (
+                        <Link
+                            to="/dashboard"
+                            aria-label="Back"
+                            className="absolute left-4 text-gray-700 hover:text-gray-900"
+                        >
+                            <ArrowLeftIcon className="h-6 w-6" />
+                        </Link>
+                    )}
                     <h2 className="text-2xl font-semibold text-gray-800 text-center">
                         Panel Data Analysis and Prediction
                     </h2>
@@ -467,6 +566,29 @@ const PanelData = ({
                                 {activeFilterCount(filters) > 0 && (
                                     <> Filters active: the model will use {filteredData.length.toLocaleString()} rows.</>
                                 )}
+                            </div>
+                        )}
+
+                        {/* Saved model reopened from the store */}
+                        {restored && !result && (
+                            <div className="w-full text-sm bg-emerald-50 border border-emerald-200 rounded px-3 py-2 text-emerald-900 flex flex-wrap items-center justify-between gap-3">
+                                <span>
+                                    Showing your {restored === bestMethod ? "saved forecast model" : "last forecast run"}:{" "}
+                                    <b>{methodOptions.find((o) => o.value === restored.method)?.label || restored.method}</b>
+                                    {Number.isFinite(Number(restored.mse)) && <> (typical error ±{Math.round(Math.sqrt(Number(restored.mse))).toLocaleString()})</>}.
+                                    {bestMethod && restored !== bestMethod && bestMethod.method && (
+                                        Number(bestMethod.mse) < Number(restored.mse)
+                                            ? <> The dashboard uses the most accurate run, <b>{methodOptions.find((o) => o.value === bestMethod.method)?.label || bestMethod.method}</b>.</>
+                                            : <> It's also your most accurate run.</>
+                                    )}
+                                    {" "}Its settings are filled in below and its full results are shown underneath. Change anything and press Predict to try another model.
+                                </span>
+                                <button
+                                    onClick={startNewModel}
+                                    className="px-3 py-1 text-xs font-semibold rounded border border-emerald-300 bg-white text-emerald-800 hover:bg-emerald-100"
+                                >
+                                    Start a new model
+                                </button>
                             </div>
                         )}
 
@@ -741,10 +863,16 @@ const PanelData = ({
                                 <SummaryStatisticsTable stats={summaryStats} showExtended={false} />
                             </>
                         )}
-                        {activeView === "prediction" && result && result.success !== false && (
+                        {activeView === "prediction" && shownResult && shownResult.success !== false && (
                             <>
-                                <div className="w-full flex justify-end mb-4">
-                                    <DownloadPptxButton result={result} />
+                                <div className="w-full flex flex-wrap justify-end items-center gap-2 mb-4">
+                                    <button
+                                        onClick={() => setExplainOpen(true)}
+                                        className="px-4 py-2 text-sm font-semibold rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                                    >
+                                        📝 Explain these results
+                                    </button>
+                                    <DownloadPptxButton result={shownResult} />
                                 </div>
                                 {bestMethod && (
                                     <div className="w-full text-sm bg-green-50 border border-green-200 rounded px-3 py-2 text-green-800 mb-3">
@@ -753,13 +881,20 @@ const PanelData = ({
                                         {" "}({Number(bestMethod.mse).toPrecision(5)})
                                     </div>
                                 )}
-                                <CrossSectionalTable result={result} />
+                                <CrossSectionalTable result={shownResult} />
                             </>
                         )}
 
                     </div>
                 </div>
             </div>
+
+            <AnalysisModal
+                open={Boolean(explainReport)}
+                onClose={() => setExplainOpen(false)}
+                report={explainReport}
+                copyText={explainText}
+            />
         </>
     );
 };

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ReferenceLine, ResponsiveContainer } from "recharts";
 import { useFetchData } from "../../hooks/useFetchData";
 import AnalysisModal from "./AnalysisModal";
+import BackButton from "./BackButton";
 import { traitLabel, parseTerm } from "./utils";
 import { evidence, interpretDivergence, reportToText } from "./interpretDivergence";
 
@@ -140,7 +141,7 @@ function EventStudyChart({ coefficients }) {
   );
 }
 
-export default function RentDivergenceReport({ onBack }) {
+export default function RentDivergenceReport({ onBack, onTrainForecast }) {
   const { data, loading, error, handleFetch } = useFetchData();
   const [spec, setSpec] = useState("full");
   const [eventStudy, setEventStudy] = useState(false);
@@ -177,11 +178,14 @@ export default function RentDivergenceReport({ onBack }) {
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
       <div className="flex flex-col md:flex-row md:items-center justify-between pb-4 mb-4 border-b border-gray-200 gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900 tracking-tight">Did the 2021–22 rent boom end differently across DFW ZIPs?</h1>
-          <p className="text-sm text-gray-500 mt-1">Two-way fixed-effects model on monthly ZORI rents (ZIP and month fixed effects, ZIP-clustered errors)</p>
+        <div className="flex items-start gap-2">
+          {onBack && <BackButton onClick={onBack} />}
+          <div className="pt-1">
+            <h1 className="text-xl font-bold text-gray-900 tracking-tight">Did the 2021–22 rent boom end differently across DFW ZIPs?</h1>
+            <p className="text-sm text-gray-500 mt-1">Two-way fixed-effects model on monthly ZORI rents (ZIP and month fixed effects, ZIP-clustered errors)</p>
+          </div>
         </div>
-        <div className="flex items-center gap-2 self-start md:self-auto">
+        <div className="flex flex-wrap md:flex-nowrap items-center gap-2 self-start md:self-auto whitespace-nowrap">
           <div className="flex rounded-md border border-gray-300 overflow-hidden text-sm font-semibold">
             {[["base", "Rent & county only"], ["full", "With Census factors"]].map(([v, label]) => (
               <button key={v} onClick={() => setSpec(v)}
@@ -194,7 +198,11 @@ export default function RentDivergenceReport({ onBack }) {
             <input type="checkbox" checked={eventStudy} onChange={(e) => setEventStudy(e.target.checked)} />
             By year
           </label>
-          {onBack && <button onClick={onBack} className="px-4 py-1.5 text-sm font-semibold rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50">📋 Back to Grid</button>}
+          {onTrainForecast && (
+            <button onClick={onTrainForecast} className="px-4 py-1.5 text-sm font-semibold rounded-md bg-emerald-600 hover:bg-emerald-700 text-white transition-colors">
+              ⚡ Train Forecast Engine
+            </button>
+          )}
         </div>
       </div>
 
@@ -251,17 +259,22 @@ export default function RentDivergenceReport({ onBack }) {
           )}
 
           <div className="text-xs text-gray-500 bg-white border border-gray-200 rounded-lg px-4 py-3 space-y-1">
-            <div>
-              ZIPs by county group:{" "}
-              {Object.entries(data.zips_by_county_group ?? {}).map(([k, v]) => `${k} ${v}`).join(" · ")}
-            </div>
-            {data.panel?.zips_dropped_incomplete?.length > 0 && (
-              <div>{data.panel.zips_dropped_incomplete.length} ZIPs excluded for incomplete rent history.</div>
-            )}
-            {data.zips_dropped_missing_covariates?.length > 0 && (
-              <div>{data.zips_dropped_missing_covariates.length} ZIPs excluded for missing Census data: {data.zips_dropped_missing_covariates.join(", ")}.</div>
-            )}
+           
           </div>
+{/* 
+          {onTrainForecast && (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-emerald-50 border border-emerald-200 rounded-lg px-5 py-4">
+              <div>
+                <div className="text-sm font-bold text-emerald-950">Want to try it yourself?</div>
+                <p className="text-sm text-emerald-900 mt-0.5">
+                  Train your own forecast on the same rent data: pick the factors, choose how many months ahead, and see the predicted rents on the dashboard.
+                </p>
+              </div>
+              <button onClick={onTrainForecast} className="shrink-0 px-4 py-2 text-sm font-semibold rounded-md bg-emerald-600 hover:bg-emerald-700 text-white transition-colors">
+                ⚡ Train Forecast Engine
+              </button>
+            </div>
+          )} */}
         </div>
       )}
 
