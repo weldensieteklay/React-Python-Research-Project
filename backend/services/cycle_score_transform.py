@@ -1,318 +1,341 @@
 """
 services/cycle_score_transform.py
 
-Bridges fetch_all_indicators()'s raw {date, value} rows to the derived
-values (deltas, YoY%, QoQ%, ratios) that cycle_score_service's scorers
-expect. Called from the /macro-indicators route, not a separate one.
+Turns fetch_all_indicators()'s raw {date, value} rows into the derived values
+(deltas, YoY %, QoQ %, ratios) that cycle_score_service's scorers expect, for all
+17 indicators of Methodology v2.0. Called from the /macro-indicators route.
+
+Each indicator reports the series it used (`source`) and the date of the latest
+observation (`as_of`), so stale inputs are visible.
+
+Settings (environment variables, all optional):
+  HTC_CAP_RATE_ANCHOR    Market cap rate in % that the implied cap rate is built from
+                         (#11). Default 6.5 is a PLACEHOLDER; set your own.
+  HTC_VACANCY_SOURCE     "stress" (default, Methodology v2: STLFSI4) or
+                         "rental_vacancy" (Census rental vacancy rate, RRVRUSQ156N).
+  HTC_DISTRESS_SOURCE    "cppi" (default, Methodology v2: CRE price decline) or
+                         "delinquency" (bank CRE delinquency rate, DRCRELEXFACBS).
 """
-import re
-from datetime import datetime, timedelta
+import os
 import statistics
-from services import cycle_score_service as cs
+
 import pandas as pd
 
+from services import cycle_score_service as cs
 
-def _parse_date(date_str: str) -> datetime:
-    """Handles the date formats actually seen across sources:
-      - ISO:        '2026-09-01'
-      - BEA quarter: '2026Q2'   -> treated as the quarter's first month
-      - BEA month:   '2026M01'  -> treated as that month's 1st
-    Raises ValueError (caller's problem to handle) for anything else,
-    rather than silently misparsing."""
-    s = str(date_str).strip()
-
-    m = re.fullmatch(r"(\d{4})Q([1-4])", s)
-    if m:
-        year, q = int(m.group(1)), int(m.group(2))
-        month = (q - 1) * 3 + 1
-        return datetime(year, month, 1)
-
-    m = re.fullmatch(r"(\d{4})M(\d{2})", s)
-    if m:
-        year, month = int(m.group(1)), int(m.group(2))
-        return datetime(year, month, 1)
-
-    # fall back to ISO (handles '2026-09-01' and '2026-09-01T00:00:00' etc.)
-    return datetime.fromisoformat(s[:10])
+CAP_RATE_ANCHOR = float(os.environ.get("HTC_CAP_RATE_ANCHOR", "6.5"))
+VACANCY_SOURCE = os.environ.get("HTC_VACANCY_SOURCE", "stress")
+DISTRESS_SOURCE = os.environ.get("HTC_DISTRESS_SOURCE", "cppi")
 
 
-def _rows_sorted(indicator: dict, value_key: str) -> list[dict]:
-    rows = indicator.get("rows", [])
-    try:
-        return sorted(rows, key=lambda r: _parse_date(r["date"]))
-    except (KeyError, ValueError):
-        return rows  # no usable date — assume input order is already chronological
-
-
-def _latest(indicator: dict, value_key: str):
-    rows = _rows_sorted(indicator, value_key)
-    return rows[-1][value_key] if rows else None
-
-
-def _value_near_days_ago(indicator: dict, value_key: str, days: int):
-    """Finds the observation closest to `days` ago from the latest date."""
-    rows = _rows_sorted(indicator, value_key)
-    if not rows:
+# ---------------------------------------------------------------------
+# Helpers: every FRED/BLS payload is {"rows": [{"date": ..., <key>: value}, ...]}
+# ---------------------------------------------------------------------
+def _series(automated: dict, key: str) -> pd.Series | None:
+    """The indicator as a date-indexed float Series (sorted, NaNs dropped), or None."""
+    payload = automated.get(key)
+    if not payload or not payload.get("rows"):
         return None
-    try:
-        latest_date = _parse_date(rows[-1]["date"])
-        target = latest_date - timedelta(days=days)
-        closest = min(rows, key=lambda r: abs(_parse_date(r["date"]) - target))
-        return closest[value_key]
-    except (KeyError, ValueError):
+    df = pd.DataFrame(payload["rows"])
+    value_col = key if key in df.columns else "value" if "value" in df.columns else None
+    if value_col is None or "date" not in df.columns:
         return None
+    s = pd.Series(pd.to_numeric(df[value_col], errors="coerce").values,
+                  index=pd.to_datetime(df["date"], errors="coerce"))
+    s = s[s.index.notna()].dropna().sort_index()
+    s = s[~s.index.duplicated(keep="last")]
+    return s if not s.empty else None
 
 
-def _pct_change_vs_days_ago(indicator: dict, value_key: str, days: int):
-    latest = _latest(indicator, value_key)
-    past = _value_near_days_ago(indicator, value_key, days)
-    if latest is None or past in (None, 0):
+def _as_of(s: pd.Series | None, quarterly: bool = False) -> str | None:
+    if s is None or s.empty:
         return None
-    return (latest - past) / past * 100
+    d = s.index[-1]
+    return f"{d.year}Q{(d.month - 1) // 3 + 1}" if quarterly else d.strftime("%Y-%m-%d")
 
 
-def _delta_vs_days_ago(indicator: dict, value_key: str, days: int):
-    latest = _latest(indicator, value_key)
-    past = _value_near_days_ago(indicator, value_key, days)
-    if latest is None or past is None:
+def _value_near(s: pd.Series, target: pd.Timestamp, tolerance_days: int):
+    """The observation closest to `target`, if one is within `tolerance_days`."""
+    pos = s.index.get_indexer([target], method="nearest")[0]
+    if pos < 0 or abs((s.index[pos] - target).days) > tolerance_days:
         return None
-    return latest - past
+    return float(s.iloc[pos])
 
 
-def _ratio_to_historical_avg(indicator: dict, value_key: str, lookback_years: int = 10):
-    """Ratio of the most recent observation to the historical average.
-    Falls back to list order (last element = most recent) if rows lack
-    a 'date' field, since the permits data's exact schema can vary by
-    source (JSON API vs. scraped Excel)."""
-    rows = indicator.get("rows", [])
-    if not rows:
+def _delta_days(s: pd.Series, days: int, tolerance_days: int = 20):
+    past = _value_near(s, s.index[-1] - pd.Timedelta(days=days), tolerance_days)
+    return None if past is None else float(s.iloc[-1]) - past
+
+
+def _yoy_pct(s: pd.Series):
+    past = _value_near(s, s.index[-1] - pd.DateOffset(years=1), tolerance_days=20)
+    return None if not past else (float(s.iloc[-1]) / past - 1) * 100
+
+
+def _annualized_qoq(s: pd.Series):
+    """Latest quarter vs the previous one, annualized (how BEA reports GDP growth)."""
+    if len(s) < 2 or not s.iloc[-2]:
         return None
-    try:
-        rows = sorted(rows, key=lambda r: r["date"])
-    except KeyError:
-        pass  # no date field — assume input order is already chronological
+    return ((float(s.iloc[-1]) / float(s.iloc[-2])) ** 4 - 1) * 100
 
-    values = [r[value_key] for r in rows if r.get(value_key) is not None]
-    if not values:
-        return None
-    latest = values[-1]
-    avg = statistics.mean(values[-min(len(values), lookback_years * 12):])
-    return latest / avg if avg else None
+
+def _complete_quarters(s: pd.Series, min_obs: int) -> pd.Series:
+    """Quarterly means, keeping only quarters with at least `min_obs` observations
+    (so a half-finished current quarter isn't compared with a full one)."""
+    grouped = s.groupby(s.index.to_period("Q"))
+    q = grouped.mean()[grouped.count() >= min_obs]
+    return q.sort_index()
 
 
 def compute_indicator_scores(automated: dict) -> list[cs.IndicatorScore]:
     scores: list[cs.IndicatorScore] = []
 
-    def add(key, label, available, raw_value=None, score=None, note=None):
-        scores.append(cs.IndicatorScore(key=key, label=label, raw_value=raw_value,
-                                         score=score, available=available, note=note))
+    def add(key, label, raw_value=None, score=None, note=None, source=None, as_of=None):
+        available = raw_value is not None and score is not None
+        scores.append(cs.IndicatorScore(
+            key=key, label=label, raw_value=raw_value, score=score, available=available,
+            note=note, source=source, as_of=as_of,
+        ))
 
-    # 1. Fed Funds Rate Trend (90-day delta)
-    if "fed_funds_rate" in automated:
-        delta = _delta_vs_days_ago(automated["fed_funds_rate"], "fed_funds_rate", 90)
-        add("fed_funds_trend", "Federal Funds Rate Trend", delta is not None,
-            raw_value=delta, score=cs.score_fed_funds_trend(delta) if delta is not None else None)
+    def unavailable(key, label, why="Source data unavailable", source=None):
+        add(key, label, note=why, source=source)
+
+    # 1. Fed Funds Rate Trend: change over 90 days, percentage points
+    s = _series(automated, "fed_funds_rate")
+    d = _delta_days(s, 90) if s is not None else None
+    if d is None:
+        unavailable("fed_funds_trend", "Federal Funds Rate Trend", source="FRED EFFR")
     else:
-        add("fed_funds_trend", "Federal Funds Rate Trend", False, note="Source data unavailable")
+        add("fed_funds_trend", "Federal Funds Rate Trend", round(d, 3), cs.score_fed_funds_trend(d),
+            note="Change over the last 90 days, percentage points", source="FRED EFFR", as_of=_as_of(s))
 
-    # 2. Inflation (CPI YoY)
-    if "cpi_all_items" in automated:
-        yoy = _pct_change_vs_days_ago(automated["cpi_all_items"], "cpi_all_items", 365)
-        add("cpi_yoy", "Inflation (CPI YoY)", yoy is not None,
-            raw_value=yoy, score=cs.score_cpi_yoy(yoy) if yoy is not None else None)
+    # 2. Inflation: CPI year-over-year %
+    s = _series(automated, "cpi_all_items")
+    yoy = _yoy_pct(s) if s is not None else None
+    if yoy is None:
+        unavailable("cpi_yoy", "Inflation (CPI YoY)", source="BLS CUUR0000SA0")
     else:
-        add("cpi_yoy", "Inflation (CPI YoY)", False, note="Source data unavailable")
+        add("cpi_yoy", "Inflation (CPI YoY)", round(yoy, 2), cs.score_cpi_yoy(yoy),
+            source="BLS CUUR0000SA0", as_of=_as_of(s))
 
-    # 3. 10-Year Treasury Yield (latest)
-    if "treasury_10y" in automated:
-        latest = _latest(automated["treasury_10y"], "treasury_10y")
-        add("treasury_10y", "10-Year Treasury Yield", latest is not None,
-            raw_value=latest, score=cs.score_treasury_10y(latest) if latest is not None else None)
+    # 3. 10-Year Treasury Yield
+    s = _series(automated, "treasury_10y")
+    if s is None:
+        unavailable("treasury_10y", "10-Year Treasury Yield", source="FRED DGS10")
     else:
-        add("treasury_10y", "10-Year Treasury Yield", False, note="Source data unavailable")
+        v = float(s.iloc[-1])
+        add("treasury_10y", "10-Year Treasury Yield", v, cs.score_treasury_10y(v), source="FRED DGS10", as_of=_as_of(s))
 
-    # 4. Credit Conditions (SLOOS) — EXCLUDED: current fetcher only returns
-    # keyword counts, not the real net-%-tightening classification the
-    # methodology requires. Flagging as a gap rather than guessing.
-    add("credit_conditions_sloos", "Credit Conditions (SLOOS)", False,
-        note="Current SLOOS fetcher returns raw keyword counts, not a validated tightened/eased classification per the methodology's definition. Needs real parsing of the SLOOS release's net % figures before this can be scored.")
-
-    # 5. GDP Growth (QoQ)
-    if "real_gdp" in automated:
-        qoq = _pct_change_vs_days_ago(automated["real_gdp"], "real_gdp", 90)
-        add("gdp_growth", "GDP Growth (QoQ)", qoq is not None,
-            raw_value=qoq, score=cs.score_gdp_growth(qoq) if qoq is not None else None)
+    # 4. Credit Conditions: SLOOS net % of banks tightening CRE standards,
+    #    averaged over the three CRE loan types for the latest survey quarter
+    sloos_keys = {"sloos_cre_construction": "construction", "sloos_cre_nonfarm": "nonfarm nonresidential",
+                  "sloos_cre_multifamily": "multifamily"}
+    parts = {k: _series(automated, k) for k in sloos_keys}
+    parts = {k: v for k, v in parts.items() if v is not None}
+    if not parts:
+        unavailable("credit_conditions_sloos", "Credit Conditions (SLOOS)", source="FRED SUBLPDRCSC/N/M")
     else:
-        add("gdp_growth", "GDP Growth (QoQ)", False, note="Source data unavailable (BEA key likely not yet activated)")
+        latest_q = max(v.index[-1] for v in parts.values())
+        at_latest = {sloos_keys[k]: float(v.loc[latest_q]) for k, v in parts.items() if latest_q in v.index}
+        net = statistics.mean(at_latest.values())
+        signal = cs.classify_sloos(net)
+        add("credit_conditions_sloos", "Credit Conditions (SLOOS, CRE lending standards)",
+            {"net_pct_tightening": round(net, 1), "signal": signal, "by_loan_type": at_latest},
+            cs.score_credit_conditions(signal),
+            note="Positive = more banks tightening than easing. Average of the CRE loan types reported for the latest survey.",
+            source="FRED SUBLPDRCSC, SUBLPDRCSN, SUBLPDRCSM",
+            as_of=f"{latest_q.year}Q{(latest_q.month - 1) // 3 + 1}")
 
-    # 6. Labor Market Strength (unemployment trend + JOLTS level, simplified)
-    if "unemployment_rate" in automated and "jolts_job_openings" in automated:
-        u_delta = _delta_vs_days_ago(automated["unemployment_rate"], "unemployment_rate", 90)
-        jolts_latest = _latest(automated["jolts_job_openings"], "jolts_job_openings")
-        jolts_rows = _rows_sorted(automated["jolts_job_openings"], "jolts_job_openings")
-        jolts_values = [r["jolts_job_openings"] for r in jolts_rows if r["jolts_job_openings"] is not None]
-        jolts_median = statistics.median(jolts_values) if jolts_values else None
+    # 5. GDP Growth: latest quarter, annualized
+    s = _series(automated, "real_gdp")
+    g = _annualized_qoq(s) if s is not None else None
+    if g is None:
+        unavailable("gdp_growth", "GDP Growth", source="FRED GDPC1")
+    else:
+        add("gdp_growth", "GDP Growth (QoQ, annualized)", round(g, 2), cs.score_gdp_growth(g),
+            source="FRED GDPC1", as_of=_as_of(s, quarterly=True))
 
-        if u_delta is None or jolts_latest is None or jolts_median is None:
-            add("labor_market", "Labor Market Strength", False, note="Insufficient history to compute trend")
+    # 6. Labor Market Strength: unemployment trend + JOLTS vs its own median
+    u, j = _series(automated, "unemployment_rate"), _series(automated, "jolts_job_openings")
+    u_delta = _delta_days(u, 90, tolerance_days=31) if u is not None else None
+    if u_delta is None or j is None:
+        unavailable("labor_market", "Labor Market Strength", "Unemployment or JOLTS data unavailable",
+                    source="FRED UNRATE, JTSJOL")
+    else:
+        j_latest, j_median = float(j.iloc[-1]), float(j.median())
+        u_trend = "rising_fast" if u_delta >= 0.5 else "rising" if u_delta > 0.1 else "falling" if u_delta < -0.1 else "flat"
+        j_strength = "very_strong" if j_latest > j_median * 1.2 else "strong" if j_latest > j_median else "weak"
+        add("labor_market", "Labor Market Strength",
+            {"unemployment_delta_3m": round(u_delta, 2), "unemployment_trend": u_trend,
+             "jolts_latest": j_latest, "jolts_median": j_median, "jolts_strength": j_strength},
+            cs.score_labor_market(u_trend, j_strength), source="FRED UNRATE, JTSJOL", as_of=_as_of(u))
+
+    # 7. Midwest PMI substitute: Chicago Fed National Activity Index, 3-month average
+    s = _series(automated, "cfnai_ma3")
+    if s is None:
+        unavailable("midwest_pmi", "Midwest PMI substitute (CFNAI-MA3)", source="FRED CFNAIMA3")
+    else:
+        v = float(s.iloc[-1])
+        add("midwest_pmi", "Midwest PMI substitute (Chicago Fed National Activity Index, 3-mo avg)", v,
+            cs.score_cfnai_ma3(v),
+            note="Chicago PMI is a licensed product. CFNAI-MA3 (0 = trend growth) is scored on the Chicago Fed's own cutoffs.",
+            source="FRED CFNAIMA3", as_of=_as_of(s))
+
+    # 8. Migration: Midwest total population, YoY %, over states present in both years
+    pop = automated.get("midwest_population")
+    if not pop or not pop.get("rows"):
+        unavailable("migration", "Migration (Annual Population Change, Midwest)", source="FRED state POP series")
+    else:
+        df = pd.DataFrame(pop["rows"])
+        df["year"] = pd.to_datetime(df["date"]).dt.year
+        wide = df.pivot_table(index="year", columns="state", values="POP", aggfunc="last").sort_index()
+        if len(wide) < 2:
+            unavailable("migration", "Migration (Annual Population Change, Midwest)", "Insufficient history")
         else:
-            u_trend = "rising_fast" if u_delta >= 0.5 else "rising" if u_delta > 0.1 else "falling" if u_delta < -0.1 else "flat"
-            jolts_strength = "very_strong" if jolts_latest > jolts_median * 1.2 else "strong" if jolts_latest > jolts_median else "weak"
-            score = cs.score_labor_market(u_trend, jolts_strength)
-            add("labor_market", "Labor Market Strength", True,
-                raw_value={"unemployment_delta_90d": u_delta, "jolts_latest": jolts_latest}, score=score)
+            last, prev = wide.iloc[-1], wide.iloc[-2]
+            both = last.notna() & prev.notna()
+            pct = (last[both].sum() / prev[both].sum() - 1) * 100 if both.any() else None
+            if pct is None:
+                unavailable("migration", "Migration (Annual Population Change, Midwest)", "No state has two years of data")
+            else:
+                add("migration", "Migration (Annual Population Change, Midwest)", round(pct, 3), cs.score_migration(pct),
+                    note=f"{int(both.sum())} of 12 Midwest states", source="FRED state POP series",
+                    as_of=str(int(wide.index[-1])))
+
+    # 9. Wage Growth: average hourly earnings, quarterly average, annualized QoQ
+    s = _series(automated, "avg_hourly_earnings")
+    q = _complete_quarters(s, min_obs=3) if s is not None else None
+    w = _annualized_qoq(q) if q is not None else None
+    if w is None:
+        unavailable("wage_growth", "Wage Growth", source="FRED CES0500000003")
     else:
-        add("labor_market", "Labor Market Strength", False, note="Source data unavailable")
+        add("wage_growth", "Wage Growth (QoQ, annualized)", round(w, 2), cs.score_wage_growth(w),
+            source="FRED CES0500000003", as_of=str(q.index[-1]))
 
-    # 7. Midwest PMI — EXCLUDED (confirmed no free source exists)
-    add("midwest_pmi", "Midwest PMI (Chicago Business Barometer)", False,
-        note=cs.MISSING_INDICATORS["midwest_pmi"])
+    # 10. Construction Pipeline: Midwest building permits vs their 10-year average
+    s = _series(automated, "building_permits_midwest")
+    if s is None:
+        unavailable("construction_pipeline", "Construction Pipeline (Midwest permits)", source="FRED PERMITMW")
+    else:
+        window = s[s.index >= s.index[-1] - pd.DateOffset(years=10)]
+        ratio = float(s.iloc[-1]) / float(window.mean())
+        add("construction_pipeline", "Construction Pipeline (Midwest permits vs 10-yr average)", round(ratio, 3),
+            cs.score_construction_pipeline(ratio), source="FRED PERMITMW", as_of=_as_of(s))
 
-    # 8. Migration (YoY % change, Midwest total population, summed across
-    # states). Source switched from Census pep/charv to FRED's per-state
-    # population series (e.g. ILPOP, MIPOP), which publish continuous
-    # annual history through the present -- no more single-vintage
-    # staleness, and a real YoY change can finally be computed here.
-    if "midwest_population" in automated:
-        pop_rows = automated["midwest_population"]["rows"]
-        by_date = {}
-        for r in pop_rows:
-            by_date.setdefault(r["date"], 0)
-            by_date[r["date"]] += r["POP"] or 0
-
-        sorted_dates = sorted(by_date.keys())
-        if len(sorted_dates) >= 2:
-            latest_date = sorted_dates[-1]
-            latest_total = by_date[latest_date]
-
-            # find the observation closest to 365 days before the latest date
-            latest_dt = _parse_date(latest_date)
-            target = latest_dt - timedelta(days=365)
-            prior_date = min(sorted_dates[:-1], key=lambda d: abs(_parse_date(d) - target))
-            prior_total = by_date[prior_date]
-
-            yoy_pct = (latest_total - prior_total) / prior_total * 100 if prior_total else None
-            add("migration", "Migration (Annual Population Change, Midwest total)", yoy_pct is not None,
-                raw_value=yoy_pct, score=cs.score_migration(yoy_pct) if yoy_pct is not None else None)
+    # 11. Cap Rate Spread (v2): implied cap rate from CRE price and CPI changes, minus 10-yr Treasury.
+    #     If prices rose faster than income (CPI as the NOI-growth proxy), cap rates compressed.
+    cppi, cpi, t10 = (_series(automated, k) for k in ("cre_price_index", "cpi_all_items", "treasury_10y"))
+    if cppi is None or cpi is None or t10 is None:
+        unavailable("cap_rate_spread", "Cap Rate Spread (implied)", "CRE price, CPI or Treasury data unavailable",
+                    source="FRED COMREPUSQ159N, BLS CPI, FRED DGS10")
+    else:
+        price_yoy = float(cppi.iloc[-1])
+        quarter_end = cppi.index[-1] + pd.offsets.QuarterEnd(0)
+        cpi_at = cpi[cpi.index <= quarter_end]
+        income_yoy = _yoy_pct(cpi_at) if len(cpi_at) else None
+        if income_yoy is None:
+            unavailable("cap_rate_spread", "Cap Rate Spread (implied)", "No CPI for the CRE price quarter")
         else:
-            add("migration", "Migration (Annual Population Change)", False,
-                note="Insufficient history to compute YoY change")
+            implied_cap = CAP_RATE_ANCHOR * (1 + income_yoy / 100) / (1 + price_yoy / 100)
+            spread = implied_cap - float(t10.iloc[-1])
+            add("cap_rate_spread", "Cap Rate Spread (implied cap rate - 10-yr Treasury)",
+                {"spread_pct": round(spread, 2), "implied_cap_rate": round(implied_cap, 2),
+                 "anchor_cap_rate": CAP_RATE_ANCHOR, "cre_price_yoy": round(price_yoy, 2),
+                 "cpi_yoy": round(income_yoy, 2), "treasury_10y": float(t10.iloc[-1])},
+                cs.score_cap_rate_spread(spread),
+                note="Inferred, not observed: anchor cap rate x (1 + CPI YoY) / (1 + CRE price YoY). "
+                     "Set HTC_CAP_RATE_ANCHOR to your market's cap rate.",
+                source="FRED COMREPUSQ159N + BLS CPI + FRED DGS10", as_of=_as_of(cppi, quarterly=True))
+
+    # 12. Rent Growth: ZORI month-over-month %, Midwest metros present in both months
+    z = automated.get("rent_growth_zori")
+    if not z or not z.get("rows"):
+        unavailable("rent_growth_zori", "Rent Growth (ZORI, Midwest)", source="Zillow ZORI")
     else:
-        add("migration", "Migration (Annual Population Change)", False, note="Source data unavailable")
-
-    # 9. Wage Growth (QoQ, from avg hourly earnings as proxy)
-    if "avg_hourly_earnings" in automated:
-        qoq = _pct_change_vs_days_ago(automated["avg_hourly_earnings"], "avg_hourly_earnings", 90)
-        add("wage_growth", "Wage Growth (QoQ, hourly earnings proxy)", qoq is not None,
-            raw_value=qoq, score=cs.score_wage_growth(qoq) if qoq is not None else None,
-            note=None if qoq is not None else "Insufficient history")
-    else:
-        add("wage_growth", "Wage Growth", False, note="Source data unavailable")
-
-    # 10. Construction Pipeline (spending vs historical average)
-        # 10. Construction Pipeline (spending vs historical average)
-    if "construction_spending" in automated:
-        spending_data = automated["construction_spending"]
-
-        # Normalize to a DataFrame (handles DataFrame or {"rows": [...]} payloads)
-        if isinstance(spending_data, pd.DataFrame):
-            df = spending_data.copy()
+        df = pd.DataFrame(z["rows"])
+        wide = df.pivot_table(index="date", columns="RegionName", values="zori", aggfunc="mean").sort_index()
+        if len(wide) < 2:
+            unavailable("rent_growth_zori", "Rent Growth (ZORI, Midwest)", "Insufficient history")
         else:
-            df = pd.DataFrame(spending_data.get("rows", []))
+            last, prev = wide.iloc[-1], wide.iloc[-2]
+            both = last.notna() & prev.notna()
+            m = (last[both].mean() / prev[both].mean() - 1) * 100 if both.any() else None
+            if m is None:
+                unavailable("rent_growth_zori", "Rent Growth (ZORI, Midwest)", "No metro has two months of data")
+            else:
+                add("rent_growth_zori", "Rent Growth (ZORI, Midwest metros, MoM)", round(m, 3), cs.score_rent_growth(m),
+                    note=f"{int(both.sum())} metros", source="Zillow ZORI", as_of=str(wide.index[-1])[:10])
 
-        # Normalize the value column name
-        if "construction_spending" in df.columns:
-            df = df.rename(columns={"construction_spending": "value"})
+    # 13. Vacancy (v2): quarterly change in the Financial Stress Index (or rental vacancy rate)
+    if VACANCY_SOURCE == "rental_vacancy":
+        s = _series(automated, "rental_vacancy_rate")
+        d = float(s.iloc[-1] - s.iloc[-2]) if s is not None and len(s) >= 2 else None
+        src, note, as_of = "FRED RRVRUSQ156N", "Quarterly change in the rental vacancy rate, percentage points", _as_of(s, True)
+    else:
+        s = _series(automated, "financial_stress_index")
+        q = _complete_quarters(s, min_obs=12) if s is not None else None
+        d = float(q.iloc[-1] - q.iloc[-2]) if q is not None and len(q) >= 2 else None
+        src = "FRED STLFSI4"
+        note = "Change in the quarterly average Financial Stress Index (index points; rising stress -> rising vacancy)"
+        as_of = str(q.index[-1]) if q is not None and len(q) else None
+    if d is None:
+        unavailable("vacancy", "Vacancy", source=src)
+    else:
+        add("vacancy", "Vacancy (QoQ change)", round(d, 3), cs.score_vacancy(d), note=note, source=src, as_of=as_of)
 
-        ratio = None
-        note = None
-
-        if df.empty or "value" not in df.columns:
-            note = f"No 'value' column found. Columns: {list(df.columns)}"
+    # 14. Distress (v2): size of the year-over-year CRE price decline (or bank CRE delinquency rate)
+    if DISTRESS_SOURCE == "delinquency":
+        s = _series(automated, "cre_delinquency_rate")
+        if s is None:
+            unavailable("distress", "Distress (CRE delinquency rate)", source="FRED DRCRELEXFACBS")
         else:
-            # Coerce to numeric so strings / "." / None don't break statistics.mean
-            df["value"] = pd.to_numeric(df["value"], errors="coerce")
-            df = df.dropna(subset=["value"])
-
-            # Rebuild the dict-with-rows shape the helper expects
-            payload = {"rows": df.to_dict("records")}
-            ratio = _ratio_to_historical_avg(payload, "value")
-
-            if ratio is None:
-                note = "Could not compute ratio to historical average"
-
-        add("construction_pipeline", "Construction Pipeline", ratio is not None,
-            raw_value=ratio,
-            score=cs.score_construction_pipeline(ratio) if ratio is not None else None,
-            note=note)
+            v = float(s.iloc[-1])
+            add("distress", "Distress (CRE Loan Delinquency Rate)", v, cs.score_distress(v),
+                source="FRED DRCRELEXFACBS", as_of=_as_of(s, quarterly=True))
     else:
-        add("construction_pipeline", "Construction Pipeline", False,
-            note="Source data unavailable")
-        
-    # 11. Cap Rate Spread — EXCLUDED (no real cap rate series available)
-    # add("cap_rate_spread", "Cap Rate Spread", False, note=cs.MISSING_INDICATORS["cap_rate_spread"])
-
-    # 12. Rent Growth (ZORI, monthly %, Midwest average)
-    if "rent_growth_zori" in automated:
-        zori_rows = automated["rent_growth_zori"]["rows"]
-        by_date = {}
-        for r in zori_rows:
-            by_date.setdefault(r["date"], []).append(r["zori"])
-        avg_by_date = {d: statistics.mean(v) for d, v in by_date.items() if v}
-        sorted_dates = sorted(avg_by_date.keys())
-        if len(sorted_dates) >= 2:
-            latest_val = avg_by_date[sorted_dates[-1]]
-            prev_val = avg_by_date[sorted_dates[-2]]
-            monthly_pct = (latest_val - prev_val) / prev_val * 100 if prev_val else None
-            add("rent_growth_zori", "Rent Growth (ZORI, Midwest avg)", monthly_pct is not None,
-                raw_value=monthly_pct, score=cs.score_rent_growth(monthly_pct) if monthly_pct is not None else None)
+        s = _series(automated, "cre_price_index")
+        if s is None:
+            unavailable("distress", "Distress (CRE price decline)", source="FRED COMREPUSQ159N")
         else:
-            add("rent_growth_zori", "Rent Growth (ZORI)", False, note="Insufficient history")
-    else:
-        add("rent_growth_zori", "Rent Growth (ZORI)", False, note="Source data unavailable")
+            yoy = float(s.iloc[-1])
+            decline = max(0.0, -yoy)
+            add("distress", "Distress (CRE price decline, YoY)",
+                {"price_decline_pct": round(decline, 2), "cre_price_yoy": round(yoy, 2)}, cs.score_distress(decline),
+                note="0 when CRE prices rose. COMREPUSQ159N is published as % change from a year ago and lags ~2 quarters.",
+                source="FRED COMREPUSQ159N", as_of=_as_of(s, quarterly=True))
 
-    # 13. Vacancy (QoQ change in percentage points)
-    if "rental_vacancy_rate" in automated:
-        delta = _delta_vs_days_ago(automated["rental_vacancy_rate"], "rental_vacancy_rate", 90)
-        add("vacancy", "Rental Vacancy (QoQ change)", delta is not None,
-            raw_value=delta, score=cs.score_vacancy(delta) if delta is not None else None)
+    # 15. Transaction Volume (v2): construction spending, quarterly average, QoQ %
+    s = _series(automated, "construction_spending")
+    q = _complete_quarters(s, min_obs=3) if s is not None else None
+    if q is None or len(q) < 2:
+        unavailable("transaction_volume", "Transaction Volume (construction spending)", source="FRED TTLCONS")
     else:
-        add("vacancy", "Rental Vacancy", False, note="Source data unavailable")
+        pct = (float(q.iloc[-1]) / float(q.iloc[-2]) - 1) * 100
+        add("transaction_volume", "Transaction Volume (construction spending, QoQ)", round(pct, 2),
+            cs.score_transaction_volume_cppi(pct), source="FRED TTLCONS", as_of=str(q.index[-1]))
 
-    # 14. Distress (FDIC/Fed CRE delinquency rate, latest)
-    if "cre_delinquency_rate" in automated:
-        latest = _latest(automated["cre_delinquency_rate"], "cre_delinquency_rate")
-        add("distress", "Distress (CRE Loan Delinquency Rate)", latest is not None,
-            raw_value=latest, score=cs.score_distress(latest) if latest is not None else None)
+    # 16. Consumer Confidence (UMCSENT, scored on the CCI thresholds)
+    s = _series(automated, "consumer_sentiment_umcsent")
+    if s is None:
+        unavailable("consumer_confidence", "Consumer Confidence", source="FRED UMCSENT")
     else:
-        add("distress", "Distress (CRE Loan Delinquency Rate)", False, note="Source data unavailable — add cre_delinquency_rate (DRCRELEXFACBS) to FRED_SERIES")
+        v = float(s.iloc[-1])
+        add("consumer_confidence", "Consumer Confidence (UMCSENT proxy for Conference Board CCI)", v,
+            cs.score_consumer_confidence(v),
+            note="Thresholds were set for the Conference Board CCI, which runs on a different scale; read with caution.",
+            source="FRED UMCSENT", as_of=_as_of(s))
 
-    # 15. Transaction Volume (CPPI) — EXCLUDED
-    add("transaction_volume_cppi", "Transaction Volume (CPPI)", False,
-        note=cs.MISSING_INDICATORS["transaction_volume_cppi"])
-
-    # 16. Consumer Confidence — available via UMCSENT, but flagged as a
-    # DIFFERENT index than the methodology specifies (Conference Board CCI).
-    # Scored anyway since it's directionally useful, but the scale mismatch
-    # means the resulting score should be read with real caution.
-    if "consumer_sentiment_umcsent" in automated:
-        latest = _latest(automated["consumer_sentiment_umcsent"], "consumer_sentiment_umcsent")
-        score = cs.score_consumer_confidence(latest) if latest is not None else None
-        add("consumer_confidence", "Consumer Confidence (UMCSENT proxy — NOT Conference Board CCI)",
-            latest is not None, raw_value=latest, score=score,
-            note="Scored against thresholds calibrated for Conference Board CCI, which runs on a different scale than University of Michigan's index. Treat this score with caution until thresholds are recalibrated for UMCSENT specifically." if latest is not None else "Source data unavailable")
+    # 17. Mortgage Rate
+    s = _series(automated, "mortgage_rate_30y")
+    if s is None:
+        unavailable("mortgage_rate", "30-Year Mortgage Rate", source="FRED MORTGAGE30US")
     else:
-        add("consumer_confidence", "Consumer Confidence", False, note="Source data unavailable — add consumer_sentiment_umcsent (UMCSENT) to FRED_SERIES")
-
-    # 17. Mortgage Rate (latest)
-    if "mortgage_rate_30y" in automated:
-        latest = _latest(automated["mortgage_rate_30y"], "mortgage_rate_30y")
-        add("mortgage_rate", "30-Year Mortgage Rate", latest is not None,
-            raw_value=latest, score=cs.score_mortgage_rate(latest) if latest is not None else None)
-    else:
-        add("mortgage_rate", "30-Year Mortgage Rate", False, note="Source data unavailable — add mortgage_rate_30y (MORTGAGE30US) to FRED_SERIES")
+        v = float(s.iloc[-1])
+        add("mortgage_rate", "30-Year Mortgage Rate", v, cs.score_mortgage_rate(v),
+            source="FRED MORTGAGE30US", as_of=_as_of(s))
 
     return scores
+
 
 def compute_cycle_score(automated: dict) -> dict:
     scores = compute_indicator_scores(automated)
