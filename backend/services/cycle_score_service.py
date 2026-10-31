@@ -2,27 +2,24 @@
 services/cycle_score_service.py
 
 Implements the Harvest Time Capital Macro Intelligence Engine
-methodology (v1.0, Oct 2026): scores each available indicator 0-5
-against the thresholds in the methodology doc, then aggregates into a
-0-100 Cycle Score.
+methodology (v2.0, Oct 2026): scores each indicator 0-5 against the
+thresholds in the methodology doc, then aggregates into a 0-100 Cycle Score:
 
-COVERAGE NOTE: the methodology specifies 17 indicators. As of this
-build, 3-4 have no free equivalent (see MISSING_INDICATORS below) and
-are excluded from the denominator rather than silently imputed with a
-neutral score -- the resulting score is explicitly labeled with how
-many of the 17 indicators it's actually based on, rather than claiming
-full coverage it doesn't have.
+    Cycle Score = (sum of indicator scores) / (17 x 5) x 100
+
+COVERAGE: all 17 indicators have a free, automated source in v2.0. If a source
+fails on a given day, that indicator is reported as unavailable and two scores
+are returned: `cycle_score` (over the indicators that loaded) and
+`cycle_score_methodology` (the doc's fixed 17 x 5 denominator, missing = 0).
+They are equal when all 17 load.
 """
 from dataclasses import dataclass, field
 
 TOTAL_INDICATORS_IN_METHODOLOGY = 17
 MAX_SCORE_PER_INDICATOR = 5
 
-MISSING_INDICATORS = {
-    "midwest_pmi": "Licensed data product (ISM-Chicago/MNI) — not available via any free API.",
-    "cap_rate_spread": "No free true cap-rate series exists; only an aggregate CRE price index is available, which cannot be substituted for cap rate minus Treasury yield without materially changing what's being measured.",
-    "transaction_volume_cppi": "No free commercial property price/transaction-volume index distinct from the aggregate CRE price index was found.",
-}
+# v2.0: every indicator has an automated source; nothing is permanently missing.
+MISSING_INDICATORS: dict[str, str] = {}
 
 CYCLE_PHASES = [
     (0, 20, "Recession"),
@@ -80,11 +77,24 @@ def score_cpi_yoy(yoy_pct: float) -> int:
 def score_treasury_10y(yield_pct: float) -> int:
     return _score_descending(yield_pct, [(5, 0), (4.5, 1), (4, 2), (3, 3), (2, 4), (float("-inf"), 5)])
 
+# SLOOS net % of banks tightening -> the methodology's categories. Cutoffs follow the
+# size words the Fed uses in SLOOS summaries; adjust here if your committee prefers others.
+SLOOS_CUTOFFS = {"significant": 20.0, "modest": 5.0}
+
+
+def classify_sloos(net_pct_tightening: float) -> str:
+    """Net % of domestic banks tightening (positive) or easing (negative) CRE standards."""
+    sig, mod = SLOOS_CUTOFFS["significant"], SLOOS_CUTOFFS["modest"]
+    if net_pct_tightening >= sig: return "tightened_significantly"
+    if net_pct_tightening >= mod: return "tightened"
+    if net_pct_tightening > -mod: return "unchanged"
+    if net_pct_tightening > -sig: return "eased"
+    return "eased_significantly"
+
+
 def score_credit_conditions(sloos_signal: str) -> int:
-    """sloos_signal: one of 'tightened_significantly','tightened','unchanged','eased','eased_significantly'.
-    NOTE: your current SLOOS fetcher only returns keyword counts, not this classification --
-    this needs a real sentiment rule (e.g. net % of banks reporting tightening from the actual
-    SLOOS release table) before this scorer can be fed real data. Flagging rather than guessing."""
+    """sloos_signal: one of 'tightened_significantly','tightened','unchanged','eased','eased_significantly'
+    (use classify_sloos on the net % tightening)."""
     mapping = {
         "tightened_significantly": 0, "tightened": 1, "unchanged": 3,
         "eased": 4, "eased_significantly": 5,
@@ -106,7 +116,16 @@ def score_labor_market(unemployment_trend: str, jolts_strength: str) -> int:
     return 3
 
 def score_midwest_pmi(pmi_value: float) -> int:
+    """For a real PMI reading (50 = no change). Kept for when a licensed Chicago PMI is available."""
     return _score_ascending(pmi_value, [(42, 0), (48, 1), (50, 2), (52, 3), (55, 4), (float("inf"), 5)])
+
+
+def score_cfnai_ma3(cfnai_ma3: float) -> int:
+    """PMI substitute: Chicago Fed National Activity Index, 3-month average (0 = trend growth).
+    Cutoffs from the Chicago Fed's own guidance: below -0.70 signals recession; above +0.20
+    after a contraction signals recovery; above +0.70 signals rising inflation pressure.
+    -0.35 is the midpoint between recession and trend."""
+    return _score_ascending(cfnai_ma3, [(-0.70, 0), (-0.35, 1), (0, 2), (0.20, 3), (0.70, 4), (float("inf"), 5)])
 
 def score_migration(annual_pct_change: float) -> int:
     return _score_ascending(annual_pct_change, [(-1, 0), (-0.5, 1), (0, 2), (0.5, 3), (1, 4), (float("inf"), 5)])
@@ -124,18 +143,24 @@ def score_cap_rate_spread(spread_pct: float) -> int:
 def score_rent_growth(monthly_pct: float) -> int:
     return _score_ascending(monthly_pct, [(-3, 0), (-1, 1), (1, 2), (2, 3), (3, 4), (float("inf"), 5)])
 
-def score_vacancy(qoq_change_pct: float) -> int:
-    # doc's thresholds are unusual (0% appears twice, for scores 2 and 3) -- kept exactly as
-    # specified; ties resolve to the first match (score 2) per standard threshold-list order
-    if qoq_change_pct >= 1: return 0
-    if qoq_change_pct >= 0.5: return 1
-    if qoq_change_pct == 0: return 2
-    if qoq_change_pct < 0 and qoq_change_pct >= -1: return 4
-    if qoq_change_pct < -1: return 5
-    return 3
+VACANCY_FLAT_BAND = 0.05   # |change| below this counts as "0%" (flat)
 
-def score_distress(delinquency_pct: float) -> int:
-    return _score_descending(delinquency_pct, [(8, 0), (6, 1), (4, 2), (2, 3), (1, 4), (float("-inf"), 5)])
+
+def score_vacancy(qoq_change: float) -> int:
+    """Quarterly change (vacancy rate in pp, or stress index points in v2). The doc lists
+    "0% -> 2" and "0% -> 3"; read here as a small rise -> 2 and flat -> 3, so the score never
+    goes UP as vacancy pressure rises (the old version scored a +0.3 rise above a flat quarter)."""
+    if qoq_change >= 1: return 0
+    if qoq_change >= 0.5: return 1
+    if qoq_change >= VACANCY_FLAT_BAND: return 2
+    if qoq_change > -VACANCY_FLAT_BAND: return 3
+    if qoq_change >= -1: return 4
+    return 5
+
+def score_distress(distress_pct: float) -> int:
+    """distress_pct: higher = more distress. v2: the year-over-year CRE price DECLINE in %
+    (0 when prices rose). Also valid for a CRE delinquency rate in %."""
+    return _score_descending(distress_pct, [(8, 0), (6, 1), (4, 2), (2, 3), (1, 4), (float("-inf"), 5)])
 
 def score_transaction_volume_cppi(qoq_pct: float) -> int:
     return _score_ascending(qoq_pct, [(-10, 0), (-5, 1), (0, 2), (5, 3), (10, 4), (float("inf"), 5)])
@@ -151,38 +176,44 @@ def score_mortgage_rate(rate_pct: float) -> int:
 class IndicatorScore:
     key: str
     label: str
-    raw_value: float | None
+    raw_value: float | dict | None
     score: int | None
     available: bool
     note: str | None = None
+    source: str | None = None      # series used, e.g. "FRED STLFSI4"
+    as_of: str | None = None       # date of the latest observation used
 
 
 def aggregate_cycle_score(scores: list[IndicatorScore]) -> dict:
-    """Computes the Cycle Score over AVAILABLE indicators only (option
-    (a) from the coverage discussion), explicitly reporting how many of
-    the methodology's 17 indicators were actually used."""
     available = [s for s in scores if s.available and s.score is not None]
-    missing = [s for s in scores if not s.available]
+    missing = [s for s in scores if not (s.available and s.score is not None)]
 
     total_score = sum(s.score for s in available)
     max_possible = len(available) * MAX_SCORE_PER_INDICATOR
-    cycle_score = round((total_score / max_possible) * 100, 1) if max_possible else None
+    cycle_score = round(total_score / max_possible * 100, 1) if max_possible else None
+    # Methodology formula: fixed 17 x 5 denominator (a missing indicator counts as 0)
+    methodology_score = round(total_score / (TOTAL_INDICATORS_IN_METHODOLOGY * MAX_SCORE_PER_INDICATOR) * 100, 1)
 
+    full = len(available) == TOTAL_INDICATORS_IN_METHODOLOGY
     return {
         "cycle_score": cycle_score,
         "phase": classify_phase(cycle_score) if cycle_score is not None else None,
+        "cycle_score_methodology": methodology_score,
         "indicators_used": len(available),
         "indicators_in_methodology": TOTAL_INDICATORS_IN_METHODOLOGY,
         "coverage_note": (
-            f"Based on {len(available)} of {TOTAL_INDICATORS_IN_METHODOLOGY} methodology "
-            f"indicators. Missing indicators are excluded from both the numerator and "
-            f"denominator, not imputed with a neutral score."
+            f"Based on all {TOTAL_INDICATORS_IN_METHODOLOGY} methodology indicators."
+            if full else
+            f"Based on {len(available)} of {TOTAL_INDICATORS_IN_METHODOLOGY} indicators; "
+            f"{len(missing)} could not be loaded today. cycle_score excludes them; "
+            f"cycle_score_methodology counts them as 0 per the fixed 17 x 5 formula."
         ),
         "missing_indicators": [
             {"key": s.key, "label": s.label, "reason": s.note} for s in missing
         ],
         "indicator_breakdown": [
-            {"key": s.key, "label": s.label, "raw_value": s.raw_value, "score": s.score, "note": s.note}
+            {"key": s.key, "label": s.label, "raw_value": s.raw_value, "score": s.score,
+             "note": s.note, "source": s.source, "as_of": s.as_of}
             for s in available
         ],
     }

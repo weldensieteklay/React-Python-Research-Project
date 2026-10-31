@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
+import { useNavigate } from "react-router-dom";
 import { useFetchData } from "../../hooks/useFetchData";
 import DataGrid from "../../components/table/AgGridTable";
 import PanelData from "../../components/PanelData";
@@ -19,6 +20,9 @@ import RentByZipChart from "./RentByZipChart";
 import RentMap from "./RentMap";
 import BackButton from "./BackButton";
 import { RENTAL_DATA_ALLOWED_EMAILS } from '../../constants/constants';
+
+// Where the ← on the rental dashboard goes: the main dashboard (same as the Home icon)
+const MAIN_DASHBOARD_ROUTE = "/dashboard";
 
 // Exported panel columns. Rates are in percent; real_gdp is joined on HUD fiscal year (Oct-Sep).
 const EXPORT_COLUMNS = [
@@ -116,6 +120,7 @@ export default function DfwRentalDashboard() {
   const [mapCounty, setMapCounty] = useState(null);
 
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const best = useSelector(selectBestMethod);
   const { user } = useUser();
   const isAllowed = RENTAL_DATA_ALLOWED_EMAILS.includes(user?.email);
@@ -223,9 +228,12 @@ export default function DfwRentalDashboard() {
     // pb-28: room below Data views so it scrolls clear of the fixed footer
     <div className="p-6 pb-28 bg-gray-50 min-h-screen">
       <div className="flex flex-col md:flex-row md:items-center justify-between pb-4 mb-4 border-b border-gray-200 gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900 tracking-tight">Dallas-Fort Worth (DFW) Rental Property Portal</h1>
-          <p className="text-sm text-gray-500 mt-1">Powered by Zillow Observed Rent Index (ZORI) & Macroeconomic Transmissions</p>
+        <div className="flex items-start gap-2">
+          <BackButton onClick={() => navigate(MAIN_DASHBOARD_ROUTE)} label="Back to dashboard" />
+          <div className="pt-1">
+            <h1 className="text-xl font-bold text-gray-900 tracking-tight">Dallas-Fort Worth (DFW) Rental Property Portal</h1>
+            <p className="text-sm text-gray-500 mt-1">Powered by Zillow Observed Rent Index (ZORI) & Macroeconomic Transmissions</p>
+          </div>
         </div>
       </div>
 

@@ -185,25 +185,25 @@ export default function RentDivergenceReport({ onBack, onTrainForecast }) {
             <p className="text-sm text-gray-500 mt-1">Two-way fixed-effects model on monthly ZORI rents (ZIP and month fixed effects, ZIP-clustered errors)</p>
           </div>
         </div>
-        <div className="flex flex-wrap md:flex-nowrap items-center gap-2 self-start md:self-auto whitespace-nowrap">
-          <div className="flex rounded-md border border-gray-300 overflow-hidden text-sm font-semibold">
-            {[["base", "Rent & county only"], ["full", "With Census factors"]].map(([v, label]) => (
-              <button key={v} onClick={() => setSpec(v)}
-                      className={`px-3 py-1.5 ${spec === v ? "bg-gray-800 text-white" : "bg-white text-gray-700 hover:bg-gray-50"}`}>
-                {label}
-              </button>
-            ))}
-          </div>
-          <label className="flex items-center gap-1.5 text-sm text-gray-700 px-2">
-            <input type="checkbox" checked={eventStudy} onChange={(e) => setEventStudy(e.target.checked)} />
-            By year
-          </label>
-          {onTrainForecast && (
-            <button onClick={onTrainForecast} className="px-4 py-1.5 text-sm font-semibold rounded-md bg-emerald-600 hover:bg-emerald-700 text-white transition-colors">
-              ⚡ Want to try yourself
+      {data && !loading && !error && <div className="flex flex-wrap md:flex-nowrap items-center gap-2 self-start md:self-auto whitespace-nowrap">
+        <div className="flex rounded-md border border-gray-300 overflow-hidden text-sm font-semibold">
+          {[["base", "Rent & county only"], ["full", "With Census factors"]].map(([v, label]) => (
+            <button key={v} onClick={() => setSpec(v)}
+                    className={`px-3 py-1.5 ${spec === v ? "bg-gray-800 text-white" : "bg-white text-gray-700 hover:bg-gray-50"}`}>
+              {label}
             </button>
-          )}
+          ))}
         </div>
+        <label className="flex items-center gap-1.5 text-sm text-gray-700 px-2">
+          <input type="checkbox" checked={eventStudy} onChange={(e) => setEventStudy(e.target.checked)} />
+          By year
+        </label>
+        {onTrainForecast && (
+          <button onClick={onTrainForecast} className="px-4 py-1.5 text-sm font-semibold rounded-md bg-emerald-600 hover:bg-emerald-700 text-white transition-colors">
+            ⚡ Want to try yourself
+          </button>
+        )}
+      </div>}
       </div>
 
       {loading && <div className="p-8 text-center text-gray-500 font-medium animate-pulse">Fitting the panel model…</div>}
