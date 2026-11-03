@@ -534,7 +534,7 @@ const PanelData = ({
                         Panel Data Analysis and Prediction
                     </h2>
                     <div className="absolute right-4 flex items-center gap-2">
-                        <UserGuideButton className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-black text-sm rounded-lg shadow-sm hover:bg-gray-100 transition-colors" />
+                        {/* <UserGuideButton className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-black text-sm rounded-lg shadow-sm hover:bg-gray-100 transition-colors" /> */}
                         <button
                             onClick={() => setShowGuide((o) => !o)}
                             className="flex items-center gap-2 px-3 py-1.5 bg-white text-black text-sm rounded-lg shadow-sm hover:bg-gray-100 transition-colors"
@@ -548,7 +548,7 @@ const PanelData = ({
                     <GuidePanel
                         open={showGuide}
                         onClose={() => setShowGuide(false)}
-                        content={guideContent.crossSectional}
+                        content={guideContent.panelData}
                     />
                 </div>
             </div>
