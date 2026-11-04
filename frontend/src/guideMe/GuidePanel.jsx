@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { XMarkIcon, ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/24/solid";
-
+import { guideContent } from "./Guidecontent";
 /**
  * Generic "Guide Me" modal. Pass in page-specific `content` and it renders
  * a step-by-step walkthrough with Back/Next navigation, as a modal overlay.

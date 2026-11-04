@@ -72,7 +72,7 @@ const Dashboard = () => {
                     </h1>
 
                     <h3 className="text-2xl font-bold text-gray-700">
-                        Select a data category to continue.
+                        Select a category to continue.
                     </h3>
                 </div>
 
