@@ -24,8 +24,15 @@ b_k reads as: after the peak, a ZIP one standard deviation higher on trait k had
 County terms: DFW keeps its fixed setup (Collin, Denton, Tarrant vs Dallas County, the rest as
 "Outer counties"). Any other metro uses its own counties: the one with the most ZIP codes is the
 reference, the next MAX_COUNTY_TERMS largest (with at least MIN_COUNTY_ZIPS ZIPs) get their own
-term, and the rest are pooled as "Other counties". A metro with fewer than MIN_ZIPS usable ZIPs
-raises NotEnoughZips: with ~10 traits the estimates wouldn't mean much.
+term, and the rest are pooled as "Other counties".
+
+How much is estimated depends on how many ZIPs have complete data (gaps of up to
+MAX_GAP_MONTHS months are filled first). Trait effects are learned by comparing ZIPs, so the
+number of ZIPs, not ZIP-months, is the sample size, and clustered errors need enough of them:
+  full         MIN_ZIPS+ ZIPs: all traits, county terms, rate term, by-year view
+  simplified   MIN_SIMPLE_ZIPS..MIN_ZIPS-1: boom + rent level + at most one county term
+               (about 3 effects), CR1 clustered errors with t(G-1) p-values
+  descriptive  fewer: no regression, peak vs latest rent by county and ZIP
 Standard errors are clustered by ZIP. The months from `start` to `compare_from` are
 used only to measure each ZIP's boom and starting rent, not in the regression.
 
@@ -36,6 +43,7 @@ the Zillow data mid-window don't create composition effects.
 import numpy as np
 import pandas as pd
 from linearmodels.panel import PanelOLS
+from scipy import stats
 
 
 DFW_METRO = "Dallas-Fort Worth-Arlington, TX"
@@ -50,7 +58,9 @@ COUNTY_PRESETS = {
 OTHER_GROUP = "Other counties"
 MAX_COUNTY_TERMS = 3   # counties compared with the reference, besides the pooled "other" group
 MIN_COUNTY_ZIPS = 5    # smaller counties are pooled
-MIN_ZIPS = 30          # fewer usable ZIPs than this and the model isn't fitted
+MIN_ZIPS = 30          # full model from here
+MIN_SIMPLE_ZIPS = 12   # simplified model from here; below, a direct comparison only
+MAX_GAP_MONTHS = 2     # missing months in a row that are filled in rather than dropping the ZIP
 
 
 class NotEnoughZips(ValueError):
@@ -104,26 +114,94 @@ def _clean_panel(zori: pd.DataFrame) -> pd.DataFrame:
     return df[["zip_code", "month_year", "zori_rent", "county"]].dropna(subset=["zori_rent"])
 
 
-def build_model_panel(zori: pd.DataFrame, start=DEFAULTS["start"], end=DEFAULTS["end"],
-                      base_month=DEFAULTS["base_month"], peak_months=DEFAULTS["peak_months"],
-                      post_after=DEFAULTS["post_after"], compare_from=DEFAULTS["compare_from"],
-                      metro=DFW_METRO):
-    """Returns (long panel restricted to the comparison window, one-row-per-ZIP traits,
-    metadata). Balance is required over the whole window from `start`."""
+def fill_short_gaps(wide: pd.DataFrame, max_gap: int = None) -> tuple[pd.DataFrame, list]:
+    """
+    Fills interior runs of at most `max_gap` missing months in each ZIP's rent history by
+    straight-line interpolation between the months on either side. Longer gaps, and months
+    before a ZIP's first or after its last value, stay missing. Returns (filled, ZIPs filled).
+    Zillow leaves a month blank when a ZIP had too few listings to measure; one or two such
+    months say nothing about the ZIP, so dropping it for them would waste data.
+    """
+    max_gap = MAX_GAP_MONTHS if max_gap is None else max_gap
+    values = wide.to_numpy(float)
+    filled = values.copy()
+    changed = []
+    for i, row in enumerate(values):
+        idx = np.flatnonzero(~np.isnan(row))
+        if len(idx) < 2:
+            continue
+        j, last, did = idx[0], idx[-1], False
+        while j < last:
+            if np.isnan(row[j]):
+                k = j
+                while np.isnan(row[k]):
+                    k += 1
+                if k - j <= max_gap:
+                    a, b, n = row[j - 1], row[k], k - j + 1
+                    filled[i, j:k] = a + (b - a) * np.arange(1, n) / n
+                    did = True
+                j = k
+            else:
+                j += 1
+        if did:
+            changed.append(wide.index[i])
+    return pd.DataFrame(filled, index=wide.index, columns=wide.columns), changed
+
+
+def _coverage(wide: pd.DataFrame, filled: pd.DataFrame, balanced_index, gap_filled: list) -> dict:
+    """Why each ZIP with rents in the window is or isn't usable, for the "uses X of Y" note."""
+    ok = filled.notna()
+    first = ok.idxmax(axis=1)
+    last = ok.iloc[:, ::-1].idxmax(axis=1)
+    complete = filled.index.isin(balanced_index)
+    late = (first > filled.columns[0]) & ~complete
+    early = (last < filled.columns[-1]) & ~complete & ~late
+    return {
+        "zips_with_rents": int(len(wide)),
+        "zips_complete": int(complete.sum()),
+        "zips_started_late": int(late.sum()),
+        "zips_ended_early": int(early.sum()),
+        "zips_with_long_gaps": int((~complete & ~late & ~early).sum()),
+        "zips_gap_filled": int(len(set(gap_filled) & set(balanced_index))),
+        "max_gap_filled_months": MAX_GAP_MONTHS,
+        "first_month": str(filled.columns[0]),
+        "last_month": str(filled.columns[-1]),
+    }
+
+
+def _prepare_panel(zori, start, end, base_month, peak_months, post_after, compare_from, area_name):
     if not (start <= base_month < compare_from <= post_after):
         raise ValueError("Months must satisfy start <= base_month < compare_from <= post_after")
     df = _clean_panel(zori)
     df = df[df["month_year"] >= start]
     if end:
         df = df[df["month_year"] <= end]
+    if df.empty:
+        raise NotEnoughZips(f"Zillow has no rents for {area_name} since {start}.")
 
     wide = df.pivot_table(index="zip_code", columns="month_year", values="zori_rent")
     for m in [base_month, *peak_months]:
         if m not in wide.columns:
+            if m < wide.columns[0]:
+                raise NotEnoughZips(f"Zillow's rents for {area_name} start in {wide.columns[0]}, after "
+                                    f"{m}, so the 2021-22 boom can't be measured here.")
             raise ValueError(f"Month {m} is not in the panel window {start}..{end or 'latest'}")
-    balanced = wide.dropna()
-    if balanced.empty:
-        raise NotEnoughZips(f"No ZIP code has Zillow rents for every month since {start}.")
+    filled, gap_filled = fill_short_gaps(wide)
+    balanced = filled.dropna()
+    county = df.drop_duplicates("zip_code").set_index("zip_code")["county"]
+    return df, wide, filled, balanced, gap_filled, county
+
+
+def build_model_panel(zori: pd.DataFrame, start=DEFAULTS["start"], end=DEFAULTS["end"],
+                      base_month=DEFAULTS["base_month"], peak_months=DEFAULTS["peak_months"],
+                      post_after=DEFAULTS["post_after"], compare_from=DEFAULTS["compare_from"],
+                      area_name="DFW"):
+    """Returns (long panel restricted to the comparison window, one-row-per-ZIP traits,
+    metadata). Balance is required over the whole window from `start`, after filling gaps of
+    up to MAX_GAP_MONTHS months. The regression itself uses only Zillow's actual values; filled
+    months only decide which ZIPs count as complete and feed the base/peak averages."""
+    df, wide, filled, balanced, gap_filled, county = _prepare_panel(
+        zori, start, end, base_month, peak_months, post_after, compare_from, area_name)
 
     base = balanced[base_month]
     peak = balanced[list(peak_months)].mean(axis=1)
@@ -131,21 +209,20 @@ def build_model_panel(zori: pd.DataFrame, start=DEFAULTS["start"], end=DEFAULTS[
         "boom": peak / base - 1,
         "ln_base_rent": np.log(base),
     })
-    county = df.drop_duplicates("zip_code").set_index("zip_code")["county"]
     traits["county"] = county.reindex(traits.index)
-    traits["county_group"], reference = county_groups(traits["county"], metro)
     traits.index.name = "zip_code"
 
     long = df[df["zip_code"].isin(balanced.index) & (df["month_year"] >= compare_from)].copy()
-    if (long["month_year"] > post_after).sum() == 0:
+    if len(balanced) and (long["month_year"] > post_after).sum() == 0:
         raise ValueError(f"No months after post_after={post_after} in the window")
     long["date"] = pd.to_datetime(long["month_year"])
     long["post"] = (long["month_year"] > post_after).astype(int)
     long["ln_rent"] = np.log(long["zori_rent"])
 
+    window_months = [m for m in filled.columns if m >= compare_from]
     meta = {
-        "window": [long["month_year"].min(), long["month_year"].max()],
-        "months": int(long["month_year"].nunique()),
+        "window": [window_months[0], window_months[-1]] if window_months else [compare_from, compare_from],
+        "months": int(len(window_months)),
         "base_month": base_month,
         "peak_months": list(peak_months),
         "post_after": post_after,
@@ -154,8 +231,10 @@ def build_model_panel(zori: pd.DataFrame, start=DEFAULTS["start"], end=DEFAULTS[
         "zips_in_window": int(len(wide)),
         "zips_balanced": int(len(balanced)),
         "zips_dropped_incomplete": sorted(set(wide.index) - set(balanced.index)),
-        "reference_county": reference,
+        "coverage": _coverage(wide, filled, balanced.index, gap_filled),
     }
+    meta["_filled"] = filled   # for the descriptive tier; removed before returning JSON
+    meta["_county"] = county
     return long, traits, meta
 
 
@@ -178,43 +257,54 @@ def _zscore(s: pd.Series) -> pd.Series:
     return (s - s.mean()) / sd if sd and not np.isnan(sd) else s * np.nan
 
 
-def fit_divergence_model(zori: pd.DataFrame, covariates: pd.DataFrame | None = None,
-                         macro_by_month: dict | None = None, spec: str = "full",
-                         event_study: bool = False, metro: str = DFW_METRO,
-                         area_name: str = "DFW", **window) -> dict:
-    """
-    spec="base": boom, pre-boom rent level, county group
-    spec="full": base + every Census trait with data (ZIPs missing any are dropped and listed)
-    event_study=True: separate Post coefficients for each post-peak calendar year, which
-                      shows whether a gap is widening, narrowing or stable.
-    macro_by_month: {"YYYY-MM": {"mortgage_rate_30y": ...}}; adds the rate x price-tier term.
-    metro / area_name: which Zillow metro this is, and its short name for sentences.
-    Raises NotEnoughZips when fewer than MIN_ZIPS ZIPs are usable.
-    """
-    long, traits, meta = build_model_panel(zori, metro=metro, **window)
-    reference = meta.pop("reference_county")
-    traits = _attach_census(traits, covariates if spec == "full" else None)
+def _small_county_groups(county: pd.Series) -> tuple[pd.Series, str | None]:
+    """Simplified tier: the largest county vs all the others pooled, and only when both
+    sides have MIN_COUNTY_ZIPS ZIPs; otherwise no county term at all."""
+    counts = county.dropna().value_counts().sort_index().sort_values(ascending=False, kind="stable")
+    if counts.empty:
+        return pd.Series(OTHER_GROUP, index=county.index), OTHER_GROUP
+    ref = counts.index[0]
+    others = int(len(county) - counts.iloc[0])
+    if counts.iloc[0] < MIN_COUNTY_ZIPS or others < MIN_COUNTY_ZIPS:
+        return pd.Series(ref, index=county.index), ref
+    return county.where(county == ref, OTHER_GROUP), ref
 
-    trait_cols = list(RENT_TRAITS)
-    unavailable = []
-    if spec == "full":
-        for c in CENSUS_TRAITS:
-            if c in traits and traits[c].notna().sum() >= 10:
-                trait_cols.append(c)
-            else:
-                unavailable.append(c)
 
-    missing_mask = traits[trait_cols].isna().any(axis=1)
-    dropped_missing = sorted(traits.index[missing_mask])
-    traits = traits[~missing_mask].copy()
-    long = long[long["zip_code"].isin(traits.index)].copy()
-    if len(traits) < MIN_ZIPS:
-        detail = (f" ({len(dropped_missing)} more lack Census data)" if dropped_missing else "")
-        raise NotEnoughZips(
-            f"Only {len(traits)} ZIP codes in {area_name} have Zillow rents for every month since "
-            f"{window.get('start') or DEFAULTS['start']}{detail}. "
-            f"This analysis needs at least {MIN_ZIPS}.")
+def _describe(filled: pd.DataFrame, county: pd.Series, base_month, peak_months) -> dict:
+    """Descriptive tier: rent at the peak vs the latest month, by county and by ZIP. Uses every
+    ZIP with a value at the base month, the peak months and the latest month."""
+    last = filled.columns[-1]
+    need = [base_month, *peak_months, last]
+    w = filled.dropna(subset=need)
+    peak = w[list(peak_months)].mean(axis=1)
+    t = pd.DataFrame({
+        "zip_code": w.index,
+        "county": county.reindex(w.index).values,
+        "base_rent": w[base_month].values,
+        "peak_rent": peak.values,
+        "latest_rent": w[last].values,
+    })
+    t["boom_pct"] = (t["peak_rent"] / t["base_rent"] - 1) * 100
+    t["change_pct"] = (t["latest_rent"] / t["peak_rent"] - 1) * 100
 
+    def summarize(g):
+        return {"zips": int(len(g)), "peak_rent": float(g["peak_rent"].mean()),
+                "latest_rent": float(g["latest_rent"].mean()),
+                "change_pct": float((g["latest_rent"].mean() / g["peak_rent"].mean() - 1) * 100),
+                "boom_pct": float((g["peak_rent"].mean() / g["base_rent"].mean() - 1) * 100)}
+
+    by_county = [{"county": c if isinstance(c, str) else "Unknown county", **summarize(g)}
+                 for c, g in t.groupby(t["county"].fillna("Unknown county"))]
+    by_county.sort(key=lambda r: r["change_pct"], reverse=True)
+    by_zip = t.sort_values("change_pct", ascending=False).round(2)
+    by_zip = by_zip.astype(object).where(by_zip.notna(), None).to_dict("records")
+    return {"latest_month": str(last), "overall": summarize(t) if len(t) else None,
+            "by_county": by_county, "by_zip": by_zip}
+
+
+def _fit(long, traits, trait_cols, reference, macro_by_month, event_study, small_sample):
+    """Two-way FE regression with ZIP-clustered errors. small_sample: p-values and intervals
+    from t(G-1), G = number of ZIPs, the standard correction when there are few clusters."""
     z = traits[trait_cols].apply(_zscore)
     z.columns = [f"z_{c}" for c in trait_cols]
     long = long.join(z, on="zip_code").join(traits[["county_group"]], on="zip_code")
@@ -248,36 +338,124 @@ def fit_divergence_model(zori: pd.DataFrame, covariates: pd.DataFrame | None = N
     X.index = y.index
     X = X.astype(float)
 
+    # linearmodels' default debiased=True (CR1 scaling; p-values from t with df = observations
+    # minus parameters, which is close to normal). The small-sample tier keeps the same errors
+    # but takes p-values and intervals from t(G-1) below, since the ZIPs are the real sample.
     res = PanelOLS(y, X, entity_effects=True, time_effects=True, drop_absorbed=True).fit(
         cov_type="clustered", cluster_entity=True)
 
+    n_clusters = int(long["zip_code"].nunique())
     ci = res.conf_int()
     coefs = []
     for name in res.params.index:
         b = float(res.params[name])
+        se = float(res.std_errors[name])
+        if small_sample:
+            df_t = n_clusters - 1
+            t_stat = b / se
+            p = float(2 * stats.t.sf(abs(t_stat), df_t))
+            half = float(stats.t.ppf(0.975, df_t)) * se
+            lo, hi = b - half, b + half
+        else:
+            t_stat, p = float(res.tstats[name]), float(res.pvalues[name])
+            lo, hi = float(ci.loc[name, "lower"]), float(ci.loc[name, "upper"])
         coefs.append({
-            "term": name,
-            "coef": b,
-            "std_err": float(res.std_errors[name]),
-            "t_stat": float(res.tstats[name]),
-            "p_value": float(res.pvalues[name]),
-            "ci_low": float(ci.loc[name, "lower"]),
-            "ci_high": float(ci.loc[name, "upper"]),
-            "pct_effect": (np.exp(b) - 1) * 100,
+            "term": name, "coef": b, "std_err": se, "t_stat": float(t_stat), "p_value": p,
+            "ci_low": lo, "ci_high": hi, "pct_effect": (np.exp(b) - 1) * 100,
         })
+    return res, coefs, groups, rate_term, long
+
+
+def fit_divergence_model(zori: pd.DataFrame, covariates: pd.DataFrame | None = None,
+                         macro_by_month: dict | None = None, spec: str = "full",
+                         event_study: bool = False, metro: str = DFW_METRO,
+                         area_name: str = "DFW", **window) -> dict:
+    """
+    spec="base": boom, pre-boom rent level, county group
+    spec="full": base + every Census trait with data (ZIPs missing any are dropped and listed)
+    event_study=True: separate Post coefficients for each post-peak calendar year, which
+                      shows whether a gap is widening, narrowing or stable.
+    macro_by_month: {"YYYY-MM": {"mortgage_rate_30y": ...}}; adds the rate x price-tier term.
+    metro / area_name: which Zillow metro this is, and its short name for sentences.
+
+    The tier depends on how many ZIPs have complete data (see the module docstring):
+      "full"         MIN_ZIPS+ ZIPs: the model above, unchanged
+      "simplified"   MIN_SIMPLE_ZIPS..MIN_ZIPS-1: boom + rent level + at most one county term,
+                     no Census traits, no rate term, no by-year view; small-sample p-values
+      "descriptive"  fewer: no regression; peak vs latest rent by county and ZIP
+    Raises NotEnoughZips only when not even a descriptive comparison is possible.
+    """
+    w = {**{k: DEFAULTS[k] for k in ("start", "end", "base_month", "peak_months", "post_after", "compare_from")},
+         **{k: v for k, v in window.items() if v is not None or k == "end"}}
+    long, traits, meta = build_model_panel(zori, area_name=area_name, **w)
+    filled, county = meta.pop("_filled"), meta.pop("_county")
+    cov_note = meta["coverage"]
+    common = {"metro": metro, "area_name": area_name, "available": True, "spec": spec,
+              "dependent_variable": "ln(zori_rent)", "panel": meta}
+    n_complete = len(traits)
+
+    # ---- which tier
+    unavailable, dropped_missing, trait_cols = [], [], list(RENT_TRAITS)
+    full_traits = traits
+    if n_complete:
+        full_traits = _attach_census(traits, covariates if spec == "full" else None)
+        if spec == "full":
+            for c in CENSUS_TRAITS:
+                if c in full_traits and full_traits[c].notna().sum() >= 10:
+                    trait_cols.append(c)
+                else:
+                    unavailable.append(c)
+        missing_mask = full_traits[trait_cols].isna().any(axis=1)
+        dropped_missing = sorted(full_traits.index[missing_mask])
+        full_traits = full_traits[~missing_mask].copy()
+
+    if len(full_traits) >= MIN_ZIPS:
+        tier = "full"
+    elif n_complete >= MIN_SIMPLE_ZIPS:
+        tier = "simplified"
+    else:
+        tier = "descriptive"
+
+    # ---- descriptive: compare rents directly
+    if tier == "descriptive":
+        desc = _describe(filled, county, w["base_month"], w["peak_months"])
+        if not desc["overall"]:
+            raise NotEnoughZips(
+                f"None of the {cov_note['zips_with_rents']} ZIP codes Zillow tracks in {area_name} have rents "
+                f"for both {w['base_month']} and the latest month, so there's nothing to compare.")
+        return {**common, "tier": "descriptive", "event_study": False, "coefficients": [],
+                "n_zips": desc["overall"]["zips"], "descriptive": desc,
+                "tier_reason": (f"Only {n_complete} ZIP codes in {area_name} have complete rent histories, too few "
+                                f"for a model (it needs at least {MIN_SIMPLE_ZIPS}), so rents are compared directly."),
+                "how_to_read": ("Each row compares a ZIP's or county's average rent at the peak "
+                                f"({', '.join(w['peak_months'])}) with the latest month. No model is fitted.")}
+
+    # ---- full or simplified: regression
+    if tier == "full":
+        traits = full_traits
+        traits["county_group"], reference = county_groups(traits["county"], metro)
+        small_sample, rate_input, es = False, macro_by_month, event_study
+    else:
+        trait_cols, unavailable = list(RENT_TRAITS), []
+        traits = traits.copy()
+        traits["county_group"], reference = _small_county_groups(traits["county"])
+        small_sample, rate_input, es = True, None, False
+        dropped_missing = []
+    long = long[long["zip_code"].isin(traits.index)].copy()
+
+    res, coefs, groups, rate_term, long = _fit(long, traits, trait_cols, reference, rate_input, es, small_sample)
 
     trait_summary = traits[trait_cols].describe().T[["mean", "std", "min", "max"]]
     county_counts = traits["county_group"].value_counts().to_dict()
+    n_zips = int(long["zip_code"].nunique())
 
-    return {
-        "spec": spec,
-        "event_study": event_study,
-        "dependent_variable": "ln(zori_rent)",
+    result = {
+        **common,
+        "tier": tier,
+        "event_study": es,
         "fixed_effects": ["zip_code", "month"],
-        "std_errors": "clustered by zip_code",
-        "available": True,
-        "metro": metro,
-        "area_name": area_name,
+        "std_errors": ("clustered by zip_code" if tier == "full" else
+                       f"clustered by zip_code, small-sample corrected (t with {n_zips - 1} df)"),
         "reference_county": reference,
         # county term suffix -> county name, e.g. {"collin_county": "Collin County"}
         "county_terms": {county_term(g): g for g in groups},
@@ -285,13 +463,12 @@ def fit_divergence_model(zori: pd.DataFrame, covariates: pd.DataFrame | None = N
         "traits_unavailable": unavailable,
         "rate_interaction": rate_term,
         "n_obs": int(res.nobs),
-        "n_zips": int(long["zip_code"].nunique()),
+        "n_zips": n_zips,
         "zips_by_county_group": {k: int(v) for k, v in county_counts.items()},
         "zips_dropped_missing_covariates": dropped_missing,
         "r2_within": float(res.rsquared_within),
         "coefficients": coefs,
         "trait_summary_raw_units": trait_summary.round(4).reset_index(names="trait").to_dict("records"),
-        "panel": meta,
         "how_to_read": ("Each post_x_<trait> coefficient is the change in log rent after the peak "
                         "for a ZIP 1 SD higher on that trait, relative to its own level around "
                         f"the peak ({meta['compare_from']}..{meta['post_after']}) "
@@ -299,3 +476,10 @@ def fit_divergence_model(zori: pd.DataFrame, covariates: pd.DataFrame | None = N
                         + (f"County terms are relative to {reference}." if groups else
                            "All ZIPs are in one county group, so there are no county terms.")),
     }
+    if tier == "simplified":
+        result["tier_reason"] = (
+            f"Only {n_complete} ZIP codes in {area_name} have complete rent histories (the full analysis needs "
+            f"{MIN_ZIPS}), so this simplified version looks only at boom size, pre-boom rent"
+            + (f" and {reference} vs the other counties" if groups else "")
+            + ", with p-values corrected for the small number of ZIP codes.")
+    return result

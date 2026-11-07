@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo } from "react";
 import { useFetchData } from "../../hooks/useFetchData";
-import { interpretDivergence } from "./interpretDivergence";
+import { interpretDivergence, coverageText } from "./interpretDivergence";
 import { DFW_METRO } from "./useRentMetro";
 
 // ===========================================================================
@@ -39,7 +39,10 @@ export default function BoomDivergenceSummary({ metro = DFW_METRO, areaName = "D
   // Only a response for the metro shown now (a slow one for the previous metro is ignored)
   const data = response && (response.metro ?? DFW_METRO) === metro ? response : null;
   const unavailable = data?.available === false;
-  const report = useMemo(() => (data?.coefficients?.length ? interpretDivergence(data, { focus: "pooled" }) : null), [data]);
+  const hasResults = Boolean(data?.coefficients?.length || data?.descriptive?.overall);
+  const report = useMemo(() => (hasResults ? interpretDivergence(data, { focus: "pooled" }) : null), [data, hasResults]);
+  // Smaller metros get a lighter analysis; say so up front
+  const tierLabel = { simplified: "Simplified analysis", descriptive: "Direct comparison, no model" }[data?.tier];
   const findings = useMemo(
     () => (report?.sections?.find((s) => s.heading === "What we found")?.items ?? []).filter((x) => typeof x === "string").slice(0, MAX_FINDINGS),
     [report]
@@ -85,6 +88,13 @@ export default function BoomDivergenceSummary({ metro = DFW_METRO, areaName = "D
 
       {!loading && !error && report && (
         <>
+          {tierLabel && (
+            <p className="mt-2">
+              <span className="inline-block px-2 py-0.5 rounded bg-amber-50 text-amber-800 text-sm font-medium">
+                {tierLabel} · {data.n_zips} ZIP codes
+              </span>
+            </p>
+          )}
           <p className="mt-3 text-lg leading-relaxed text-gray-900 font-medium">{report.verdict?.text}</p>
           {findings.length > 0 && (
             <ul className="mt-3 space-y-2 list-disc pl-5 marker:text-gray-300">
@@ -94,8 +104,10 @@ export default function BoomDivergenceSummary({ metro = DFW_METRO, areaName = "D
           <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
             <MoreLink onClick={onOpenReport} />
             {data?.n_zips && (
-              <span className="text-sm text-gray-500">
-                Based on monthly Zillow rents for {data.n_zips} ZIP codes{data.panel?.window?.[1] ? ` through ${shortMonth(data.panel.window[1])}` : ""} and U.S. Census data.
+              <span className="text-sm text-gray-500 max-w-xl">
+                {coverageText(data) ?? `Based on monthly Zillow rents for ${data.n_zips} ZIP codes.`}
+                {data.panel?.window?.[1] ? ` Rents through ${shortMonth(data.panel.window[1])}` : ""}
+                {data.tier === "full" || !data.tier ? ", plus U.S. Census data." : "."}
               </span>
             )}
           </div>
