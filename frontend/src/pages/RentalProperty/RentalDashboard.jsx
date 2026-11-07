@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
+import Select from "react-select";
 import { useFetchData } from "../../hooks/useFetchData";
 import DataGrid from "../../components/table/AgGridTable";
 import PanelData from "../../components/PanelData";
@@ -19,6 +20,7 @@ import RentByGroupChart from "./RentByGroupChart";
 import RentByZipChart from "./RentByZipChart";
 import RentMap from "./RentMap";
 import BackButton from "./BackButton";
+import { useRentMetro, DFW_METRO } from "./useRentMetro";
 import { RENTAL_DATA_ALLOWED_EMAILS } from '../../constants/constants';
 
 // Where the ← on the rental dashboard goes: the main dashboard (same as the Home icon)
@@ -88,6 +90,73 @@ const CHART_LEVELS = [
   ["zip", "By ZIP code"],
 ];
 
+/** Short name for headings: "Dallas-Fort Worth (DFW)" or "Austin-Round Rock-Georgetown, TX" */
+const metroTitle = (metro) => (metro === DFW_METRO ? "Dallas-Fort Worth (DFW)" : metro);
+/** Name inside a sentence: "DFW" or "Austin-Round Rock-Georgetown" (no state) */
+const metroShort = (metro) => (metro === DFW_METRO ? "DFW" : metro.replace(/, [A-Z]{2}(-[A-Z]{2})*$/, ""));
+const metroSlug = (metro) => metro.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+
+/** Which metro is shown, with a list of every metro Zillow covers. The viewer's location is
+ *  asked for automatically on their first visit (useRentMetro); the list changes it after that. */
+function MetroBar({ metro, match, note, locating, metros, onChoose }) {
+  // A–Z, searchable. The shown metro stays selectable even if the list hasn't loaded or lacks it.
+  const options = useMemo(() => {
+    const list = metros?.length ? [...metros] : [];
+    if (!list.some((m) => m.metro === metro)) list.push({ metro, zip_count: null });
+    return list
+      .sort((a, b) => a.metro.localeCompare(b.metro))
+      .map((m) => ({ value: m.metro, label: m.metro, zips: m.zip_count }));
+  }, [metros, metro]);
+  const selected = options.find((o) => o.value === metro) ?? null;
+  const near = match?.city ? `${match.city} (${match.zip_code})` : match?.zip_code;
+  return (
+    <section aria-label="Location" className="mb-6 bg-white border border-gray-200 rounded-lg px-6 py-4">
+      <div className="flex flex-col md:flex-row md:items-center gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold uppercase tracking-wider text-blue-700">📍 Your area</div>
+          <p className="text-base text-gray-900 font-semibold mt-0.5">{metro}</p>
+          <div aria-live="polite">
+            {locating && (
+              <p className="text-sm text-gray-500">Finding your area… (allow location access when your browser asks). You're seeing this metro until then.</p>
+            )}
+            {!locating && match && (
+              <p className="text-sm text-gray-500">
+                Matched from your location{near ? `, near ${near}` : ""}. Showing all{" "}
+                {match.metro_zip_count ? `${match.metro_zip_count} ` : ""}ZIP codes Zillow tracks in this metro.
+              </p>
+            )}
+            {!locating && note && <p className="text-sm text-amber-700">{note}</p>}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="sr-only" htmlFor="metro-select">Metro area</label>
+          <Select
+            inputId="metro-select"
+            aria-label="Metro area"
+            className="w-80 max-w-full text-sm"
+            classNamePrefix="react-select"
+            options={options}
+            value={selected}
+            onChange={(o) => o && o.value !== metro && onChoose(o.value)}
+            placeholder="Search for a metro…"
+            noOptionsMessage={({ inputValue }) => `No metro matches "${inputValue}"`}
+            // Search the metro name only; the ZIP count is shown but not searched
+            filterOption={(o, input) => o.label.toLowerCase().includes(input.trim().toLowerCase())}
+            formatOptionLabel={(o, { context }) => (
+              <span>
+                {o.label}
+                {context === "menu" && o.zips ? <span className="text-gray-400"> · {o.zips} ZIPs</span> : null}
+              </span>
+            )}
+            menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+            styles={{ menuPortal: (base) => ({ ...base, zIndex: 50 }) }}
+          />
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function Toggle({ options, value, onChange, size = "md", label }) {
   const pad = size === "sm" ? "px-3 py-1 text-xs" : "px-4 py-1.5 text-sm";
   return (
@@ -102,10 +171,13 @@ function Toggle({ options, value, onChange, size = "md", label }) {
   );
 }
 
-export default function DfwRentalDashboard() {
+export default function RentalDashboard() {
   const { data, loading, error, handleFetch } = useFetchData();
   // Map locations (ZIP lat/lon), loaded the first time the map is shown
   const cov = useFetchData();
+  const metroList = useFetchData();
+  const { metro, match, note, locating, chooseMetro } = useRentMetro();
+  const isDfw = metro === DFW_METRO;
 
   // Screens visited, newest last; ← goes back one. dashboard | map | charts | grid | research | forecast
   const [history, setHistory] = useState(["dashboard"]);
@@ -126,21 +198,46 @@ export default function DfwRentalDashboard() {
   const isAllowed = RENTAL_DATA_ALLOWED_EMAILS.includes(user?.email);
 
   useEffect(() => {
-    handleFetch("data/dfw-zori");
+    metroList.handleFetch("data/rent-metros");
   }, []);
 
-  const [covRequested, setCovRequested] = useState(false);
+  // Rent rows for the chosen metro; a forecast trained on another metro no longer applies
+  const shownMetro = useRef(null);
   useEffect(() => {
-    if (page === "map" && !covRequested) {
-      setCovRequested(true);
-      cov.handleFetch("data/dfw-zip-covariates");
+    if (shownMetro.current && shownMetro.current !== metro) {
+      dispatch(clearBestMethod());
+      home();
     }
-  }, [page, covRequested]);
+    shownMetro.current = metro;
+    handleFetch("data/dfw-zori", { metro });
+  }, [metro]);
 
-  const rows = data?.rows;
+  // Responses say which metro they are for. One for a metro the viewer has since left
+  // (e.g. DFW arriving after their location switched the dashboard to Austin) is never shown.
+  const dataIsCurrent = Boolean(data) && (data.metro ?? DFW_METRO) === metro;
+  const refetchedFor = useRef(null);
+  useEffect(() => {
+    if (data && !dataIsCurrent && !loading && !error && refetchedFor.current !== metro) {
+      refetchedFor.current = metro;   // once per metro, so a mismatch can never loop
+      handleFetch("data/dfw-zori", { metro });
+    }
+  }, [data, dataIsCurrent, loading, error, metro]);
+
+  // Map locations for this metro, loaded the first time the map is opened
+  const covIsCurrent = Boolean(cov.data) && (cov.data.metro ?? DFW_METRO) === metro;
+  const covAskedFor = useRef(null);
+  const loadCovariates = () => {
+    covAskedFor.current = metro;
+    cov.handleFetch("data/dfw-zip-covariates", { metro });
+  };
+  useEffect(() => {
+    if (page === "map" && !covIsCurrent && !cov.loading && covAskedFor.current !== metro) loadCovariates();
+  }, [page, metro, covIsCurrent, cov.loading]);
+
+  const rows = dataIsCurrent ? data?.rows : undefined;
 
   const actualRows = useMemo(() => (Array.isArray(rows) ? rows.filter((r) => !r.is_forecast) : []), [rows]);
-  const panelForecast = useMemo(() => (best ? toDashboardRows(best, actualRows) : { rows: [], reason: null }), [best, actualRows]);
+  const panelForecast = useMemo(() => (best ? toDashboardRows(best, actualRows, metro) : { rows: [], reason: null }), [best, actualRows, metro]);
   const usingPanelForecast = panelForecast.rows.length > 0;
 
   const gridRows = useMemo(() => {
@@ -160,7 +257,7 @@ export default function DfwRentalDashboard() {
           .join(",")
       )
     );
-    downloadCsv("dfw_zori_private_equity_panel.csv", lines);
+    downloadCsv(`${metroSlug(metro)}_zori_private_equity_panel.csv`, lines);
   };
 
   const modelReport = best && (
@@ -169,25 +266,26 @@ export default function DfwRentalDashboard() {
 
   // The report doesn't need the rent rows to open
   if (page === "research") {
-    return <RentDivergenceReport onBack={back} onTrainForecast={() => go("forecast")} />;
+    return <RentDivergenceReport metro={metro} areaName={metroShort(metro)} onBack={back} onTrainForecast={() => go("forecast")} />;
   }
-  if (loading) return <div className="p-8 text-center text-gray-500 font-medium animate-pulse">Loading DFW rent data…</div>;
-  if (error) return <div className="p-6 m-4 bg-red-50 border border-red-200 rounded-lg text-red-700">Error: {error}<button onClick={() => handleFetch("data/dfw-zori")} className="ml-4 font-semibold underline text-red-900">Retry</button></div>;
+  if (loading || (!dataIsCurrent && !error)) return <div className="p-8 text-center text-gray-500 font-medium animate-pulse">Loading {metroTitle(metro)} rent data…</div>;
+  if (error) return <div className="p-6 m-4 bg-red-50 border border-red-200 rounded-lg text-red-700">Error: {error}<button onClick={() => handleFetch("data/dfw-zori", { metro })} className="ml-4 font-semibold underline text-red-900">Retry</button>{!isDfw && <button onClick={() => chooseMetro(DFW_METRO)} className="ml-4 font-semibold underline text-red-900">Show Dallas-Fort Worth instead</button>}</div>;
   // ← returns to the screen they came from (the Boom Divergence report); "View forecast" starts over at the dashboard
   if (page === "forecast") return <PanelData initialData={actualRows} onBack={back} onViewForecast={home} />;
   if (!gridRows.length) return <div className="p-8 text-center text-gray-400">No rent data available yet.</div>;
 
   if (page === "map") {
     return (
-      <DataPage title="Rent map" subtitle="Typical monthly rent by county and ZIP code"
+      <DataPage title="Rent map" subtitle={`Typical monthly rent by county and ZIP code in ${metroTitle(metro)}`}
                 onBack={() => (mapCounty ? setMapCounty(null) : back())}>
         {modelReport}
         <RentMap
           rows={gridRows}
-          covariates={cov.data?.rows}
-          loading={cov.loading || (!cov.data && !cov.error)}
-          error={cov.error}
-          onRetry={() => cov.handleFetch("data/dfw-zip-covariates")}
+          areaName={metroTitle(metro)}
+          covariates={covIsCurrent ? cov.data.rows : undefined}
+          loading={cov.loading || (!covIsCurrent && !cov.error)}
+          error={covIsCurrent ? null : cov.error}
+          onRetry={loadCovariates}
           county={mapCounty}
           onCountyChange={setMapCounty}
           height="max(520px, calc(100vh - 300px))"
@@ -231,13 +329,17 @@ export default function DfwRentalDashboard() {
         <div className="flex items-start gap-2">
           <BackButton onClick={() => navigate(MAIN_DASHBOARD_ROUTE)} label="Back to dashboard" />
           <div className="pt-1">
-            <h1 className="text-xl font-bold text-gray-900 tracking-tight">Dallas-Fort Worth (DFW) Rental Property Portal</h1>
+            <h1 className="text-xl font-bold text-gray-900 tracking-tight">{metroTitle(metro)} Rental Property Portal</h1>
             <p className="text-sm text-gray-500 mt-1">Powered by Zillow Observed Rent Index (ZORI) & Macroeconomic Transmissions</p>
           </div>
         </div>
       </div>
 
-      <BoomDivergenceSummary onOpenReport={() => go("research")} />
+      <MetroBar metro={metro} match={match} note={note} locating={locating} metros={metroList.data?.metros}
+                onChoose={chooseMetro} />
+
+      {/* Boom-divergence research for the metro shown (its own counties and main city) */}
+      <BoomDivergenceSummary metro={metro} areaName={metroShort(metro)} onOpenReport={() => go("research")} />
 
       {modelReport}
 

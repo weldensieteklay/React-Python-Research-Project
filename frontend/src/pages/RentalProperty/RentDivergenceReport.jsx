@@ -5,9 +5,11 @@ import AnalysisModal from "./AnalysisModal";
 import BackButton from "./BackButton";
 import { traitLabel, parseTerm } from "./utils";
 import { evidence, interpretDivergence, reportToText } from "./interpretDivergence";
+import { DFW_METRO } from "./useRentMetro";
 
-// Research question: did the 2021-22 rent boom end differently across DFW ZIPs, and why?
-// Reads GET data/dfw-rent-divergence (two-way fixed-effects model).
+// Research question: did the 2021-22 rent boom end differently across a metro's ZIPs, and why?
+// Reads GET data/dfw-rent-divergence?metro=... (two-way fixed-effects model). Works for any
+// metro: county terms and their names come from the response.
 
 const SERIES_COLORS = ["#059669", "#2563eb", "#d97706", "#7c3aed", "#dc2626", "#0891b2", "#4b5563", "#be185d"];
 
@@ -51,7 +53,13 @@ function IntervalBar({ low, high, est, scale }) {
   );
 }
 
-function CoefficientTable({ coefficients }) {
+/** Row label: county terms use the response's county names ("Williamson County (vs Travis County)"). */
+function factorName(trait, data) {
+  const county = data?.county_terms?.[trait];
+  return county ? `${county} (vs ${data.reference_county})` : traitLabel(trait);
+}
+
+function CoefficientTable({ coefficients, data }) {
   const rows = coefficients.map((c) => ({
     ...c,
     trait: parseTerm(c.term).trait,
@@ -77,7 +85,7 @@ function CoefficientTable({ coefficients }) {
             const sig = significance(r.p_value);
             return (
               <tr key={r.term} className="border-b border-gray-100">
-                <td className="py-2 pr-4 text-gray-900">{traitLabel(r.trait)}</td>
+                <td className="py-2 pr-4 text-gray-900">{factorName(r.trait, data)}</td>
                 <td className="py-2 pr-4 text-right tabular-nums font-semibold">{fmtPct(r.pct_effect, 2)}</td>
                 <td className="py-2 pr-4">
                   <IntervalBar low={r.pctLow} high={r.pctHigh} est={r.pct_effect} scale={scale} />
@@ -141,13 +149,16 @@ function EventStudyChart({ coefficients }) {
   );
 }
 
-export default function RentDivergenceReport({ onBack, onTrainForecast }) {
-  const { data, loading, error, handleFetch } = useFetchData();
+export default function RentDivergenceReport({ metro = DFW_METRO, areaName = "DFW", onBack, onTrainForecast }) {
+  const { data: response, loading, error, handleFetch } = useFetchData();
   const [spec, setSpec] = useState("full");
   const [eventStudy, setEventStudy] = useState(false);
 
-  const path = `data/dfw-rent-divergence?spec=${spec}&event_study=${eventStudy}`;
+  const path = `data/dfw-rent-divergence?spec=${spec}&event_study=${eventStudy}&metro=${encodeURIComponent(metro)}`;
   useEffect(() => { handleFetch(path); }, [path]);
+  // A response for another metro (still arriving after a switch) is never shown
+  const data = response && (response.metro ?? DFW_METRO) === metro ? response : null;
+  const unavailable = data?.available === false;
 
   const pooled = useMemo(
     () => (data?.coefficients ?? []).filter((c) => { const p = parseTerm(c.term).period; return p === "all" || p === null; }),
@@ -160,13 +171,13 @@ export default function RentDivergenceReport({ onBack, onTrainForecast }) {
   const [resultsBySetting, setResultsBySetting] = useState({});
   useEffect(() => {
     if (data?.coefficients) {
-      setResultsBySetting((prev) => ({ ...prev, [`${data.spec}|${Boolean(data.event_study)}`]: data }));
+      setResultsBySetting((prev) => ({ ...prev, [`${data.metro ?? DFW_METRO}|${data.spec}|${Boolean(data.event_study)}`]: data }));
     }
   }, [data]);
 
   // Only interpret results that match what's selected right now
   const current = data && data.spec === spec && Boolean(data.event_study) === eventStudy ? data : null;
-  const otherSpecData = resultsBySetting[`${spec === "full" ? "base" : "full"}|false`] ?? null;
+  const otherSpecData = resultsBySetting[`${metro}|${spec === "full" ? "base" : "full"}|false`] ?? null;
 
   const [explainFocus, setExplainFocus] = useState(null);   // null | "pooled" | "byYear"
   const report = useMemo(
@@ -181,11 +192,11 @@ export default function RentDivergenceReport({ onBack, onTrainForecast }) {
         <div className="flex items-start gap-2">
           {onBack && <BackButton onClick={onBack} />}
           <div className="pt-1">
-            <h1 className="text-xl font-bold text-gray-900 tracking-tight">Did the 2021–22 rent boom end differently across DFW ZIPs?</h1>
+            <h1 className="text-xl font-bold text-gray-900 tracking-tight">Did the 2021–22 rent boom end differently across {areaName} ZIPs?</h1>
             <p className="text-sm text-gray-500 mt-1">Two-way fixed-effects model on monthly ZORI rents (ZIP and month fixed effects, ZIP-clustered errors)</p>
           </div>
         </div>
-      {data && !loading && !error && <div className="flex flex-wrap md:flex-nowrap items-center gap-2 self-start md:self-auto whitespace-nowrap">
+      {data && !unavailable && !loading && !error && <div className="flex flex-wrap md:flex-nowrap items-center gap-2 self-start md:self-auto whitespace-nowrap">
         <div className="flex rounded-md border border-gray-300 overflow-hidden text-sm font-semibold">
           {[["base", "Rent & county only"], ["full", "With Census factors"]].map(([v, label]) => (
             <button key={v} onClick={() => setSpec(v)}
@@ -206,7 +217,14 @@ export default function RentDivergenceReport({ onBack, onTrainForecast }) {
       </div>}
       </div>
 
-      {loading && <div className="p-8 text-center text-gray-500 font-medium animate-pulse">Fitting the panel model…</div>}
+      {(loading || (!data && !error)) && <div className="p-8 text-center text-gray-500 font-medium animate-pulse">Fitting the panel model…</div>}
+      {unavailable && !loading && (
+        <div className="p-5 bg-white border border-gray-200 rounded-lg text-base text-gray-700">
+          <p className="font-semibold text-gray-900">This analysis isn't available for {areaName}.</p>
+          <p className="mt-1">{data.reason}</p>
+          <p className="mt-1 text-gray-500">The rent map, charts and data grid on the dashboard still cover every ZIP code in this metro.</p>
+        </div>
+      )}
       {error && (
         <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
           Error: {error}
@@ -214,7 +232,7 @@ export default function RentDivergenceReport({ onBack, onTrainForecast }) {
         </div>
       )}
 
-      {data && !loading && !error && (
+      {data && !unavailable && !loading && !error && (
         <div className="space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[
@@ -245,7 +263,7 @@ export default function RentDivergenceReport({ onBack, onTrainForecast }) {
               <ExplainButton onClick={() => setExplainFocus("pooled")} disabled={!current || pooled.length === 0} />
             </div>
             <p className="text-xs text-gray-500 mt-0.5 mb-4">{data.how_to_read}</p>
-            <CoefficientTable coefficients={pooled} />
+            <CoefficientTable coefficients={pooled} data={data} />
           </div>
 
           {eventStudy && (

@@ -8,13 +8,13 @@ import Home from '../pages/Home';
 import DataCleanup from '../components/DataCleanup';
 import { useUser } from '../hooks/useUser';
 import ProtectedRoute from '../pages/ProtectedRoute';
-import DfwRentalDashboard from '../pages/RentalProperty/DfwRentalDashboard';
+import RentalDashboard from '../pages/RentalProperty/RentalDashboard';
 
 const CrossSectionalData = lazy(() => import("../components/CrossSectionalData"));
 const TimeSeriesData = lazy(() => import("../components/TimeSeriesData"));
 const PanelData = lazy(() => import("../components/PanelData"));
 const Dashboard = lazy(() => import("../pages/Dashboard"));
-const RentalDataDownload = lazy(() => import("../pages/RentalProperty/DfwRentalDashboard"));
+const RentalDataDownload = lazy(() => import("../pages/RentalProperty/RentalDashboard"));
 const RealEstateDashboard = lazy(() => import("../pages/RentalProperty/RealEstateDashboard"));
 
 
@@ -39,7 +39,7 @@ const AppRoutes = () => {
                         } />
                          <Route path="/dashboard/real-estate-data" element={
                             <ProtectedRoute>
-                                    <DfwRentalDashboard />
+                                    <RentalDashboard />
                             </ProtectedRoute>
                         } />
                         <Route path="/dashboard/cross-sectional" element={

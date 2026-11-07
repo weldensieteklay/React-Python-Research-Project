@@ -6,9 +6,9 @@ import {
 } from "./rentMapData";
 
 // ===========================================================================
-// Rent map for non-technical readers.
+// Rent map for non-technical readers. Works for any metro: it frames the ZIPs it's given.
 //
-//   <RentMap rows={gridRows} covariates={covRows} />
+//   <RentMap rows={gridRows} covariates={covRows} areaName="Austin-Round Rock-Georgetown, TX" />
 //
 // Three views, chosen by zooming or clicking:
 //   counties  – the starting view: one circle per county, with its name and rent.
@@ -38,7 +38,7 @@ const NEIGHBOURS_IN_VIEW = 3;
 const TILE_URL = import.meta.env?.VITE_MAP_TILE_URL || "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const TILE_ATTRIBUTION = import.meta.env?.VITE_MAP_ATTRIBUTION
   || '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
-const DFW_CENTER = [32.85, -97.0];
+const DFW_CENTER = [32.85, -97.0];   // first view only; the map then fits the metro's counties
 
 const SIZES = { county: [16, 32], zip: [6, 16], neighbour: [12, 20] };
 const LABEL_FONT = { county: "700 13px system-ui, sans-serif", zip: "600 12px system-ui, sans-serif" };
@@ -133,6 +133,7 @@ const hintText = (mode, county) => ({
 export default function RentMap({
   rows, covariates, loading = false, error = null, onRetry, height = 540,
   county: countyProp, onCountyChange,
+  areaName = "Dallas-Fort Worth",   // shown in the title; the map frames whatever ZIPs it's given
 }) {
   const { months, forecastMonths, latestActual } = useMemo(() => monthInfo(rows), [rows]);
   const [month, setMonth] = useState("");
@@ -389,7 +390,7 @@ export default function RentMap({
     return <div className="border border-gray-200 bg-white rounded-lg p-6 text-sm text-gray-400">No rent data to map.</div>;
   }
 
-  const title = mode === "focus" ? `Rent by ZIP code in ${county}` : mode === "zip" ? "Rent by ZIP code" : "Where is rent highest in Dallas-Fort Worth?";
+  const title = mode === "focus" ? `Rent by ZIP code in ${county}` : mode === "zip" ? "Rent by ZIP code" : `Where is rent highest in ${areaName}?`;
 
   return (
     <div className="rent-map border border-gray-200 bg-white rounded-lg p-6">

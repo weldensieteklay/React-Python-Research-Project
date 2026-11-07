@@ -1,12 +1,12 @@
 export const dashboardRoute = [
     {
       downloadRentalData: {
-          title: "Dallas-Fort Worth (DFW) Rental Dashboard",
+          title: "Rental Dashboard",
           route: "/dashboard/rental-data"
       }},
        {
       realEstateData: {
-          title: "Mid-West Real Estate Dashboard",
+          title: "Real Estate Dashboard",
           route: "/dashboard/real-estate-data"
       }},
     // {

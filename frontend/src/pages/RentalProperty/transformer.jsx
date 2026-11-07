@@ -112,7 +112,8 @@ export function toModelRows(rows, covariates = null) {
 // ===========================================================================
 // METADATA JOIN MATRIX TRANSFORMER
 // ===========================================================================
-export function toDashboardRows(best, currentRows = []) {
+// metro: the Zillow metro the dashboard shows, used when a forecast ZIP has no actual rows
+export function toDashboardRows(best, currentRows = [], metro = null) {
     const run = runDetails(best);
     const fc = run.forecast;
     if (fc.length === 0) {
@@ -169,10 +170,10 @@ export function toDashboardRows(best, currentRows = []) {
             RegionID: meta.RegionID || null,
             SizeRank: meta.SizeRank || null,
             RegionType: "zip",
-            state: meta.state || "TX",
+            state: meta.state || null,
             City: meta.City || "Forecast Target",
-            county: meta.county || "DFW Area",
-            msa_name: meta.msa_name || "Dallas-Fort Worth-Arlington, TX",
+            county: meta.county || "Metro area",
+            msa_name: meta.msa_name || metro,
             month_year: mYear,
             year,
             fiscal_year: year + (month >= 10 ? 1 : 0),   // HUD fiscal year, Oct-Sep
