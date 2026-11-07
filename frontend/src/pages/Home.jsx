@@ -227,7 +227,7 @@ const Home = () => {
             </label>
 
             {signingIn ? (
-                <div className="text-sm text-gray-500 animate-pulse">Signing you in…</div>
+                <h1 className="text-sm text-gray-500 animate-pulse">Signing you in…</h1>
             ) : agreed ? (
                 <GoogleLogin onSuccess={handleLoginSuccess} onError={handleLoginError} />
             ) : (

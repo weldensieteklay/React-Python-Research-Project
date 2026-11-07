@@ -1,14 +1,23 @@
 import asyncio
 import io
+import re
 
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from services.acs_service import (
+    DFW_METRO,
     build_macro_by_fiscal_year,
-    build_historical_dfw_zori_dataset,
+    build_metro_zori_rows,
     build_zip_covariates,
+    downtown_label,
+    fetch_zcta_gazetteer,
+    fetch_zillow_zori_matrix,
+    list_zillow_metros,
+    locate_metro,
+    metro_area_name,
+    metro_downtown_points,
 )
 from services.cycle_score_transform import compute_cycle_score
 from services.macro_indicators_service import (
@@ -18,7 +27,7 @@ from services.macro_indicators_service import (
     NO_GDP,
     NO_MONTHLY_MACRO,
 )
-from services.rent_divergence_model import fit_divergence_model
+from services.rent_divergence_model import NotEnoughZips, fit_divergence_model
 
 
 router = APIRouter()
@@ -32,25 +41,72 @@ def _records(df: pd.DataFrame) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Zillow ZORI (cached in memory; Zillow updates monthly, restart to refresh)
 # ---------------------------------------------------------------------------
-_zori_cache = None
+# The national file is downloaded once; each metro's rows are sliced out on first use.
+_zillow_cache = None
+_zillow_lock = asyncio.Lock()
+_zori_cache: dict[str, dict] = {}   # insertion order = least recently used first
 _zori_lock = asyncio.Lock()
+# Viewers come from many metros; keep the most recently used ones (DFW is never evicted)
+MAX_CACHED_METROS = 12
+
+# Query param shared by every rent endpoint; values are Zillow metro names
+MetroParam = Query(DFW_METRO, max_length=120,
+                   description="Zillow metro name, e.g. 'Dallas-Fort Worth-Arlington, TX'")
 
 
-async def _get_zori() -> dict:
-    global _zori_cache
-    if _zori_cache is None:
-        async with _zori_lock:
-            if _zori_cache is None:
-                rows, failures = await asyncio.to_thread(build_historical_dfw_zori_dataset)
-                if not rows:
-                    raise HTTPException(status_code=502, detail=f"Zillow ingestion failed: {failures}")
-                _zori_cache = {"rows": rows, "failures": failures}
-    return _zori_cache
+async def _get_zillow() -> pd.DataFrame:
+    global _zillow_cache
+    if _zillow_cache is None:
+        async with _zillow_lock:
+            if _zillow_cache is None:
+                try:
+                    _zillow_cache = await asyncio.to_thread(fetch_zillow_zori_matrix)
+                except Exception as e:
+                    raise HTTPException(status_code=502, detail=f"Zillow ingestion failed: {e}")
+    return _zillow_cache
 
 
-async def _joined_zori_rows() -> tuple[pd.DataFrame, dict]:
+def _evict_old_metros(cache: dict) -> None:
+    while len(cache) > MAX_CACHED_METROS:
+        oldest = next((m for m in cache if m != DFW_METRO), None)
+        if oldest is None:
+            break
+        cache.pop(oldest)
+
+
+async def _get_zori(metro: str = DFW_METRO) -> dict:
+    if metro in _zori_cache:
+        _zori_cache[metro] = _zori_cache.pop(metro)   # mark as recently used
+        return _zori_cache[metro]
+    zillow = await _get_zillow()
+    async with _zori_lock:
+        if metro not in _zori_cache:
+            try:
+                rows = await asyncio.to_thread(build_metro_zori_rows, zillow, metro)
+            except ValueError as e:
+                raise HTTPException(status_code=404, detail=str(e))
+            _zori_cache[metro] = {"rows": rows, "failures": {}}
+            _evict_old_metros(_zori_cache)
+    return _zori_cache[metro]
+
+
+# Census ZCTA Gazetteer (ZIP centroids) for the location lookup; changes yearly
+_gazetteer_cache = None
+_gazetteer_lock = asyncio.Lock()
+
+
+async def _get_gazetteer() -> pd.DataFrame:
+    global _gazetteer_cache
+    if _gazetteer_cache is None:
+        async with _gazetteer_lock:
+            if _gazetteer_cache is None:
+                _gazetteer_cache = await asyncio.to_thread(fetch_zcta_gazetteer)
+    return _gazetteer_cache
+
+
+async def _joined_zori_rows(metro: str = DFW_METRO) -> tuple[pd.DataFrame, dict]:
     """ZORI rows with monthly macro joined on month and real GDP on HUD fiscal year."""
-    zori = await _get_zori()
+    zori = await _get_zori(metro)
     gdp_cache, macro_cache = await asyncio.gather(get_gdp_by_year(), get_monthly_macro())
     gdp_by_year = gdp_cache.get("by_year", {})
     macro_by_month = macro_cache.get("by_month", {})
@@ -74,45 +130,73 @@ async def _joined_zori_rows() -> tuple[pd.DataFrame, dict]:
 
 
 @router.get("/dfw-zori")
-async def get_dfw_zori_history():
+async def get_dfw_zori_history(metro: str = MetroParam):
     """
-    Zillow Observed Rent Index actuals for DFW, one row per ZIP code x calendar month.
-    Monthly macro values are joined on the same month; real GDP is joined on the HUD
-    fiscal year the month falls in (Oct-Sep).
+    Zillow Observed Rent Index actuals for one metro (DFW by default), one row per
+    ZIP code x calendar month. Monthly macro values (national) are joined on the same
+    month; real GDP is joined on the HUD fiscal year the month falls in (Oct-Sep).
     """
-    df, failures = await _joined_zori_rows()
-    return {"rows": _records(df), "failures": failures}
+    df, failures = await _joined_zori_rows(metro)
+    return {"metro": metro, "rows": _records(df), "failures": failures}
+
+
+@router.get("/rent-metros")
+async def rent_metros():
+    """Every metro Zillow publishes ZIP-level rents for, largest first."""
+    zillow = await _get_zillow()
+    return {"default": DFW_METRO, "metros": list_zillow_metros(zillow)}
+
+
+@router.get("/rent-locate")
+async def rent_locate(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-180, le=180)):
+    """The metro to show for a viewer at (lat, lon): the metro of the nearest Zillow-tracked
+    ZIP that belongs to a metro. Returns metro=None (with a reason) when no metro is close
+    enough; the dashboard then shows DFW. The coordinates are used for this lookup only and
+    never stored or logged (the frontend also rounds them to about 1 km before sending)."""
+    zillow = await _get_zillow()
+    try:
+        gaz = await _get_gazetteer()
+        return await asyncio.to_thread(locate_metro, zillow, gaz, lat, lon)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not match your location to a metro: {e}")
 
 
 # ---------------------------------------------------------------------------
 # ZIP-level covariates (Census Gazetteer + ACS); change ~yearly, cached in memory
 # ---------------------------------------------------------------------------
-_covariate_cache = None
+_covariate_cache: dict[str, dict] = {}
 _covariate_lock = asyncio.Lock()
 
 
-async def _get_zip_covariates() -> dict:
-    global _covariate_cache
-    if _covariate_cache is None:
+async def _get_zip_covariates(metro: str = DFW_METRO) -> dict:
+    if metro not in _covariate_cache:
+        zori = await _get_zori(metro)
         async with _covariate_lock:
-            if _covariate_cache is None:
-                zori = await _get_zori()
+            if metro not in _covariate_cache:
                 zips = {r["zip_code"] for r in zori["rows"]}
-                df, failures = await asyncio.to_thread(build_zip_covariates, list(zips))
+                # Distance to downtown: DFW's two city halls, else the center of the metro's
+                # main city. Without a location source the trait is skipped, not guessed.
+                try:
+                    downtowns = await asyncio.to_thread(metro_downtown_points, metro, zori["rows"])
+                except Exception:
+                    downtowns = None
+                df, failures = await asyncio.to_thread(build_zip_covariates, list(zips), downtowns)
                 # Don't cache a result where a whole source failed; retry next request
                 if any(k.startswith(("gazetteer", "acs_")) for k in failures):
                     return {"df": df, "failures": failures}
-                _covariate_cache = {"df": df, "failures": failures}
-    return _covariate_cache
+                _covariate_cache[metro] = {"df": df, "failures": failures}
+                _evict_old_metros(_covariate_cache)
+    return _covariate_cache[metro]
 
 
 @router.get("/dfw-zip-covariates")
-async def dfw_zip_covariates():
-    """One row per DFW ZIP: distance to downtown, pre-boom income / renter share /
-    density, and new-supply measures."""
-    cov = await _get_zip_covariates()
+async def dfw_zip_covariates(metro: str = MetroParam):
+    """One row per ZIP in the metro: location, pre-boom income / renter share /
+    density, and new-supply measures (plus distance to downtown for DFW)."""
+    cov = await _get_zip_covariates(metro)
     df = cov["df"]
     return {
+        "metro": metro,
         "rows": _records(df),
         "acs_baseline_year": df.attrs.get("acs_baseline_year"),
         "acs_recent_year": df.attrs.get("acs_recent_year"),
@@ -134,12 +218,12 @@ COVARIATE_CSV_COLUMNS = [
 
 
 @router.get("/rent-panel-with-acs")
-async def rent_panel_with_acs():
+async def rent_panel_with_acs(metro: str = MetroParam):
     """CSV download: the ZORI x month panel with macro columns plus the ZIP-level
     Census covariates (repeated on every month of a ZIP). Census columns are blank,
     not missing, if a Census source failed; the reason is in the X-Data-Failures header."""
-    df, failures = await _joined_zori_rows()
-    cov = await _get_zip_covariates()
+    df, failures = await _joined_zori_rows(metro)
+    cov = await _get_zip_covariates(metro)
     failures.update(cov["failures"])
 
     cov_df = cov["df"].reindex(columns=["zip_code", *COVARIATE_CSV_COLUMNS])
@@ -148,18 +232,31 @@ async def rent_panel_with_acs():
 
     buf = io.StringIO()
     out.to_csv(buf, index=False)
-    headers = {"Content-Disposition": 'attachment; filename="dfw_rent_panel_with_acs.csv"'}
+    slug = re.sub(r"[^a-z0-9]+", "_", metro.lower()).strip("_")
+    headers = {
+        "Content-Disposition": f'attachment; filename="{slug}_rent_panel_with_acs.csv"',
+        # Cross-origin pages can only read headers listed here (the download names the file from it)
+        "Access-Control-Expose-Headers": "Content-Disposition, X-Data-Failures",
+    }
     if failures:
         headers["X-Data-Failures"] = ", ".join(sorted(failures))   # source names only
-        headers["Access-Control-Expose-Headers"] = "X-Data-Failures"
     return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv", headers=headers)
 
 
 # ---------------------------------------------------------------------------
-# Research question: did the 2021-22 boom end differently across ZIPs, and why?
+# Research question: did the 2021-22 boom end differently across a metro's ZIPs, and why?
 # ---------------------------------------------------------------------------
+# Fitted results, keyed by every request setting. The dashboard summary and the full report
+# ask for the same fit, and the inputs only change when Zillow or Census data is reloaded.
+_divergence_cache: dict[tuple, dict] = {}
+MAX_CACHED_FITS = 32
+# Failures that may clear on a retry; a result that has one isn't cached
+_TRANSIENT_FAILURES = ("gazetteer", "acs_", "macro_")
+
+
 @router.get("/dfw-rent-divergence")
 async def dfw_rent_divergence(
+    metro: str = MetroParam,
     spec: str = Query("full", pattern="^(base|full)$",
                       description="base = boom, rent level, county; full = adds Census traits"),
     event_study: bool = Query(False, description="Separate post-peak effects by year"),
@@ -171,13 +268,23 @@ async def dfw_rent_divergence(
     compare_from: str = Query("2022-03", pattern=r"^\d{4}-\d{2}$",
                               description="Start of the near-peak comparison period"),
 ):
-    zori = await _get_zori()
+    """
+    Two-way fixed-effects model for any Zillow metro (DFW by default). When the metro has too
+    few ZIP codes with complete data, returns 200 with available=false and a reason, so the
+    dashboard can say so instead of showing an error.
+    """
+    key = (metro, spec, event_study, rate_interaction, start, end, post_after, compare_from)
+    if key in _divergence_cache:
+        return _divergence_cache[key]
+
+    area = metro_area_name(metro)
+    zori = await _get_zori(metro)
     panel = pd.DataFrame(zori["rows"])
 
     failures = {}
     covariates = None
     if spec == "full":
-        cov = await _get_zip_covariates()
+        cov = await _get_zip_covariates(metro)
         covariates, failures = cov["df"], dict(cov["failures"])
 
     macro_by_month = None
@@ -189,12 +296,21 @@ async def dfw_rent_divergence(
     try:
         result = await asyncio.to_thread(
             fit_divergence_model, panel, covariates, macro_by_month, spec, event_study,
+            metro=metro, area_name=area,
             start=start, end=end, post_after=post_after, compare_from=compare_from,
         )
+    except NotEnoughZips as e:
+        result = {"available": False, "metro": metro, "area_name": area, "spec": spec,
+                  "event_study": event_study, "reason": str(e)}
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
+    result["downtown_label"] = downtown_label(metro)
     result["data_failures"] = failures
+    if not any(k.startswith(_TRANSIENT_FAILURES) for k in failures):
+        _divergence_cache[key] = result
+        while len(_divergence_cache) > MAX_CACHED_FITS:
+            _divergence_cache.pop(next(iter(_divergence_cache)))
     return result
 
 

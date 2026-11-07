@@ -1,8 +1,8 @@
 """
 services/rent_divergence_model.py
 
-Research question: did the 2021-22 rent boom end differently across DFW ZIP codes,
-and what explains the difference?
+Research question: did the 2021-22 rent boom end differently across a metro's ZIP codes,
+and what explains the difference? Works for any Zillow metro (DFW by default).
 
 Two-way fixed-effects panel model on monthly ZORI rents:
 
@@ -10,7 +10,7 @@ Two-way fixed-effects panel model on monthly ZORI rents:
                   [+ e (MortgageRate_t x ZlnBaseRent_i)] + u_it
 
   a_i   ZIP fixed effect   - permanent differences between ZIPs
-  g_t   month fixed effect - everything common to DFW in a month (boom, rates, seasonality)
+  g_t   month fixed effect - everything common to the metro in a month (boom, rates, seasonality)
   Post  1 for months after the market peak (default: after 2022-08)
   Z_ik  standardized ZIP traits (1 SD units):
           boom, ln_base_rent                                      (from rents)
@@ -19,7 +19,13 @@ Two-way fixed-effects panel model on monthly ZORI rents:
 
 b_k reads as: after the peak, a ZIP one standard deviation higher on trait k had rents
 (exp(b_k) - 1) x 100 percent higher/lower, relative to its own level around the peak
-(compare_from .. post_after, default Mar-Aug 2022) and to the month's DFW-wide level.
+(compare_from .. post_after, default Mar-Aug 2022) and to the month's metro-wide level.
+
+County terms: DFW keeps its fixed setup (Collin, Denton, Tarrant vs Dallas County, the rest as
+"Outer counties"). Any other metro uses its own counties: the one with the most ZIP codes is the
+reference, the next MAX_COUNTY_TERMS largest (with at least MIN_COUNTY_ZIPS ZIPs) get their own
+term, and the rest are pooled as "Other counties". A metro with fewer than MIN_ZIPS usable ZIPs
+raises NotEnoughZips: with ~10 traits the estimates wouldn't mean much.
 Standard errors are clustered by ZIP. The months from `start` to `compare_from` are
 used only to measure each ZIP's boom and starting rent, not in the regression.
 
@@ -32,9 +38,41 @@ import pandas as pd
 from linearmodels.panel import PanelOLS
 
 
-CORE_COUNTIES = {"Dallas County", "Tarrant County", "Collin County", "Denton County"}
-REFERENCE_COUNTY = "Dallas County"
-OUTER_GROUP = "Outer counties"
+DFW_METRO = "Dallas-Fort Worth-Arlington, TX"
+# Fixed county setup for DFW, so its results don't change with Zillow's ZIP coverage
+COUNTY_PRESETS = {
+    DFW_METRO: {
+        "core": {"Dallas County", "Tarrant County", "Collin County", "Denton County"},
+        "reference": "Dallas County",
+        "other": "Outer counties",
+    },
+}
+OTHER_GROUP = "Other counties"
+MAX_COUNTY_TERMS = 3   # counties compared with the reference, besides the pooled "other" group
+MIN_COUNTY_ZIPS = 5    # smaller counties are pooled
+MIN_ZIPS = 30          # fewer usable ZIPs than this and the model isn't fitted
+
+
+class NotEnoughZips(ValueError):
+    """The metro doesn't have enough ZIPs with complete data for this analysis."""
+
+
+def county_groups(county: pd.Series, metro: str = DFW_METRO) -> tuple[pd.Series, str | None]:
+    """Group per ZIP and the reference group. county: one value per ZIP (index = zip_code)."""
+    preset = COUNTY_PRESETS.get(metro)
+    if preset:
+        return county.where(county.isin(preset["core"]), preset["other"]), preset["reference"]
+    counts = county.dropna().value_counts()
+    counts = counts.sort_index().sort_values(ascending=False, kind="stable")   # ties by name
+    big = counts[counts >= MIN_COUNTY_ZIPS]
+    if big.empty:
+        return pd.Series(OTHER_GROUP, index=county.index), OTHER_GROUP
+    core = set(big.index[: 1 + MAX_COUNTY_TERMS])
+    return county.where(county.isin(core), OTHER_GROUP), big.index[0]
+
+
+def county_term(group: str) -> str:
+    return group.lower().replace(" ", "_")
 
 RENT_TRAITS = ["boom", "ln_base_rent"]
 CENSUS_TRAITS = [
@@ -68,7 +106,8 @@ def _clean_panel(zori: pd.DataFrame) -> pd.DataFrame:
 
 def build_model_panel(zori: pd.DataFrame, start=DEFAULTS["start"], end=DEFAULTS["end"],
                       base_month=DEFAULTS["base_month"], peak_months=DEFAULTS["peak_months"],
-                      post_after=DEFAULTS["post_after"], compare_from=DEFAULTS["compare_from"]):
+                      post_after=DEFAULTS["post_after"], compare_from=DEFAULTS["compare_from"],
+                      metro=DFW_METRO):
     """Returns (long panel restricted to the comparison window, one-row-per-ZIP traits,
     metadata). Balance is required over the whole window from `start`."""
     if not (start <= base_month < compare_from <= post_after):
@@ -84,7 +123,7 @@ def build_model_panel(zori: pd.DataFrame, start=DEFAULTS["start"], end=DEFAULTS[
             raise ValueError(f"Month {m} is not in the panel window {start}..{end or 'latest'}")
     balanced = wide.dropna()
     if balanced.empty:
-        raise ValueError("No ZIP has a complete history over the window; shorten the window.")
+        raise NotEnoughZips(f"No ZIP code has Zillow rents for every month since {start}.")
 
     base = balanced[base_month]
     peak = balanced[list(peak_months)].mean(axis=1)
@@ -94,7 +133,7 @@ def build_model_panel(zori: pd.DataFrame, start=DEFAULTS["start"], end=DEFAULTS[
     })
     county = df.drop_duplicates("zip_code").set_index("zip_code")["county"]
     traits["county"] = county.reindex(traits.index)
-    traits["county_group"] = traits["county"].where(traits["county"].isin(CORE_COUNTIES), OUTER_GROUP)
+    traits["county_group"], reference = county_groups(traits["county"], metro)
     traits.index.name = "zip_code"
 
     long = df[df["zip_code"].isin(balanced.index) & (df["month_year"] >= compare_from)].copy()
@@ -115,6 +154,7 @@ def build_model_panel(zori: pd.DataFrame, start=DEFAULTS["start"], end=DEFAULTS[
         "zips_in_window": int(len(wide)),
         "zips_balanced": int(len(balanced)),
         "zips_dropped_incomplete": sorted(set(wide.index) - set(balanced.index)),
+        "reference_county": reference,
     }
     return long, traits, meta
 
@@ -140,15 +180,19 @@ def _zscore(s: pd.Series) -> pd.Series:
 
 def fit_divergence_model(zori: pd.DataFrame, covariates: pd.DataFrame | None = None,
                          macro_by_month: dict | None = None, spec: str = "full",
-                         event_study: bool = False, **window) -> dict:
+                         event_study: bool = False, metro: str = DFW_METRO,
+                         area_name: str = "DFW", **window) -> dict:
     """
     spec="base": boom, pre-boom rent level, county group
     spec="full": base + every Census trait with data (ZIPs missing any are dropped and listed)
     event_study=True: separate Post coefficients for each post-peak calendar year, which
                       shows whether a gap is widening, narrowing or stable.
     macro_by_month: {"YYYY-MM": {"mortgage_rate_30y": ...}}; adds the rate x price-tier term.
+    metro / area_name: which Zillow metro this is, and its short name for sentences.
+    Raises NotEnoughZips when fewer than MIN_ZIPS ZIPs are usable.
     """
-    long, traits, meta = build_model_panel(zori, **window)
+    long, traits, meta = build_model_panel(zori, metro=metro, **window)
+    reference = meta.pop("reference_county")
     traits = _attach_census(traits, covariates if spec == "full" else None)
 
     trait_cols = list(RENT_TRAITS)
@@ -164,6 +208,12 @@ def fit_divergence_model(zori: pd.DataFrame, covariates: pd.DataFrame | None = N
     dropped_missing = sorted(traits.index[missing_mask])
     traits = traits[~missing_mask].copy()
     long = long[long["zip_code"].isin(traits.index)].copy()
+    if len(traits) < MIN_ZIPS:
+        detail = (f" ({len(dropped_missing)} more lack Census data)" if dropped_missing else "")
+        raise NotEnoughZips(
+            f"Only {len(traits)} ZIP codes in {area_name} have Zillow rents for every month since "
+            f"{window.get('start') or DEFAULTS['start']}{detail}. "
+            f"This analysis needs at least {MIN_ZIPS}.")
 
     z = traits[trait_cols].apply(_zscore)
     z.columns = [f"z_{c}" for c in trait_cols]
@@ -182,9 +232,9 @@ def fit_divergence_model(zori: pd.DataFrame, covariates: pd.DataFrame | None = N
         for c in trait_cols:
             X[f"post_x_{c}"] = long["post"] * long[f"z_{c}"]
 
-    groups = sorted(g for g in long["county_group"].dropna().unique() if g != REFERENCE_COUNTY)
+    groups = sorted(g for g in long["county_group"].dropna().unique() if g != reference)
     for g in groups:
-        X[f"post_x_{g.lower().replace(' ', '_')}"] = long["post"] * (long["county_group"] == g)
+        X[f"post_x_{county_term(g)}"] = long["post"] * (long["county_group"] == g)
 
     rate_term = None
     if macro_by_month:
@@ -225,7 +275,12 @@ def fit_divergence_model(zori: pd.DataFrame, covariates: pd.DataFrame | None = N
         "dependent_variable": "ln(zori_rent)",
         "fixed_effects": ["zip_code", "month"],
         "std_errors": "clustered by zip_code",
-        "reference_county": REFERENCE_COUNTY,
+        "available": True,
+        "metro": metro,
+        "area_name": area_name,
+        "reference_county": reference,
+        # county term suffix -> county name, e.g. {"collin_county": "Collin County"}
+        "county_terms": {county_term(g): g for g in groups},
         "traits_used": trait_cols,
         "traits_unavailable": unavailable,
         "rate_interaction": rate_term,
@@ -240,6 +295,7 @@ def fit_divergence_model(zori: pd.DataFrame, covariates: pd.DataFrame | None = N
         "how_to_read": ("Each post_x_<trait> coefficient is the change in log rent after the peak "
                         "for a ZIP 1 SD higher on that trait, relative to its own level around "
                         f"the peak ({meta['compare_from']}..{meta['post_after']}) "
-                        "and the month's DFW-wide level. pct_effect = (exp(coef)-1)*100. County "
-                        f"terms are relative to {REFERENCE_COUNTY}."),
+                        f"and the month's {area_name}-wide level. pct_effect = (exp(coef)-1)*100. "
+                        + (f"County terms are relative to {reference}." if groups else
+                           "All ZIPs are in one county group, so there are no county terms.")),
     }

@@ -1,7 +1,13 @@
 import React, { useState } from "react";
 import axios from "axios";
+import { DFW_METRO, readSavedMetro } from "./useRentMetro";
+
+// "attachment; filename="austin_tx_rent_panel_with_acs.csv"" -> the file name
+const fileNameFrom = (header, fallback) => /filename="?([^";]+)"?/i.exec(header ?? "")?.[1] ?? fallback;
 
 const RentalDataDownload = () => {
+    // Same metro as the rental dashboard (from the viewer's location or their pick), else DFW
+    const metro = readSavedMetro() || DFW_METRO;
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(false);
@@ -22,6 +28,7 @@ const RentalDataDownload = () => {
                     headers: {
                         Authorization: `Bearer ${token}`,
                     },
+                    params: { metro },
                     responseType: "blob",
                 }
             );
@@ -29,7 +36,7 @@ const RentalDataDownload = () => {
             const url = window.URL.createObjectURL(new Blob([response.data]));
             const link = document.createElement("a");
             link.href = url;
-            link.setAttribute("download", "dfw_rent_panel_with_acs.csv");
+            link.setAttribute("download", fileNameFrom(response.headers["content-disposition"], "rent_panel_with_acs.csv"));
             document.body.appendChild(link);
             link.click();
             link.remove();
@@ -57,7 +64,7 @@ const RentalDataDownload = () => {
         <main className="flex flex-col items-center mt-16 px-6 text-center space-y-6">
             <h1 className="text-3xl font-bold text-gray-800">Rental Data Download</h1>
             <p className="text-gray-600 max-w-xl">
-                Download the Dallas-Fort Worth ZIP-code-level monthly rent panel (Zillow ZORI)
+                Download the {metro} ZIP-code-level monthly rent panel (Zillow ZORI)
                 with monthly macro indicators, merged with distance to downtown, income,
                 renter share, density and new-construction data from the U.S. Census Bureau
                 (American Community Survey).

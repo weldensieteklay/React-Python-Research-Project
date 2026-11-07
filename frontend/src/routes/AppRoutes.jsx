@@ -13,7 +13,7 @@ const CrossSectionalData = lazy(() => import("../components/CrossSectionalData")
 const TimeSeriesData = lazy(() => import("../components/TimeSeriesData"));
 const PanelData = lazy(() => import("../components/PanelData"));
 const Dashboard = lazy(() => import("../pages/Dashboard"));
-const RentalDataDownload = lazy(() => import("../pages/RentalProperty/DfwRentalDashboard"));
+const RentalDataDownload = lazy(() => import("../pages/RentalProperty/RentalDashboard"));
 const RealEstateDashboard = lazy(() => import("../pages/RentalProperty/RealEstateDashboard"));
 
 // Emails allowed to access the Rental Data Download page.

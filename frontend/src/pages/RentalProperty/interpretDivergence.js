@@ -73,7 +73,7 @@ const TRAITS = {
   dist_downtown_mi: {
     label: "Distance from downtown",
     subject: "ZIPs farther from downtown",
-    step: (m, s) => `A ZIP ${round(m + s)} miles from downtown Dallas or Fort Worth (instead of the typical ${round(m)})`,
+    step: (m, s, ctx) => `A ZIP ${round(m + s)} miles from ${ctx.downtownLabel} (instead of the typical ${round(m)})`,
   },
   ln_median_income: {
     label: "Household income",
@@ -105,8 +105,12 @@ const TRAITS = {
 const plainLabel = (trait) => TRAITS[trait]?.label ?? traitLabel(trait);
 const subjectOf = (trait) => TRAITS[trait]?.subject ?? `ZIPs higher on ${traitLabel(trait).toLowerCase()}`;
 
-function countyName(trait) {
-  if (trait === "outer_counties") return "the outer counties";
+/** County name for a county term, from the backend's labels ("williamson_county" -> "Williamson County").
+ *  Pooled groups read as "the outer counties" / "the other counties". */
+function countyName(trait, ctx) {
+  const label = ctx?.countyLabels?.[trait];
+  if (label) return /counties$/i.test(label) ? `the ${label.toLowerCase()}` : label;
+  if (trait === "outer_counties" || trait === "other_counties") return `the ${trait.split("_")[0]} counties`;
   return trait.split("_").map(capFirst).join(" ");
 }
 
@@ -154,6 +158,10 @@ function context(data) {
     windowEnd: panel.window?.[1],
     reference: data?.reference_county || "Dallas County",
     countyCounts,
+    countyLabels: data?.county_terms ?? {},
+    // Short metro name for sentences ("DFW", "Austin-Round Rock-Georgetown") and the distance trait's reference
+    areaName: data?.area_name || "DFW",
+    downtownLabel: data?.downtown_label || "downtown Dallas or Fort Worth",
     spec: data?.spec,
   };
 }
@@ -201,7 +209,7 @@ function describeFactor(r, ctx) {
   let who;
   let versus;
   if (r.kind === "county") {
-    who = `ZIPs in ${countyName(r.trait)}`;
+    who = `ZIPs in ${countyName(r.trait, ctx)}`;
     versus = `similar ZIPs in ${ctx.reference}`;
   } else {
     who = stepPhrase(r.trait, ctx);
@@ -221,7 +229,7 @@ function describeFactor(r, ctx) {
   if (n != null && n < 5) text += ` This is based on only ${n} ZIP${n === 1 ? "" : "s"}, so take it with a grain of salt.`;
 
   return {
-    label: r.kind === "county" ? `${capFirst(countyName(r.trait))} compared with ${ctx.reference}` : plainLabel(r.trait),
+    label: r.kind === "county" ? `${capFirst(countyName(r.trait, ctx))} compared with ${ctx.reference}` : plainLabel(r.trait),
     text,
     badge: badgeFor(r.p),
     detail: detailLine(r, ctx),
@@ -233,7 +241,7 @@ function describeFactor(r, ctx) {
 // ---------------------------------------------------------------------------
 function howToRead(ctx, { byYear = false } = {}) {
   const items = [
-    `"Held up better" means a ZIP's rent after the peak (${monthName(ctx.postStart)} to ${monthName(ctx.windowEnd)}) stayed closer to its own level at the peak (${monthName(ctx.preStart)} to ${monthName(ctx.preEnd)}) than other ZIPs did. The ups and downs that hit all of DFW each month are set aside, so a ZIP can still be "worse" even if its rent kept rising, as long as it rose less than similar ZIPs.`,
+    `"Held up better" means a ZIP's rent after the peak (${monthName(ctx.postStart)} to ${monthName(ctx.windowEnd)}) stayed closer to its own level at the peak (${monthName(ctx.preStart)} to ${monthName(ctx.preEnd)}) than other ZIPs did. The ups and downs that hit all of ${ctx.areaName} each month are set aside, so a ZIP can still be "worse" even if its rent kept rising, as long as it rose less than similar ZIPs.`,
     "Each neighborhood trait is tested by comparing a typical ZIP with one that's noticeably higher on that trait (for example, more renters), with everything else kept the same.",
     `County results compare each county with ${ctx.reference}.`,
     `"Very clear" and "Clear" results are unlikely to be luck. "Possible" means there's a hint worth watching. "No real difference" means any gap is small enough to be chance.`,
@@ -286,7 +294,7 @@ function sampleSection(data, ctx) {
   return {
     heading: "What this is based on",
     items: [
-      `Monthly rents for ${data?.n_zips ?? "—"} DFW ZIP codes from ${monthName(data?.panel?.window?.[0])} to ${monthName(ctx.windowEnd)}, from Zillow, plus neighborhood information from the U.S. Census.`,
+      `Monthly rents for ${data?.n_zips ?? "—"} ${ctx.areaName} ZIP codes from ${monthName(data?.panel?.window?.[0])} to ${monthName(ctx.windowEnd)}, from Zillow, plus neighborhood information from the U.S. Census.`,
       counts ? `ZIPs by county: ${counts}.` : null,
     ].filter(Boolean),
   };
@@ -310,7 +318,7 @@ function compareSpecs(baseData, fullData) {
     const a = base[term];
     const b = full[term];
     if (!b || a.kind === "rate") continue;
-    const name = a.kind === "county" ? capFirst(countyName(a.trait)) : plainLabel(a.trait);
+    const name = a.kind === "county" ? capFirst(countyName(a.trait, ctx)) : plainLabel(a.trait);
     const move = `went from ${money(a)} to ${money(b)}`;
     const aSig = isFinding(a);
     const bSig = isFinding(b);
@@ -356,7 +364,7 @@ function interpretPooled(data, { eventStudy, otherSpecData }) {
   const sigCounties = counties.filter(isFinding).sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct));
   const weakAny = [...traits, ...counties].some((r) => evidence(r.p).key === "weak");
 
-  const countyWithMoney = (r) => `${countyName(r.trait)} (${amount(r, ctx)} ${r.pct > 0 ? "more" : "less"})`;
+  const countyWithMoney = (r) => `${countyName(r.trait, ctx)} (${amount(r, ctx)} ${r.pct > 0 ? "more" : "less"})`;
 
   // ---- takeaway
   let verdict;
@@ -369,7 +377,7 @@ function interpretPooled(data, { eventStudy, otherSpecData }) {
     const s0 = sigTraits[0];
     verdict = {
       tone: "positive",
-      text: `Yes, the boom ended differently in different parts of DFW. The biggest difference: ${lowerFirst(subjectOf(s0.trait))} held their rents ${s0.pct > 0 ? "better" : "worse"} after the peak, ${amount(s0, ctx)} ${s0.pct > 0 ? "more" : "less"} than a typical ZIP.`,
+      text: `Yes, the boom ended differently in different parts of ${ctx.areaName}. The biggest difference: ${lowerFirst(subjectOf(s0.trait))} held their rents ${s0.pct > 0 ? "better" : "worse"} after the peak, ${amount(s0, ctx)} ${s0.pct > 0 ? "more" : "less"} than a typical ZIP.`,
     };
   } else if (sigCounties.length) {
     const better = sigCounties.filter((r) => r.pct > 0);
@@ -410,7 +418,7 @@ function interpretPooled(data, { eventStudy, otherSpecData }) {
   if (rest.length) findings.push(`Smaller, but also clear: ${listJoin(rest.map(phrase))}.`);
 
   if (sigCounties.length) {
-    const parts = sigCounties.map((r) => `${countyName(r.trait)} ${r.pct > 0 ? "held up better" : "held up worse"} (${amount(r, ctx)})`);
+    const parts = sigCounties.map((r) => `${countyName(r.trait, ctx)} ${r.pct > 0 ? "held up better" : "held up worse"} (${amount(r, ctx)})`);
     findings.push(`By county, compared with ${ctx.reference}: ${listJoin(parts)}${ctx.spec === "full" ? ", even after accounting for the neighborhood details" : ""}.`);
   } else if (counties.length) {
     findings.push(`No county was clearly different from ${ctx.reference}${ctx.spec === "full" ? " once the neighborhood details are taken into account" : ""}.`);
@@ -443,7 +451,7 @@ function interpretPooled(data, { eventStudy, otherSpecData }) {
 
   return {
     title: eventStudy ? "Results that don't change by year" : ctx.spec === "full" ? "What the results say: with neighborhood details" : "What the results say: rent and county only",
-    subtitle: "Did rents in different DFW neighborhoods hold up differently after the 2021–22 boom?",
+    subtitle: `Did rents in different ${ctx.areaName} neighborhoods hold up differently after the 2021–22 boom?`,
     verdict,
     sections,
   };
@@ -557,7 +565,7 @@ function interpretByYear(data) {
 
   return {
     title: "Year by year: did the gaps grow or shrink?",
-    subtitle: "Did rents in different DFW neighborhoods hold up differently after the 2021–22 boom?",
+    subtitle: `Did rents in different ${ctx.areaName} neighborhoods hold up differently after the 2021–22 boom?`,
     verdict,
     sections,
   };
@@ -567,7 +575,7 @@ function interpretByYear(data) {
 // Public entry point
 // ---------------------------------------------------------------------------
 /**
- * data: the /dfw-rent-divergence response.
+ * data: the /dfw-rent-divergence response (any metro; DFW wording is the fallback).
  * focus: "pooled" (the results table) or "byYear" (the by-year chart).
  * otherSpecData: the response for the other version (results table only), if loaded,
  *                used to explain what changes when neighborhood details are added.
