@@ -162,6 +162,8 @@ function context(data) {
     // Short metro name for sentences ("DFW", "Austin-Round Rock-Georgetown") and the distance trait's reference
     areaName: data?.area_name || "DFW",
     downtownLabel: data?.downtown_label || "downtown Dallas or Fort Worth",
+    // "full" | "simplified" | "descriptive" (older responses have no tier: full)
+    tier: data?.tier || "full",
     spec: data?.spec,
   };
 }
@@ -240,9 +242,10 @@ function describeFactor(r, ctx) {
 // Shared sections
 // ---------------------------------------------------------------------------
 function howToRead(ctx, { byYear = false } = {}) {
+  const example = ctx.tier === "full" ? "more renters" : "a bigger boom";
   const items = [
     `"Held up better" means a ZIP's rent after the peak (${monthName(ctx.postStart)} to ${monthName(ctx.windowEnd)}) stayed closer to its own level at the peak (${monthName(ctx.preStart)} to ${monthName(ctx.preEnd)}) than other ZIPs did. The ups and downs that hit all of ${ctx.areaName} each month are set aside, so a ZIP can still be "worse" even if its rent kept rising, as long as it rose less than similar ZIPs.`,
-    "Each neighborhood trait is tested by comparing a typical ZIP with one that's noticeably higher on that trait (for example, more renters), with everything else kept the same.",
+    `Each neighborhood trait is tested by comparing a typical ZIP with one that's noticeably higher on that trait (for example, ${example}), with everything else kept the same.`,
     `County results compare each county with ${ctx.reference}.`,
     `"Very clear" and "Clear" results are unlikely to be luck. "Possible" means there's a hint worth watching. "No real difference" means any gap is small enough to be chance.`,
   ];
@@ -273,7 +276,7 @@ function cautions(data, rows, ctx, { byYear = false } = {}) {
   if (data?.traits_unavailable?.length) {
     items.push(`Not checked this time because the information didn't load: ${data.traits_unavailable.map((t) => plainLabel(t).toLowerCase()).join(", ")}.`);
   }
-  if (ctx.spec === "base" && !byYear) {
+  if (ctx.tier === "full" && ctx.spec === "base" && !byYear) {
     items.push("This version only knows each ZIP's county, so a county difference may really be about who lives there or how much was built, not the county itself.");
   }
   if (byYear && ctx.postStart && ctx.windowEnd) {
@@ -289,14 +292,86 @@ function cautions(data, rows, ctx, { byYear = false } = {}) {
   return { heading: "Keep in mind", items };
 }
 
+/**
+ * Which of the metro's ZIP codes were used and why the rest weren't, in one sentence:
+ * "Uses 41 of 43 ZIP codes Zillow tracks here. Left out: 1 added after January 2020, 1 with a gap
+ *  longer than 2 months. 2 had a short gap filled in." Null when the response has no coverage.
+ */
+export function coverageText(data) {
+  const c = data?.panel?.coverage;
+  if (!c) return null;
+  const n = (k, one, many) => (c[k] ? `${c[k]} ${c[k] === 1 ? one : many}` : null);
+  const used = data.tier === "descriptive" ? data.n_zips : c.zips_complete;
+  const out = [
+    n("zips_started_late", `added after ${monthName(c.first_month)}`, `added after ${monthName(c.first_month)}`),
+    n("zips_with_long_gaps", `with a gap longer than ${c.max_gap_filled_months} months`, `with gaps longer than ${c.max_gap_filled_months} months`),
+    n("zips_ended_early", `that stops before ${monthName(c.last_month)}`, `that stop before ${monthName(c.last_month)}`),
+  ].filter(Boolean);
+  const filled = c.zips_gap_filled ? ` ${c.zips_gap_filled} had a short gap filled in from the months around it.` : "";
+  const left = out.length && used < c.zips_with_rents ? ` Left out: ${listJoin(out)}.` : "";
+  const share = used >= c.zips_with_rents ? `all ${used}` : `${used} of the ${c.zips_with_rents}`;
+  return `Uses ${share} ZIP codes Zillow tracks here.${left}${filled}`;
+}
+
 function sampleSection(data, ctx) {
   const counts = Object.entries(data?.zips_by_county_group ?? {}).map(([k, v]) => `${k} ${v}`).join(" · ");
   return {
     heading: "What this is based on",
     items: [
-      `Monthly rents for ${data?.n_zips ?? "—"} ${ctx.areaName} ZIP codes from ${monthName(data?.panel?.window?.[0])} to ${monthName(ctx.windowEnd)}, from Zillow, plus neighborhood information from the U.S. Census.`,
+      `Monthly rents for ${data?.n_zips ?? "—"} ${ctx.areaName} ZIP codes from ${monthName(data?.panel?.window?.[0])} to ${monthName(ctx.windowEnd)}, from Zillow${ctx.tier === "full" && ctx.spec === "full" ? ", plus neighborhood information from the U.S. Census" : ""}.`,
+      coverageText(data),
       counts ? `ZIPs by county: ${counts}.` : null,
     ].filter(Boolean),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Direct comparison (too few ZIP codes for a model)
+// ---------------------------------------------------------------------------
+const changeWord = (pct) => (Math.abs(pct) < 0.25 ? "about the same as" : pct > 0 ? `up ${absPct(pct)} from` : `down ${absPct(pct)} from`);
+
+function interpretDescriptive(data) {
+  const ctx = context(data);
+  const d = data.descriptive;
+  const o = d.overall;
+  const peak = data.panel?.peak_months ?? [];
+  const peakLabel = peak.length ? `${MONTHS_LONG[Number(peak[0].slice(5, 7)) - 1]}–${monthName(peak[peak.length - 1])}` : "the 2022 peak";
+  const latest = monthName(d.latest_month);
+  const counties = d.by_county;
+  const zips = d.by_zip;
+  const zipName = (z) => `${z.zip_code}${z.county ? ` (${z.county})` : ""}`;
+
+  let verdict = `Rents across these ${ctx.areaName} ZIP codes are ${changeWord(o.change_pct)} the peak (${usd(o.peak_rent)} in ${peakLabel}, ${usd(o.latest_rent)} in ${latest}).`;
+  if (counties.length > 1) {
+    const best = counties[0];
+    const worst = counties[counties.length - 1];
+    verdict += ` ${best.county} held up best (${signed(best.change_pct)}) and ${worst.county} least (${signed(worst.change_pct)}).`;
+  }
+
+  const findings = counties.map((c) =>
+    `${c.county}: ${usd(c.peak_rent)} at the peak, ${usd(c.latest_rent)} in ${latest} (${signed(c.change_pct)}), across ${c.zips} ZIP code${c.zips === 1 ? "" : "s"}. Rents had risen ${round(c.boom_pct)}% during the boom.`);
+  if (zips.length > 1) {
+    const top = zips[0];
+    const bottom = zips[zips.length - 1];
+    findings.push(`ZIP codes ranged from ${zipName(top)} at ${signed(top.change_pct)} to ${zipName(bottom)} at ${signed(bottom.change_pct)}.`);
+  }
+
+  return {
+    title: "Rent at the peak vs now",
+    subtitle: `Did rents in different ${ctx.areaName} neighborhoods hold up differently after the 2021–22 boom?`,
+    verdict: { tone: "neutral", text: verdict },
+    sections: [
+      { heading: "What we found", items: findings },
+      { heading: "How to read this", items: [
+        `Each figure compares average rent at the peak (${peakLabel}) with ${latest}, straight from Zillow. No model is used, so a difference here can come from anything about a place (its housing, who lives there, new construction) and doesn't say why.`,
+        "With this few ZIP codes, one unusual ZIP can move a county's figure a lot.",
+      ] },
+      { heading: "Why there's no model here", items: [data.tier_reason].filter(Boolean) },
+      { heading: "What this is based on", items: [
+        `Monthly Zillow rents for ${o.zips} ${ctx.areaName} ZIP codes that have values in ${monthName(ctx.baseMonth)}, at the peak and in ${latest}.`,
+        coverageText(data),
+      ].filter(Boolean) },
+    ],
   };
 }
 
@@ -419,12 +494,12 @@ function interpretPooled(data, { eventStudy, otherSpecData }) {
 
   if (sigCounties.length) {
     const parts = sigCounties.map((r) => `${countyName(r.trait, ctx)} ${r.pct > 0 ? "held up better" : "held up worse"} (${amount(r, ctx)})`);
-    findings.push(`By county, compared with ${ctx.reference}: ${listJoin(parts)}${ctx.spec === "full" ? ", even after accounting for the neighborhood details" : ""}.`);
+    findings.push(`By county, compared with ${ctx.reference}: ${listJoin(parts)}${ctx.tier === "full" && ctx.spec === "full" ? ", even after accounting for the neighborhood details" : ""}.`);
   } else if (counties.length) {
-    findings.push(`No county was clearly different from ${ctx.reference}${ctx.spec === "full" ? " once the neighborhood details are taken into account" : ""}.`);
+    findings.push(`No county was clearly different from ${ctx.reference}${ctx.tier === "full" && ctx.spec === "full" ? " once the neighborhood details are taken into account" : ""}.`);
   }
 
-  if (ctx.spec === "base" && !eventStudy) {
+  if (ctx.tier === "full" && ctx.spec === "base" && !eventStudy) {
     findings.push("This version only looks at rents and county, so it shows where rents held up but not why. Switch to \"With Census factors\" to see the role of things like the share of renters and new construction.");
   }
 
@@ -438,7 +513,12 @@ function interpretPooled(data, { eventStudy, otherSpecData }) {
     { heading: "Each factor, most certain first", items: factorItems },
   ];
 
-  if (!eventStudy) {
+  if (ctx.tier === "simplified") {
+    sections.push({ heading: "Why this is a simplified analysis", items: [
+      data.tier_reason,
+      "With few ZIP codes, only fairly large differences can be told apart from chance, so \"No real difference\" here can also mean \"not enough ZIP codes to tell\".",
+    ].filter(Boolean) });
+  } else if (!eventStudy) {
     const pair = ctx.spec === "full" ? compareSpecs(otherSpecData, data) : compareSpecs(data, otherSpecData);
     if (pair) sections.push(pair);
     else sections.push({
@@ -450,7 +530,8 @@ function interpretPooled(data, { eventStudy, otherSpecData }) {
   sections.push(cautions(data, rows, ctx), sampleSection(data, ctx));
 
   return {
-    title: eventStudy ? "Results that don't change by year" : ctx.spec === "full" ? "What the results say: with neighborhood details" : "What the results say: rent and county only",
+    title: ctx.tier === "simplified" ? "What the results say: simplified analysis"
+      : eventStudy ? "Results that don't change by year" : ctx.spec === "full" ? "What the results say: with neighborhood details" : "What the results say: rent and county only",
     subtitle: `Did rents in different ${ctx.areaName} neighborhoods hold up differently after the 2021–22 boom?`,
     verdict,
     sections,
@@ -581,6 +662,7 @@ function interpretByYear(data) {
  *                used to explain what changes when neighborhood details are added.
  */
 export function interpretDivergence(data, { focus = "pooled", otherSpecData = null } = {}) {
+  if (data?.tier === "descriptive" && data.descriptive?.overall) return interpretDescriptive(data);
   if (!data?.coefficients?.length) {
     return {
       title: "No results to explain",

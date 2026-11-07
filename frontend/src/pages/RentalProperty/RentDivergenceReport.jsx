@@ -4,7 +4,7 @@ import { useFetchData } from "../../hooks/useFetchData";
 import AnalysisModal from "./AnalysisModal";
 import BackButton from "./BackButton";
 import { traitLabel, parseTerm } from "./utils";
-import { evidence, interpretDivergence, reportToText } from "./interpretDivergence";
+import { coverageText, evidence, interpretDivergence, reportToText } from "./interpretDivergence";
 import { DFW_METRO } from "./useRentMetro";
 
 // Research question: did the 2021-22 rent boom end differently across a metro's ZIPs, and why?
@@ -149,6 +149,72 @@ function EventStudyChart({ coefficients }) {
   );
 }
 
+const usd = (v) => (Number.isFinite(v) ? `$${Math.round(v).toLocaleString("en-US")}` : "—");
+
+/** Too few ZIP codes for a model: rent at the peak vs the latest month, by county and by ZIP. */
+function DescriptiveTables({ d }) {
+  const head = "text-left text-xs uppercase tracking-wider text-gray-500 border-b border-gray-200";
+  const cell = "py-2 pr-4";
+  const num = `${cell} text-right tabular-nums`;
+  return (
+    <div className="space-y-6">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead><tr className={head}>
+            <th className={`${cell} font-semibold`}>County</th>
+            <th className={`${num} font-semibold`}>ZIP codes</th>
+            <th className={`${num} font-semibold`}>Rent at peak</th>
+            <th className={`${num} font-semibold`}>Rent now</th>
+            <th className={`${num} font-semibold`}>Change since peak</th>
+            <th className={`${num} font-semibold`}>Rise during boom</th>
+          </tr></thead>
+          <tbody>
+            {d.by_county.map((c) => (
+              <tr key={c.county} className="border-b border-gray-100">
+                <td className={`${cell} text-gray-900`}>{c.county}</td>
+                <td className={num}>{c.zips}</td>
+                <td className={num}>{usd(c.peak_rent)}</td>
+                <td className={num}>{usd(c.latest_rent)}</td>
+                <td className={`${num} font-semibold`}>{fmtPct(c.change_pct)}</td>
+                <td className={num}>{fmtPct(c.boom_pct)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="overflow-x-auto">
+        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Each ZIP code, best held up first</div>
+        <table className="w-full text-sm">
+          <thead><tr className={head}>
+            <th className={`${cell} font-semibold`}>ZIP code</th>
+            <th className={`${cell} font-semibold`}>County</th>
+            <th className={`${num} font-semibold`}>Rent at peak</th>
+            <th className={`${num} font-semibold`}>Rent now</th>
+            <th className={`${num} font-semibold`}>Change since peak</th>
+          </tr></thead>
+          <tbody>
+            {d.by_zip.map((z) => (
+              <tr key={z.zip_code} className="border-b border-gray-100">
+                <td className={`${cell} font-mono text-gray-900`}>{z.zip_code}</td>
+                <td className={`${cell} text-gray-700`}>{z.county ?? "—"}</td>
+                <td className={num}>{usd(z.peak_rent)}</td>
+                <td className={num}>{usd(z.latest_rent)}</td>
+                <td className={`${num} font-semibold`}>{fmtPct(z.change_pct)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+const TIER_SUBTITLE = {
+  full: "Two-way fixed-effects model on monthly ZORI rents (ZIP and month fixed effects, ZIP-clustered errors)",
+  simplified: "Simplified fixed-effects model for a metro with few ZIP codes: boom size, pre-boom rent and county, with small-sample p-values",
+  descriptive: "Direct comparison of Zillow rents at the peak and now; too few ZIP codes for a model",
+};
+
 export default function RentDivergenceReport({ metro = DFW_METRO, areaName = "DFW", onBack, onTrainForecast }) {
   const { data: response, loading, error, handleFetch } = useFetchData();
   const [spec, setSpec] = useState("full");
@@ -159,6 +225,10 @@ export default function RentDivergenceReport({ metro = DFW_METRO, areaName = "DF
   // A response for another metro (still arriving after a switch) is never shown
   const data = response && (response.metro ?? DFW_METRO) === metro ? response : null;
   const unavailable = data?.available === false;
+  const tier = data?.tier || "full";
+  const isFull = tier === "full";
+  // The lighter tiers have no Census version and no by-year view
+  useEffect(() => { if (data && !isFull && eventStudy) setEventStudy(false); }, [data, isFull, eventStudy]);
 
   const pooled = useMemo(
     () => (data?.coefficients ?? []).filter((c) => { const p = parseTerm(c.term).period; return p === "all" || p === null; }),
@@ -193,10 +263,11 @@ export default function RentDivergenceReport({ metro = DFW_METRO, areaName = "DF
           {onBack && <BackButton onClick={onBack} />}
           <div className="pt-1">
             <h1 className="text-xl font-bold text-gray-900 tracking-tight">Did the 2021–22 rent boom end differently across {areaName} ZIPs?</h1>
-            <p className="text-sm text-gray-500 mt-1">Two-way fixed-effects model on monthly ZORI rents (ZIP and month fixed effects, ZIP-clustered errors)</p>
+            <p className="text-sm text-gray-500 mt-1">{TIER_SUBTITLE[tier] ?? TIER_SUBTITLE.full}</p>
           </div>
         </div>
       {data && !unavailable && !loading && !error && <div className="flex flex-wrap md:flex-nowrap items-center gap-2 self-start md:self-auto whitespace-nowrap">
+        {isFull && <>
         <div className="flex rounded-md border border-gray-300 overflow-hidden text-sm font-semibold">
           {[["base", "Rent & county only"], ["full", "With Census factors"]].map(([v, label]) => (
             <button key={v} onClick={() => setSpec(v)}
@@ -209,6 +280,7 @@ export default function RentDivergenceReport({ metro = DFW_METRO, areaName = "DF
           <input type="checkbox" checked={eventStudy} onChange={(e) => setEventStudy(e.target.checked)} />
           By year
         </label>
+        </>}
         {onTrainForecast && (
           <button onClick={onTrainForecast} className="px-4 py-1.5 text-sm font-semibold rounded-md bg-emerald-600 hover:bg-emerald-700 text-white transition-colors">
             ⚡ Build your own forecast
@@ -235,18 +307,30 @@ export default function RentDivergenceReport({ metro = DFW_METRO, areaName = "DF
       {data && !unavailable && !loading && !error && (
         <div className="space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {[
+            {(tier === "descriptive" ? [
+              ["ZIP codes", data.n_zips],
+              ["Peak months", data.panel?.peak_months?.join(", ")],
+              ["Latest month", data.descriptive?.latest_month],
+              ["Change since peak", fmtPct(data.descriptive?.overall?.change_pct)],
+            ] : [
               ["ZIP codes", data.n_zips],
               ["Months", data.panel?.months],
               ["Peak comparison", data.panel?.pre_period?.join(" → ")],
               ["Within R²", data.r2_within?.toFixed(3)],
-            ].map(([label, value]) => (
+            ]).map(([label, value]) => (
               <div key={label} className="bg-white border border-gray-200 rounded-lg px-4 py-3">
                 <div className="text-xs uppercase tracking-wider text-gray-500 font-semibold">{label}</div>
                 <div className="text-lg font-bold text-gray-900 tabular-nums mt-0.5">{value ?? "—"}</div>
               </div>
             ))}
           </div>
+
+          {!isFull && data.tier_reason && (
+            <div className="text-sm bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-amber-900">
+              {data.tier_reason}
+            </div>
+          )}
+          {coverageText(data) && <p className="text-sm text-gray-500">{coverageText(data)}</p>}
 
           {(failures.length > 0 || data.traits_unavailable?.length > 0) && (
             <div className="text-sm bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-amber-900">
@@ -257,6 +341,16 @@ export default function RentDivergenceReport({ metro = DFW_METRO, areaName = "DF
             </div>
           )}
 
+          {tier === "descriptive" ? (
+            <div className="bg-white border border-gray-200 rounded-lg p-6">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <h3 className="text-md font-bold text-gray-800">Rent at the peak vs now</h3>
+                <ExplainButton onClick={() => setExplainFocus("pooled")} disabled={!current} />
+              </div>
+              <p className="text-xs text-gray-500 mt-0.5 mb-4">{data.how_to_read}</p>
+              <DescriptiveTables d={data.descriptive} />
+            </div>
+          ) : (
           <div className="bg-white border border-gray-200 rounded-lg p-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <h3 className="text-md font-bold text-gray-800">{eventStudy ? "Effects that don't vary by year" : "What explains post-peak rents"}</h3>
@@ -265,8 +359,9 @@ export default function RentDivergenceReport({ metro = DFW_METRO, areaName = "DF
             <p className="text-xs text-gray-500 mt-0.5 mb-4">{data.how_to_read}</p>
             <CoefficientTable coefficients={pooled} data={data} />
           </div>
+          )}
 
-          {eventStudy && (
+          {isFull && eventStudy && (
             <div className="bg-white border border-gray-200 rounded-lg p-6">
               <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
                 <h3 className="text-md font-bold text-gray-800">How each effect evolved after the peak</h3>
