@@ -36,6 +36,13 @@ number of ZIPs, not ZIP-months, is the sample size, and clustered errors need en
 Standard errors are clustered by ZIP. The months from `start` to `compare_from` are
 used only to measure each ZIP's boom and starting rent, not in the regression.
 
+Base month: the boom and starting rent are measured from `base_month` (default 2020-01). When a
+metro's Zillow rents start later, but no later than `latest_base_month` (default 2020-12, before
+the 2021 run-up), the metro's first month is used instead and the result says so
+(panel.base_month_fallback, notes). Boom sizes are then measured over a shorter run-up and are
+not directly comparable with metros measured from 2020-01. Metros starting after
+`latest_base_month` are not modeled, since part of the boom would already be in the baseline.
+
 Run on a balanced panel (ZIPs observed in every month of the window) so ZIPs entering
 the Zillow data mid-window don't create composition effects.
 """
@@ -94,6 +101,9 @@ DEFAULTS = {
     "start": "2020-01",
     "end": None,
     "base_month": "2020-01",
+    # Latest first month a metro's rents can have and still be measured from it when base_month
+    # is missing. Rents were near pre-pandemic levels through 2020; the run-up began in 2021.
+    "latest_base_month": "2020-12",
     "peak_months": ("2022-07", "2022-08", "2022-09"),   # 3-month average damps noise in the peak
     "post_after": "2022-08",
     # Regression comparison window starts here. Months before it are used only to measure
@@ -169,9 +179,25 @@ def _coverage(wide: pd.DataFrame, filled: pd.DataFrame, balanced_index, gap_fill
     }
 
 
-def _prepare_panel(zori, start, end, base_month, peak_months, post_after, compare_from, area_name):
-    if not (start <= base_month < compare_from <= post_after):
-        raise ValueError("Months must satisfy start <= base_month < compare_from <= post_after")
+def _resolve_base_month(first_month: str, base_month: str, latest_base_month: str,
+                        area_name: str) -> str:
+    """The base month to measure the boom from: base_month itself, or the metro's first month
+    when its rents start after base_month but still before the boom (<= latest_base_month)."""
+    if first_month <= base_month:
+        return base_month
+    if first_month <= latest_base_month:
+        return first_month
+    raise NotEnoughZips(
+        f"Zillow's rents for {area_name} start in {first_month}. The boom is measured from a "
+        f"month before the 2021 run-up ({base_month}, or at the latest {latest_base_month}), "
+        f"so the 2021-22 boom can't be measured here.")
+
+
+def _prepare_panel(zori, start, end, base_month, peak_months, post_after, compare_from, area_name,
+                   latest_base_month=DEFAULTS["latest_base_month"]):
+    if not (start <= base_month <= latest_base_month < compare_from <= post_after):
+        raise ValueError("Months must satisfy start <= base_month <= latest_base_month "
+                         "< compare_from <= post_after")
     df = _clean_panel(zori)
     df = df[df["month_year"] >= start]
     if end:
@@ -180,28 +206,29 @@ def _prepare_panel(zori, start, end, base_month, peak_months, post_after, compar
         raise NotEnoughZips(f"Zillow has no rents for {area_name} since {start}.")
 
     wide = df.pivot_table(index="zip_code", columns="month_year", values="zori_rent")
-    for m in [base_month, *peak_months]:
+    base_used = _resolve_base_month(str(wide.columns[0]), base_month, latest_base_month, area_name)
+    for m in [base_used, *peak_months]:
         if m not in wide.columns:
-            if m < wide.columns[0]:
-                raise NotEnoughZips(f"Zillow's rents for {area_name} start in {wide.columns[0]}, after "
-                                    f"{m}, so the 2021-22 boom can't be measured here.")
             raise ValueError(f"Month {m} is not in the panel window {start}..{end or 'latest'}")
     filled, gap_filled = fill_short_gaps(wide)
     balanced = filled.dropna()
     county = df.drop_duplicates("zip_code").set_index("zip_code")["county"]
-    return df, wide, filled, balanced, gap_filled, county
+    return df, wide, filled, balanced, gap_filled, county, base_used
 
 
 def build_model_panel(zori: pd.DataFrame, start=DEFAULTS["start"], end=DEFAULTS["end"],
                       base_month=DEFAULTS["base_month"], peak_months=DEFAULTS["peak_months"],
                       post_after=DEFAULTS["post_after"], compare_from=DEFAULTS["compare_from"],
-                      area_name="DFW"):
+                      latest_base_month=DEFAULTS["latest_base_month"], area_name="DFW"):
     """Returns (long panel restricted to the comparison window, one-row-per-ZIP traits,
     metadata). Balance is required over the whole window from `start`, after filling gaps of
     up to MAX_GAP_MONTHS months. The regression itself uses only Zillow's actual values; filled
-    months only decide which ZIPs count as complete and feed the base/peak averages."""
-    df, wide, filled, balanced, gap_filled, county = _prepare_panel(
-        zori, start, end, base_month, peak_months, post_after, compare_from, area_name)
+    months only decide which ZIPs count as complete and feed the base/peak averages.
+    meta["base_month"] is the month the boom was actually measured from (see the module docstring)."""
+    requested = base_month
+    df, wide, filled, balanced, gap_filled, county, base_month = _prepare_panel(
+        zori, start, end, base_month, peak_months, post_after, compare_from, area_name,
+        latest_base_month)
 
     base = balanced[base_month]
     peak = balanced[list(peak_months)].mean(axis=1)
@@ -223,7 +250,9 @@ def build_model_panel(zori: pd.DataFrame, start=DEFAULTS["start"], end=DEFAULTS[
     meta = {
         "window": [window_months[0], window_months[-1]] if window_months else [compare_from, compare_from],
         "months": int(len(window_months)),
-        "base_month": base_month,
+        "base_month": base_month,                     # month the boom is measured from
+        "base_month_requested": requested,
+        "base_month_fallback": base_month != requested,
         "peak_months": list(peak_months),
         "post_after": post_after,
         "compare_from": compare_from,
@@ -366,6 +395,17 @@ def _fit(long, traits, trait_cols, reference, macro_by_month, event_study, small
     return res, coefs, groups, rate_term, long
 
 
+def _base_month_notes(meta: dict, area_name: str) -> list[str]:
+    """Plain-language caveats for the report; empty when the requested base month was used."""
+    if not meta.get("base_month_fallback"):
+        return []
+    used, req = meta["base_month"], meta["base_month_requested"]
+    return [f"Zillow's rents for {area_name} start in {used}, so each ZIP's boom and pre-boom rent "
+            f"are measured from {used} instead of {req}. That is still before the 2021 run-up, so the "
+            f"boom is captured, but rent changes between {req} and {used} are not, and boom sizes "
+            f"aren't directly comparable with metros measured from {req}."]
+
+
 def fit_divergence_model(zori: pd.DataFrame, covariates: pd.DataFrame | None = None,
                          macro_by_month: dict | None = None, spec: str = "full",
                          event_study: bool = False, metro: str = DFW_METRO,
@@ -385,13 +425,16 @@ def fit_divergence_model(zori: pd.DataFrame, covariates: pd.DataFrame | None = N
       "descriptive"  fewer: no regression; peak vs latest rent by county and ZIP
     Raises NotEnoughZips only when not even a descriptive comparison is possible.
     """
-    w = {**{k: DEFAULTS[k] for k in ("start", "end", "base_month", "peak_months", "post_after", "compare_from")},
+    w = {**{k: DEFAULTS[k] for k in ("start", "end", "base_month", "latest_base_month", "peak_months",
+                                     "post_after", "compare_from")},
          **{k: v for k, v in window.items() if v is not None or k == "end"}}
     long, traits, meta = build_model_panel(zori, area_name=area_name, **w)
     filled, county = meta.pop("_filled"), meta.pop("_county")
     cov_note = meta["coverage"]
+    base_month = meta["base_month"]   # may differ from w["base_month"] (fallback)
+    notes = _base_month_notes(meta, area_name)
     common = {"metro": metro, "area_name": area_name, "available": True, "spec": spec,
-              "dependent_variable": "ln(zori_rent)", "panel": meta}
+              "dependent_variable": "ln(zori_rent)", "panel": meta, "notes": notes}
     n_complete = len(traits)
 
     # ---- which tier
@@ -418,11 +461,11 @@ def fit_divergence_model(zori: pd.DataFrame, covariates: pd.DataFrame | None = N
 
     # ---- descriptive: compare rents directly
     if tier == "descriptive":
-        desc = _describe(filled, county, w["base_month"], w["peak_months"])
+        desc = _describe(filled, county, base_month, w["peak_months"])
         if not desc["overall"]:
             raise NotEnoughZips(
                 f"None of the {cov_note['zips_with_rents']} ZIP codes Zillow tracks in {area_name} have rents "
-                f"for both {w['base_month']} and the latest month, so there's nothing to compare.")
+                f"for both {base_month} and the latest month, so there's nothing to compare.")
         return {**common, "tier": "descriptive", "event_study": False, "coefficients": [],
                 "n_zips": desc["overall"]["zips"], "descriptive": desc,
                 "tier_reason": (f"Only {n_complete} ZIP codes in {area_name} have complete rent histories, too few "
@@ -473,6 +516,8 @@ def fit_divergence_model(zori: pd.DataFrame, covariates: pd.DataFrame | None = N
                         "for a ZIP 1 SD higher on that trait, relative to its own level around "
                         f"the peak ({meta['compare_from']}..{meta['post_after']}) "
                         f"and the month's {area_name}-wide level. pct_effect = (exp(coef)-1)*100. "
+                        f"boom = rent at the peak ({', '.join(w['peak_months'])}) vs {base_month}; "
+                        f"ln_base_rent = log rent in {base_month}. "
                         + (f"County terms are relative to {reference}." if groups else
                            "All ZIPs are in one county group, so there are no county terms.")),
     }

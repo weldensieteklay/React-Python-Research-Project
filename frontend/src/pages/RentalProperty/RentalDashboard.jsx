@@ -113,7 +113,7 @@ function MetroBar({ metro, match, note, locating, metros, onChoose }) {
     <section aria-label="Location" className="mb-6 bg-white border border-gray-200 rounded-lg px-6 py-4">
       <div className="flex flex-col md:flex-row md:items-center gap-3">
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold uppercase tracking-wider text-blue-700">📍 Your area</div>
+          <div className="text-sm font-semibold uppercase tracking-wider text-blue-700">📍 Selected area</div>
           <p className="text-base text-gray-900 font-semibold mt-0.5">{metro}</p>
           <div aria-live="polite">
             {locating && (

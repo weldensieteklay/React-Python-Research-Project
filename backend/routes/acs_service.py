@@ -262,6 +262,9 @@ async def dfw_rent_divergence(
     event_study: bool = Query(False, description="Separate post-peak effects by year"),
     rate_interaction: bool = Query(True, description="Add mortgage rate x pre-boom rent level"),
     start: str = Query("2020-01", pattern=r"^\d{4}-\d{2}$"),
+    base_month: str = Query("2020-01", pattern=r"^\d{4}-\d{2}$",
+                            description="Month each ZIP's boom is measured from. A metro whose rents "
+                                        "start later (by 2020-12) is measured from its first month."),
     end: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"),
     post_after: str = Query("2022-08", pattern=r"^\d{4}-\d{2}$",
                             description="Last month of the boom; Post = months after this"),
@@ -273,7 +276,7 @@ async def dfw_rent_divergence(
     few ZIP codes with complete data, returns 200 with available=false and a reason, so the
     dashboard can say so instead of showing an error.
     """
-    key = (metro, spec, event_study, rate_interaction, start, end, post_after, compare_from)
+    key = (metro, spec, event_study, rate_interaction, start, base_month, end, post_after, compare_from)
     if key in _divergence_cache:
         return _divergence_cache[key]
 
@@ -297,7 +300,8 @@ async def dfw_rent_divergence(
         result = await asyncio.to_thread(
             fit_divergence_model, panel, covariates, macro_by_month, spec, event_study,
             metro=metro, area_name=area,
-            start=start, end=end, post_after=post_after, compare_from=compare_from,
+            start=start, base_month=base_month, end=end, post_after=post_after,
+            compare_from=compare_from,
         )
     except NotEnoughZips as e:
         result = {"available": False, "metro": metro, "area_name": area, "spec": spec,
