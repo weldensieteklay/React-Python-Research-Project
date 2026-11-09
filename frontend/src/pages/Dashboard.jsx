@@ -2,10 +2,9 @@ import React, { useState } from "react";
 import { dashboardRoute } from "../constants/constants";
 import { useNavigate } from "react-router-dom";
 import { useUser } from "../hooks/useUser";
-import { InformationCircleIcon } from "@heroicons/react/24/outline";
 import GuidePanel from "../guideMe/GuidePanel";
 import { guideContent } from "../guideMe/Guidecontent";
-import UserGuideButton from "../guideMe/UserGuideButton";
+import ProductPreview from "./ProductPreview";
 
 // Emails allowed to see the Rental Data Download card.
 // Keep this in sync with the allowlist in AppRoutes.jsx.
@@ -35,9 +34,9 @@ const Dashboard = () => {
             <div className="absolute top-13 right-6 flex flex-col items-end gap-3 z-10">
 
                 <div className="flex items-start gap-3">
-                                        {/* User Guide (PDF download) + Guide Me buttons */}
+                    {/* User Guide (PDF download) + Guide Me buttons */}
                     {/* <UserGuideButton className="flex items-center gap-2 px-4 py-3 bg-white text-black rounded-lg shadow-md hover:bg-gray-100 transition-colors mt-8" /> */}
-            
+
                     {/* User Card */}
                     <aside className="w-64 bg-white shadow-md p-4 flex flex-col items-center space-y-2 rounded-lg">
                         <h2 className="text-lg font-semibold text-gray-800 text-center">
@@ -65,19 +64,14 @@ const Dashboard = () => {
                 />
             </div>
 
-            <main className="flex flex-col items-center mt-12 py-10">
-                <div className="text-center space-y-4 mb-16">
-                    <h1 className="text-4xl font-bold text-gray-800">
-                        AI-Powered Web-Based Data Analysis and Prediction
-                    </h1>
-
-                    <h3 className="text-2xl font-bold text-gray-700">
-                        Select a category to continue.
-                    </h3>
-                </div>
+            <main className="flex flex-col items-center mt-12 pt-10 pb-28">
+                {/* Short direction for the user */}
+                <h2 className="text-lg font-medium text-gray-700 text-center mb-8 px-4">
+                    Select a dashboard below to get started.
+                </h2>
 
                 {/* Dashboard Cards */}
-                <div className="flex flex-wrap justify-center gap-12 max-w-6xl w-full">
+                <div className="flex flex-wrap justify-center gap-12 max-w-6xl w-full px-4">
                     {visibleRoutes.map((item, index) => {
                         const key = Object.keys(item)[0];
                         const { title, route } = item[key];
@@ -86,16 +80,19 @@ const Dashboard = () => {
                             <button
                                 key={key}
                                 type="button"
-                                className="w-80 h-40 px-6 bg-gray-50 flex items-center justify-center rounded-lg shadow-md hover:shadow-lg transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0071CE]"
+                                className="w-full max-w-[30rem] h-56 px-8 bg-gray-50 flex items-center justify-center rounded-lg shadow-md hover:shadow-lg transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0071CE]"
                                 onClick={() => navigate(route)}
                             >
-                                <h3 className="text-lg font-semibold text-gray-800 text-center leading-snug">
+                                <h3 className="text-2xl font-semibold text-gray-800 text-center leading-snug">
                                     {title}
                                 </h3>
                             </button>
                         );
                     })}
                 </div>
+
+                {/* Sample map and charts showing what the rental dashboard offers */}
+                <ProductPreview />
             </main>
         </>
     );
