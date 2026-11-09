@@ -134,6 +134,7 @@ export default function RentMap({
   rows, covariates, loading = false, error = null, onRetry, height = 540,
   county: countyProp, onCountyChange,
   areaName = "Dallas-Fort Worth",   // shown in the title; the map frames whatever ZIPs it's given
+  compact = false,                  // true: map only, without the list beside it (e.g. a small preview)
 }) {
   const { months, forecastMonths, latestActual } = useMemo(() => monthInfo(rows), [rows]);
   const [month, setMonth] = useState("");
@@ -427,14 +428,14 @@ export default function RentMap({
         </label>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-5">
+      <div className={compact ? "grid grid-cols-1 gap-5" : "grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-5"}>
         {/* Map */}
         {/* isolate: Leaflet's own layers (z-index 400-1000) stay inside the map instead of
             covering the fixed header/footer */}
         <div className="relative isolate rounded-lg overflow-hidden border border-gray-200" style={{ height }}>
           <div ref={mapEl} className="absolute inset-0"
                role="img"
-               aria-label={top ? `Map of typical rent by ${listIsCounties ? "county" : "ZIP code"}. Highest: ${name(top)} at ${usd(top.rent)}. Lowest: ${name(bottom)} at ${usd(bottom.rent)}. The list beside the map has every value.` : "Rent map"} />
+               aria-label={top ? `Map of typical rent by ${listIsCounties ? "county" : "ZIP code"}. Highest: ${name(top)} at ${usd(top.rent)}. Lowest: ${name(bottom)} at ${usd(bottom.rent)}.${compact ? "" : " The list beside the map has every value."}` : "Rent map"} />
           {/* What you're looking at, and how to change it */}
           {!loading && !error && !noCoords && (
             <div ref={hintRef} className="absolute top-3 left-1/2 -translate-x-1/2 z-[450] pointer-events-none max-w-[80%]">
@@ -457,7 +458,9 @@ export default function RentMap({
           )}
         </div>
 
-        {/* Side panel: legend, quick facts and the list (the non-visual version of the map) */}
+        {/* Side panel: legend, quick facts and the list (the non-visual version of the map).
+            Left out in compact mode. */}
+        {!compact && (
         <aside className="space-y-5">
           <Legend bands={bands} mode={mode} />
 
@@ -497,13 +500,14 @@ export default function RentMap({
             )}
           </div>
         </aside>
+        )}
       </div>
 
-      <p className="text-xs text-gray-400 mt-4">
+      {!compact && <p className="text-xs text-gray-400 mt-4">
         "Typical rent" is Zillow's Observed Rent Index (ZORI) for that ZIP code. A county's rent is the average of its ZIP codes.
         Colours and sizes compare the places on screen; the legend always shows the dollar ranges.
         {monthIsForecast ? " Forecast months show faded, dashed circles." : ""}
-      </p>
+      </p>}
     </div>
   );
 }
