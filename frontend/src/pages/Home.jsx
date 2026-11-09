@@ -145,7 +145,7 @@ const Home = () => {
                     {blocked.access === "pending" && (
                         <ul className="mt-4 text-sm space-y-1.5 list-disc pl-5">
                             <li>You're signed up as <b>{blocked.email}</b>. There's nothing else you need to do.</li>
-                            <li>Approved accounts get a free two-month pilot, starting the first time you sign in after approval.</li>
+                            <li>Approved accounts get a free one-month pilot, starting the first time you sign in after approval.</li>
                             <li>Come back and sign in with the same Google account once you're approved.</li>
                         </ul>
                     )}

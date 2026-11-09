@@ -32,7 +32,7 @@ from pymongo import ReturnDocument
 from db import consent_collection
 
 TERMS_VERSION = "1.0"
-TRIAL_DAYS = int(os.environ.get("TRIAL_DAYS", "60"))            # two-month pilot
+TRIAL_DAYS = int(os.environ.get("TRIAL_DAYS", "30"))            # one-month pilot
 ACCESS_CACHE_SECONDS = int(os.environ.get("ACCESS_CACHE_SECONDS", "60"))
 
 MESSAGES = {
@@ -79,7 +79,7 @@ def access_status(doc: Optional[dict], now: Optional[datetime] = None) -> dict:
 
     days_left = None
     if state == "granted" and ends_at:
-        # whole days remaining, rounded up: the first day of a 60-day pilot shows 60
+        # whole days remaining, rounded up: the first day of a 30-day pilot shows 30
         days_left = max(0, math.ceil((ends_at - now).total_seconds() / 86400))
 
     return {
@@ -223,4 +223,13 @@ async def require_active_access(request: Request):
 async def access_status_endpoint(request: Request):
     user = _user_from_request(request)
     _cache.pop(user.sub, None)
+    # A user approved while on the "pending" screen enters the app from here, without a new
+    # sign-in, so start their pilot clock here too. Otherwise they'd have access with no end
+    # date until their next sign-in.
+    doc = await consent_collection.find_one({"sub": user.sub})
+    if doc:
+        try:
+            await _start_pilot_if_approved(doc, datetime.now(timezone.utc))
+        except Exception as e:
+            print(f"[DATABASE ERROR] Failed to start pilot on status check: {e}")
     return {"email": user.email, **(await get_access(user.sub))}
