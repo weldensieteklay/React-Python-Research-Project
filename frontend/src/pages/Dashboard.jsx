@@ -55,7 +55,7 @@ function UserMenu({ user, onLogout }) {
                     <span className="block text-sm font-semibold text-gray-800 max-w-[10rem] truncate">{name}</span>
                 </span>
                 <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"
-                     className={`w-5 h-5 text-gray-500 transition-transform ${open ? "rotate-180" : ""}`}>
+                    className={`w-5 h-5 text-gray-500 transition-transform ${open ? "rotate-180" : ""}`}>
                     <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.06l3.71-3.83a.75.75 0 1 1 1.08 1.04l-4.25 4.39a.75.75 0 0 1-1.08 0L5.21 8.27a.75.75 0 0 1 .02-1.06z" clipRule="evenodd" />
                 </svg>
             </button>
@@ -112,20 +112,29 @@ const Dashboard = () => {
             <main className="flex flex-col items-center pt-[88px] pb-28 px-4">
                 {/* Welcome */}
                 <div className="text-center mb-10">
-                    <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Welcome to your dashboard</h1>
+                    <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">
+                        Welcome to your dashboard
+                    </h1>
                     <p className="mt-3 text-lg text-gray-600">
                         Analyze the latest rental market insights.
                     </p>
                 </div>
 
-                <div className="w-full max-w-5xl space-y-6">
-                    {/* Featured card: Rental Dashboard, with the map and chart preview inside */}
+                {/* Changed max-w-5xl to max-w-7xl (or max-w-full) */}
+                <div className="w-full max-w-7xl space-y-6">
                     {featured && (
-                        <section className="bg-white rounded-xl shadow-md border border-gray-100 p-6 sm:p-8" aria-labelledby="featured-title">
+                        <section
+                            className="bg-white rounded-xl shadow-md border border-gray-100 p-6 sm:p-8"
+                            aria-labelledby="featured-title"
+                        >
                             <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
                                 <div>
-                                    <h2 id="featured-title" className="text-2xl font-bold text-gray-900">{featured.title}</h2>
-                                    <p className="mt-1 text-base text-gray-600">{DESCRIPTIONS[featured.key]}</p>
+                                    <h2 id="featured-title" className="text-2xl font-bold text-gray-900">
+                                        {featured.title}
+                                    </h2>
+                                    <p className="mt-1 text-base text-gray-600">
+                                        {DESCRIPTIONS[featured.key]}
+                                    </p>
                                 </div>
                                 <button
                                     type="button"
@@ -139,14 +148,20 @@ const Dashboard = () => {
                         </section>
                     )}
 
-                    {/* Other dashboards */}
                     {others.length > 0 && (
                         <div className={`grid gap-6 ${others.length > 1 ? "md:grid-cols-2" : ""}`}>
                             {others.map(({ key, title, route }) => (
-                                <section key={key} className="bg-white rounded-xl shadow-md border border-gray-100 p-6 flex flex-wrap items-center justify-between gap-4">
+                                <section
+                                    key={key}
+                                    className="bg-white rounded-xl shadow-md border border-gray-100 p-6 flex flex-wrap items-center justify-between gap-4"
+                                >
                                     <div>
                                         <h2 className="text-xl font-bold text-gray-900">{title}</h2>
-                                        {DESCRIPTIONS[key] && <p className="mt-1 text-base text-gray-600">{DESCRIPTIONS[key]}</p>}
+                                        {DESCRIPTIONS[key] && (
+                                            <p className="mt-1 text-base text-gray-600">
+                                                {DESCRIPTIONS[key]}
+                                            </p>
+                                        )}
                                     </div>
                                     <button
                                         type="button"
@@ -161,6 +176,7 @@ const Dashboard = () => {
                     )}
                 </div>
             </main>
+
         </div>
     );
 };
