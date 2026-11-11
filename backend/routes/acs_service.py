@@ -162,6 +162,149 @@ async def rent_locate(lat: float = Query(..., ge=-90, le=90), lon: float = Query
 
 
 # ---------------------------------------------------------------------------
+# Dashboard preview: the largest metros' ZIP rents and monthly averages, in one small response
+# ---------------------------------------------------------------------------
+_preview_cache: dict[tuple, dict] = {}
+_preview_lock = asyncio.Lock()
+_DATE_COL = re.compile(r"^\d{4}-\d{2}(-\d{2})?$")
+RECENT_MONTHS = 3          # a ZIP's latest rent may come from any of the last 3 months
+PREVIEW_START = "2020-01"  # first month of the monthly averages
+
+
+def _first_col(df: pd.DataFrame, names: list[str]) -> str | None:
+    return next((c for c in names if c in df.columns), None)
+
+
+def _zip5(s: pd.Series) -> pd.Series:
+    return s.astype(str).str.strip().str.replace(r"\.0$", "", regex=True).str.zfill(5)
+
+
+def _short_name(metro: str) -> str:
+    """'New York-Newark-Jersey City, NY-NJ-PA' -> 'New York'"""
+    return str(metro).split(",")[0].split("-")[0].strip()
+
+
+def build_metro_previews(zillow: pd.DataFrame, gaz: pd.DataFrame, n: int = 4,
+                         metros: list[str] | None = None, n_counties: int = 4) -> dict:
+    """The requested metros (or the n with the most ZIP codes): for each, every ZIP's latest
+    rent with its location ([lat, lon, rent]), the metro's average rent per month since
+    PREVIEW_START ([month, rent]), and its n_counties largest counties, each with a centre
+    point and its own monthly average. Accepts Zillow's wide CSV layout or a long one, and
+    raw or renamed Gazetteer columns."""
+    zip_col = _first_col(zillow, ["zip_code", "RegionName", "zip", "ZIP"])
+    metro_col = _first_col(zillow, ["msa_name", "Metro", "metro"])
+    county_col = _first_col(zillow, ["county", "CountyName"])
+    if not zip_col or not metro_col:
+        raise ValueError("Zillow data has no ZIP or metro column")
+
+    # One row per ZIP x month: zip, metro, month, rent
+    if "zori_rent" in zillow.columns and "month_year" in zillow.columns:
+        long = pd.DataFrame({
+            "zip": _zip5(zillow[zip_col]), "metro": zillow[metro_col],
+            "county": zillow[county_col] if county_col else None,
+            "month": zillow["month_year"].astype(str).str.slice(0, 7),
+            "rent": pd.to_numeric(zillow["zori_rent"], errors="coerce"),
+        })
+    else:
+        date_cols = [c for c in zillow.columns if _DATE_COL.match(str(c))]
+        if not date_cols:
+            raise ValueError("Zillow data has no month columns")
+        id_cols = [zip_col, metro_col] + ([county_col] if county_col else [])
+        wide = zillow[[*id_cols, *date_cols]].copy()
+        wide[zip_col] = _zip5(wide[zip_col])
+        long = wide.melt(id_vars=id_cols, var_name="month", value_name="rent")
+        long = long.rename(columns={zip_col: "zip", metro_col: "metro", **({county_col: "county"} if county_col else {})})
+        if "county" not in long.columns:
+            long["county"] = None
+        long["month"] = long["month"].astype(str).str.slice(0, 7)
+        long["rent"] = pd.to_numeric(long["rent"], errors="coerce")
+    long = long.dropna(subset=["rent", "metro"])
+    long = long[long["metro"].astype(str).str.strip() != ""]
+    if long.empty:
+        raise ValueError("Zillow data has no rents")
+
+    if metros:
+        known = set(long["metro"].unique())
+        top = [m for m in metros if m in known]
+        if not top:
+            raise ValueError(f"Zillow has no rents for {', '.join(metros)}")
+    else:
+        top = long.groupby("metro")["zip"].nunique().sort_values(ascending=False).head(n).index.tolist()
+    long = long[long["metro"].isin(top)]
+
+    g = gaz.rename(columns=lambda c: str(c).strip())
+    gz, la, lo = (_first_col(g, ["zip_code", "GEOID", "zcta", "ZCTA5"]),
+                  _first_col(g, ["lat", "INTPTLAT"]), _first_col(g, ["lon", "INTPTLONG", "lng"]))
+    if not (gz and la and lo):
+        raise ValueError("Gazetteer is missing ZIP or coordinate columns")
+    coords = pd.DataFrame({
+        "zip": _zip5(g[gz]),
+        "lat": pd.to_numeric(g[la], errors="coerce"),
+        "lon": pd.to_numeric(g[lo], errors="coerce"),
+    }).dropna().drop_duplicates("zip").set_index("zip")
+
+    months = sorted(long["month"].unique())
+    latest_month = months[-1]
+    recent = long[long["month"].isin(months[-RECENT_MONTHS:])].sort_values("month")
+
+    result = []
+    for metro in top:
+        latest = recent[recent["metro"] == metro].groupby("zip").last()
+        placed = latest.join(coords, how="inner")
+        points = [[round(float(a), 3), round(float(b), 3), int(round(float(r)))]
+                  for a, b, r in zip(placed["lat"], placed["lon"], placed["rent"])]
+        avg = long[(long["metro"] == metro) & (long["month"] >= PREVIEW_START)].groupby("month")["rent"].mean()
+        # The metro's largest counties: a centre point (average ZIP location) and monthly average
+        counties = []
+        in_metro = long[(long["metro"] == metro) & long["county"].notna()]
+        for county in in_metro.groupby("county")["zip"].nunique().sort_values(ascending=False).head(n_counties).index:
+            c_zips = placed[placed["county"] == county] if "county" in placed.columns else placed.iloc[0:0]
+            c_avg = in_metro[(in_metro["county"] == county) & (in_metro["month"] >= PREVIEW_START)].groupby("month")["rent"].mean()
+            counties.append({
+                "county": county,
+                "label": str(county).replace(" County", ""),
+                "lat": round(float(c_zips["lat"].mean()), 3) if len(c_zips) else None,
+                "lon": round(float(c_zips["lon"].mean()), 3) if len(c_zips) else None,
+                "series": [[m, int(round(float(v)))] for m, v in c_avg.sort_index().items()],
+            })
+        result.append({
+            "metro": metro,
+            "label": _short_name(metro),
+            "zip_count": int(long.loc[long["metro"] == metro, "zip"].nunique()),
+            "points": points,
+            "series": [[m, int(round(float(v)))] for m, v in avg.sort_index().items()],
+            "counties": counties,
+        })
+    return {"month": latest_month, "metros": result}
+
+
+@router.get("/rent-preview-metros")
+async def rent_preview_metros(
+    count: int = Query(4, ge=1, le=6),
+    metro: str | None = Query(None, max_length=120,
+                              description="One Zillow metro to show instead of the largest ones"),
+):
+    """For the dashboard preview: one metro, or the `count` metros with the most ZIP codes,
+    each with its ZIPs' latest rents and locations ([lat, lon, rent]), its average rent per
+    month since 2020 ([month, rent]) and its largest counties. Built once per request setting
+    from the cached Zillow file and Census Gazetteer."""
+    key = (metro,) if metro else (count,)
+    if key not in _preview_cache:
+        zillow = await _get_zillow()
+        async with _preview_lock:
+            if key not in _preview_cache:
+                try:
+                    gaz = await _get_gazetteer()
+                    _preview_cache[key] = await asyncio.to_thread(
+                        build_metro_previews, zillow, gaz, count, [metro] if metro else None)
+                except ValueError as e:
+                    raise HTTPException(status_code=404, detail=str(e))
+                except Exception as e:
+                    raise HTTPException(status_code=502, detail=f"Could not build the dashboard preview: {e}")
+    return _preview_cache[key]
+
+
+# ---------------------------------------------------------------------------
 # ZIP-level covariates (Census Gazetteer + ACS); change ~yearly, cached in memory
 # ---------------------------------------------------------------------------
 _covariate_cache: dict[str, dict] = {}
