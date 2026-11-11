@@ -16,6 +16,7 @@ import { buildZoriGridProps, toDashboardRows } from "./transformer";
 import { ModelReport } from "./reports";
 import RentDivergenceReport from "./RentDivergenceReport";
 import BoomDivergenceSummary from "./BoomDivergenceSummary";
+import RentDriversSection from "./RentDriversSection";
 import RentByGroupChart from "./RentByGroupChart";
 import RentByZipChart from "./RentByZipChart";
 import RentMap from "./RentMap";
@@ -340,6 +341,9 @@ export default function RentalDashboard() {
 
       {/* Boom-divergence research for the metro shown (its own counties and main city) */}
       <BoomDivergenceSummary metro={metro} areaName={metroShort(metro)} onOpenReport={() => go("research")} />
+
+      {/* Drivers of rent for a county or ZIP code, with links to the research behind each */}
+      <RentDriversSection metro={metro} areaName={metroShort(metro)} rows={actualRows} />
 
       {modelReport}
 

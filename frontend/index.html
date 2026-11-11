@@ -3,10 +3,46 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Research Models</title>
+
+    <!-- Search results: headline and summary -->
+    <title>EconWebCast: ZIP-Level Rent Data, Maps and Forecasts for Every U.S. Metro</title>
+    <meta name="description" content="Explore rental prices by ZIP code across U.S. metro areas with interactive maps, charts and AI-powered forecasts built from Zillow, U.S. Census and economic data." />
+    <link rel="canonical" href="https://econ-web-cast.vercel.app/" />
+
+    <!-- Google Search Console: paste your verification tag here, then redeploy and click Verify -->
+    <!-- <meta name="google-site-verification" content="YOUR-CODE-FROM-SEARCH-CONSOLE" /> -->
+
+    <!-- Link previews on LinkedIn, Slack, X and other sites -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="EconWebCast" />
+    <meta property="og:title" content="EconWebCast: Rent Data and Forecasts by ZIP Code" />
+    <meta property="og:description" content="Interactive rent maps, charts and forecasts for every U.S. metro, built from Zillow, Census and economic data." />
+    <meta property="og:url" content="https://econ-web-cast.vercel.app/" />
+    <meta name="twitter:card" content="summary" />
+
+    <meta name="theme-color" content="#0071CE" />
   </head>
   <body>
     <div id="root"></div>
+
+    <!-- Shown only when JavaScript is off; also gives search engines readable text -->
+    <noscript>
+      <main style="max-width: 40rem; margin: 3rem auto; padding: 0 1rem; font-family: system-ui, sans-serif; line-height: 1.6; color: #1f2937;">
+        <h1>EconWebCast</h1>
+        <p>
+          EconWebCast is a web-based data analysis and prediction platform for rental markets. It shows typical rents
+          by ZIP code and county for every U.S. metro area Zillow tracks, with interactive maps, charts and data grids.
+        </p>
+        <p>
+          It combines the Zillow Observed Rent Index with U.S. Census American Community Survey data and economic
+          indicators such as GDP, unemployment, interest rates, mortgage rates and inflation. Users can forecast rents
+          with econometric, machine learning and time-series models, and upload their own cross-sectional, time-series
+          or panel data.
+        </p>
+        <p>Please turn on JavaScript to use the app.</p>
+      </main>
+    </noscript>
+
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
