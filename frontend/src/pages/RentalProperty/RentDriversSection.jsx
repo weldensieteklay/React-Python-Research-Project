@@ -36,7 +36,7 @@ const DRIVERS = [
         format: usd,
         higher: "Higher than the metro", lower: "Lower than the metro",
         research: "Strong demand from higher-income renter households has kept rents high. Higher-income areas usually support higher rents.",
-        source: { label: "Harvard JCHS, State of the Nation's Housing 2024 (summary by HUD USER)", url: "https://huduser.gov/portal/node/11151" },
+        source: { label: "Harvard JCHS, State of the Nation's Housing 2024 (summary by HUD USER)", url: "https://jchs.harvard.edu/state-nations-housing-2024" },
     },
     {
         key: "new_build_share",
@@ -87,8 +87,8 @@ function compare(area, metro) {
 function SourceLink({ source }) {
     return (
         <a href={source.url} target="_blank" rel="noopener noreferrer" title={source.label}
-           aria-label={`See more details: ${source.label} (opens in a new tab)`}
-           className="inline-block mt-2 text-sm font-semibold text-blue-700 hover:text-blue-900 hover:underline">
+            aria-label={`See more details: ${source.label} (opens in a new tab)`}
+            className="inline-block mt-2 text-sm font-semibold text-blue-700 hover:text-blue-900 hover:underline">
             See more details ↗
         </a>
     );
@@ -96,6 +96,37 @@ function SourceLink({ source }) {
 
 // How often each part of the section changes. Update this if the research list becomes automatic.
 const UPDATE_NOTE = "Rent drivers are reviewed and updated every week.";
+
+/** An (i) icon that shows `text` on hover or keyboard focus, and toggles it on tap (phones). */
+function InfoTip({ text, className = "text-blue-700 hover:text-blue-900" }) {
+    const [shown, setShown] = useState(false);
+    const tipId = useId();
+    return (
+        <span className="relative inline-flex group">
+            <button
+                type="button"
+                aria-label="About these drivers"
+                aria-describedby={tipId}
+                onClick={() => setShown((v) => !v)}
+                onBlur={() => setShown(false)}
+                onKeyDown={(e) => { if (e.key === "Escape") setShown(false); }}
+                className={`${className} rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500`}
+            >
+                <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="w-5 h-5">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-7-4a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM9 9a.75.75 0 0 0 0 1.5h.25v3.25a.75.75 0 0 0 1.5 0V9.75A.75.75 0 0 0 10 9H9Z" clipRule="evenodd" />
+                </svg>
+            </button>
+            <span
+                id={tipId}
+                role="tooltip"
+                className={`absolute left-1/2 -translate-x-1/2 top-full mt-2 z-20 w-max max-w-[16rem] rounded-md bg-gray-900 px-3 py-2 text-sm font-normal text-white shadow-lg
+                    ${shown ? "block" : "hidden"} group-hover:block group-focus-within:block`}
+            >
+                {text}
+            </span>
+        </span>
+    );
+}
 
 export default function RentDriversSection({ metro = DFW_METRO, areaName = "DFW", rows }) {
     const [open, setOpen] = useState(false);
@@ -163,107 +194,106 @@ export default function RentDriversSection({ metro = DFW_METRO, areaName = "DFW"
     const areaLabel = current;
 
     return (
-        <section className="mb-6 bg-white border border-gray-200 rounded-lg overflow-hidden" aria-labelledby="drivers-title">
+        <section className="mb-6 bg-white border border-gray-200 rounded-lg" aria-labelledby="drivers-title">
             {/* Header: always visible. The title or the button opens and closes the details. */}
             <div className={`flex items-center justify-between gap-3 flex-wrap px-6 py-4 ${open ? "border-b border-gray-100" : ""}`}>
-                <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls={bodyId}
-                        className="text-left min-w-0 flex-1 rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
-                    <span id="drivers-title" className="block text-xl font-bold text-gray-900">What drives rents in {areaName}?</span>
-                    <span className="block mt-0.5 text-sm text-gray-600">
+                <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                        <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls={bodyId}
+                            className="text-left rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+                            <span id="drivers-title" className="block text-xl font-bold text-gray-900">What drives rents in {areaName}?</span>
+                        </button>
+                        <InfoTip text={UPDATE_NOTE} className="text-blue-700 hover:text-blue-900" />
+                    </div>
+                    <p className="mt-0.5 text-sm text-gray-600">
                         {open
                             ? "Compare a county with the metro on factors that published research links to rents."
                             : `${DRIVERS.length + 1} drivers from published research, compared by county.`}
-                    </span>
-                </button>
+                    </p>
+                </div>
                 <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls={bodyId}
-                        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-blue-600 bg-blue-50 text-blue-800 text-base font-semibold hover:bg-blue-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 shrink-0">
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-blue-600 bg-blue-50 text-blue-800 text-base font-semibold hover:bg-blue-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 shrink-0">
                     {open ? "Hide drivers" : "Show drivers"}
                     <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"
-                         className={`w-5 h-5 transition-transform ${open ? "rotate-180" : ""}`}>
+                        className={`w-5 h-5 transition-transform ${open ? "rotate-180" : ""}`}>
                         <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.06l3.71-3.83a.75.75 0 1 1 1.08 1.04l-4.25 4.39a.75.75 0 0 1-1.08 0L5.21 8.27a.75.75 0 0 1 .02-1.06z" clipRule="evenodd" />
                     </svg>
                 </button>
             </div>
 
             {open && (
-            <div id={bodyId} className="px-6 py-5">
-            <div className="flex flex-wrap items-center justify-end gap-2">
-                    <label htmlFor="drivers-county" className="text-sm font-semibold text-gray-600">County</label>
-                    <select id="drivers-county" value={current} onChange={(e) => setChoice(e.target.value)}
+                <div id={bodyId} className="px-6 py-5">
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                        <label htmlFor="drivers-county" className="text-sm font-semibold text-gray-600">County</label>
+                        <select id="drivers-county" value={current} onChange={(e) => setChoice(e.target.value)}
                             className="border border-gray-300 bg-white rounded-md px-3 py-1.5 text-sm font-medium max-w-[16rem]">
-                        {options.map((o) => (
-                            <option key={o} value={o}>{o}</option>
-                        ))}
-                    </select>
-            </div>
+                            {options.map((o) => (
+                                <option key={o} value={o}>{o}</option>
+                            ))}
+                        </select>
+                    </div>
 
-            <p className="mt-3 flex items-start gap-2 text-sm text-gray-600 bg-blue-50 border border-blue-100 rounded-md px-3 py-2">
-                <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="w-4 h-4 mt-0.5 shrink-0 text-blue-600">
-                    <path fillRule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-7-4a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM9 9a.75.75 0 0 0 0 1.5h.25v3.25a.75.75 0 0 0 1.5 0V9.75A.75.75 0 0 0 10 9H9Z" clipRule="evenodd" />
-                </svg>
-                <span>{UPDATE_NOTE}</span>
-            </p>
 
-            {context?.rent != null && (
-                <p className="mt-4 text-base text-gray-800">
-                    Typical rent in <b>{areaLabel}</b>: <b>{usd(context.rent)}</b> a month
-                    {context.yoy != null ? <>, {context.yoy >= 0 ? "up" : "down"} <b>{Math.abs(context.yoy).toFixed(1)}%</b> from a year earlier</> : ""}.
-                </p>
-            )}
-
-            {cov.loading && !covRows && <p className="mt-4 text-sm text-blue-700 animate-pulse" role="status">Loading neighborhood data…</p>}
-            {cov.error && !covRows && (
-                <p className="mt-4 text-sm text-gray-500">
-                    Neighborhood data isn't available right now.{" "}
-                    <button onClick={() => cov.handleFetch("data/dfw-zip-covariates", { metro })} className="font-semibold underline text-gray-700">Try again</button>
-                </p>
-            )}
-
-            <ul className="mt-4 grid gap-4 md:grid-cols-2">
-                {drivers.map((d) => {
-                    const c = compare(d.area, d.metro);
-                    const chip = c === "higher" ? d.higher : c === "lower" ? d.lower : "About the same as the metro";
-                    return (
-                        <li key={d.key} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
-                            <div className="flex flex-wrap items-baseline justify-between gap-2">
-                                <h3 className="text-base font-semibold text-gray-900">{d.name}</h3>
-                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${c === "same" ? "bg-gray-200 text-gray-700" : "bg-blue-100 text-blue-800"}`}>{chip}</span>
-                            </div>
-                            <p className="mt-1 text-sm text-gray-700 tabular-nums">
-                                This county: <b>{d.format(d.area)}</b>
-                                <span className="text-gray-400"> · </span>Metro typical: {d.format(d.metro)}
-                            </p>
-                            <p className="mt-2 text-sm text-gray-600 leading-relaxed">{d.research}</p>
-                            <SourceLink source={d.source} />
-                        </li>
-                    );
-                })}
-                {context?.rate != null && (
-                    <li className="border border-gray-200 rounded-lg p-4 bg-gray-50">
-                        <div className="flex flex-wrap items-baseline justify-between gap-2">
-                            <h3 className="text-base font-semibold text-gray-900">{MORTGAGE.name}</h3>
-                            {context.rateBefore != null && (
-                                <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-200 text-gray-700">
-                                    {context.rate > context.rateBefore + 0.1 ? "Up from a year ago" : context.rate < context.rateBefore - 0.1 ? "Down from a year ago" : "Similar to a year ago"}
-                                </span>
-                            )}
-                        </div>
-                        <p className="mt-1 text-sm text-gray-700 tabular-nums">
-                            Latest: <b>{context.rate.toFixed(2)}%</b>
-                            {context.rateBefore != null && <><span className="text-gray-400"> · </span>A year earlier: {context.rateBefore.toFixed(2)}%</>}
+                    {context?.rent != null && (
+                        <p className="mt-4 text-base text-gray-800">
+                            Typical rent in <b>{areaLabel}</b>: <b>{usd(context.rent)}</b> a month
+                            {context.yoy != null ? <>, {context.yoy >= 0 ? "up" : "down"} <b>{Math.abs(context.yoy).toFixed(1)}%</b> from a year earlier</> : ""}.
                         </p>
-                        <p className="mt-2 text-sm text-gray-600 leading-relaxed">{MORTGAGE.research}</p>
-                        <SourceLink source={MORTGAGE.source} />
-                    </li>
-                )}
-            </ul>
+                    )}
 
-            <p className="mt-4 text-xs text-gray-500 leading-relaxed">
-                Neighborhood values are from the U.S. Census American Community Survey; rents are from Zillow. "Metro typical" is the median
-                across the metro's ZIP codes, and a county's value is the median of its ZIP codes. Research findings describe patterns across
-                many places; they explain what tends to matter, not the exact cause of rent changes in one area.
-            </p>
-            </div>
+                    {cov.loading && !covRows && <p className="mt-4 text-sm text-blue-700 animate-pulse" role="status">Loading neighborhood data…</p>}
+                    {cov.error && !covRows && (
+                        <p className="mt-4 text-sm text-gray-500">
+                            Neighborhood data isn't available right now.{" "}
+                            <button onClick={() => cov.handleFetch("data/dfw-zip-covariates", { metro })} className="font-semibold underline text-gray-700">Try again</button>
+                        </p>
+                    )}
+
+                    <ul className="mt-4 grid gap-4 md:grid-cols-2">
+                        {drivers.map((d) => {
+                            const c = compare(d.area, d.metro);
+                            const chip = c === "higher" ? d.higher : c === "lower" ? d.lower : "About the same as the metro";
+                            return (
+                                <li key={d.key} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                                        <h3 className="text-base font-semibold text-gray-900">{d.name}</h3>
+                                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${c === "same" ? "bg-gray-200 text-gray-700" : "bg-blue-100 text-blue-800"}`}>{chip}</span>
+                                    </div>
+                                    <p className="mt-1 text-sm text-gray-700 tabular-nums">
+                                        This county: <b>{d.format(d.area)}</b>
+                                        <span className="text-gray-400"> · </span>Metro typical: {d.format(d.metro)}
+                                    </p>
+                                    <p className="mt-2 text-sm text-gray-600 leading-relaxed">{d.research}</p>
+                                    <SourceLink source={d.source} />
+                                </li>
+                            );
+                        })}
+                        {context?.rate != null && (
+                            <li className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                                    <h3 className="text-base font-semibold text-gray-900">{MORTGAGE.name}</h3>
+                                    {context.rateBefore != null && (
+                                        <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-200 text-gray-700">
+                                            {context.rate > context.rateBefore + 0.1 ? "Up from a year ago" : context.rate < context.rateBefore - 0.1 ? "Down from a year ago" : "Similar to a year ago"}
+                                        </span>
+                                    )}
+                                </div>
+                                <p className="mt-1 text-sm text-gray-700 tabular-nums">
+                                    Latest: <b>{context.rate.toFixed(2)}%</b>
+                                    {context.rateBefore != null && <><span className="text-gray-400"> · </span>A year earlier: {context.rateBefore.toFixed(2)}%</>}
+                                </p>
+                                <p className="mt-2 text-sm text-gray-600 leading-relaxed">{MORTGAGE.research}</p>
+                                <SourceLink source={MORTGAGE.source} />
+                            </li>
+                        )}
+                    </ul>
+
+                    <p className="mt-4 text-xs text-gray-500 leading-relaxed">
+                        Neighborhood values are from the U.S. Census American Community Survey; rents are from Zillow. "Metro typical" is the median
+                        across the metro's ZIP codes, and a county's value is the median of its ZIP codes. Research findings describe patterns across
+                        many places; they explain what tends to matter, not the exact cause of rent changes in one area.
+                    </p>
+                </div>
             )}
         </section>
     );
