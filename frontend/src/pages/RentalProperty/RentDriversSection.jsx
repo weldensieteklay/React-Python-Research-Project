@@ -10,8 +10,8 @@ import { DFW_METRO } from "./useRentMetro";
 // Collapsed by default: one header line with a Show button. Neighborhood data is loaded the
 // first time the section is opened.
 //
-// For a county or ZIP code the viewer picks, each driver shows the area's value next to the
-// metro's typical (median) value, what published research says about that driver, and a
+// For a county the viewer picks, each driver shows the county's value next to the metro's
+// typical (median) value, what published research says about that driver, and a
 // link to the source. Values come from data/dfw-zip-covariates (U.S. Census) and the rent
 // rows (Zillow, plus the national mortgage rate). A county's value is the median of its ZIPs.
 // These are associations from research, not a forecast or proof of cause for one area.
@@ -86,12 +86,16 @@ function compare(area, metro) {
 
 function SourceLink({ source }) {
     return (
-        <a href={source.url} target="_blank" rel="noopener noreferrer"
+        <a href={source.url} target="_blank" rel="noopener noreferrer" title={source.label}
+           aria-label={`See more details: ${source.label} (opens in a new tab)`}
            className="inline-block mt-2 text-sm font-semibold text-blue-700 hover:text-blue-900 hover:underline">
-            More detail: {source.label} ↗
+            See more details ↗
         </a>
     );
 }
+
+// How often each part of the section changes. Update this if the research list becomes automatic.
+const UPDATE_NOTE = "Rent drivers are reviewed and updated every week.";
 
 export default function RentDriversSection({ metro = DFW_METRO, areaName = "DFW", rows }) {
     const [open, setOpen] = useState(false);
@@ -103,7 +107,6 @@ export default function RentDriversSection({ metro = DFW_METRO, areaName = "DFW"
     }, [metro, open]);
     const covRows = cov.data && (cov.data.metro ?? DFW_METRO) === metro && Array.isArray(cov.data.rows) ? cov.data.rows : null;
 
-    const [level, setLevel] = useState("county");
     const [choice, setChoice] = useState("");
 
     // ZIP -> county and city, from the rent rows
@@ -113,12 +116,11 @@ export default function RentDriversSection({ metro = DFW_METRO, areaName = "DFW"
         return out;
     }, [rows]);
     const counties = useMemo(() => [...new Set(Object.values(zipInfo).map((z) => z.county))].sort(), [zipInfo]);
-    const zips = useMemo(() => Object.keys(zipInfo).sort(), [zipInfo]);
-    const options = level === "county" ? counties : zips;
+    const options = counties;
     // The area shown: the viewer's pick, or the first option until they pick one
     const current = options.includes(choice) ? choice : options[0] ?? "";
 
-    const inArea = (zip) => (level === "county" ? zipInfo[zip]?.county === current : zip === current);
+    const inArea = (zip) => zipInfo[zip]?.county === current;
 
     // Each driver: the area's value (median of its ZIPs) and the metro's median
     const drivers = useMemo(() => {
@@ -129,7 +131,7 @@ export default function RentDriversSection({ metro = DFW_METRO, areaName = "DFW"
             return { ...d, area: median(area), metro: median(all) };
         }).filter((d) => d.area != null && d.metro != null);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [covRows, current, level, zipInfo]);
+    }, [covRows, current, zipInfo]);
 
     // Rent context for the area, and the national mortgage rate, from the rent rows
     const context = useMemo(() => {
@@ -155,10 +157,10 @@ export default function RentDriversSection({ metro = DFW_METRO, areaName = "DFW"
             rate, rateBefore,
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [rows, current, level, zipInfo]);
+    }, [rows, current, zipInfo]);
 
     if (!rows?.length) return null;
-    const areaLabel = level === "county" ? current : `ZIP ${current}${zipInfo[current]?.city ? ` (${zipInfo[current].city})` : ""}`;
+    const areaLabel = current;
 
     return (
         <section className="mb-6 bg-white border border-gray-200 rounded-lg overflow-hidden" aria-labelledby="drivers-title">
@@ -169,8 +171,8 @@ export default function RentDriversSection({ metro = DFW_METRO, areaName = "DFW"
                     <span id="drivers-title" className="block text-xl font-bold text-gray-900">What drives rents in {areaName}?</span>
                     <span className="block mt-0.5 text-sm text-gray-600">
                         {open
-                            ? "Compare a county or ZIP code with the metro on factors that published research links to rents."
-                            : `${DRIVERS.length + 1} drivers from published research, compared by county or ZIP code, with links to the sources.`}
+                            ? "Compare a county with the metro on factors that published research links to rents."
+                            : `${DRIVERS.length + 1} drivers from published research, compared by county.`}
                     </span>
                 </button>
                 <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls={bodyId}
@@ -186,21 +188,21 @@ export default function RentDriversSection({ metro = DFW_METRO, areaName = "DFW"
             {open && (
             <div id={bodyId} className="px-6 py-5">
             <div className="flex flex-wrap items-center justify-end gap-2">
-                    <div className="inline-flex rounded-md border border-gray-300 overflow-hidden" role="group" aria-label="Compare by">
-                        {[["county", "County"], ["zip", "ZIP code"]].map(([v, label]) => (
-                            <button key={v} type="button" onClick={() => setLevel(v)} aria-pressed={level === v}
-                                    className={`px-3 py-1.5 text-sm font-semibold ${level === v ? "bg-gray-800 text-white" : "bg-white text-gray-700 hover:bg-gray-50"}`}>
-                                {label}
-                            </button>
-                        ))}
-                    </div>
-                    <select value={current} onChange={(e) => setChoice(e.target.value)} aria-label={level === "county" ? "County" : "ZIP code"}
+                    <label htmlFor="drivers-county" className="text-sm font-semibold text-gray-600">County</label>
+                    <select id="drivers-county" value={current} onChange={(e) => setChoice(e.target.value)}
                             className="border border-gray-300 bg-white rounded-md px-3 py-1.5 text-sm font-medium max-w-[16rem]">
                         {options.map((o) => (
-                            <option key={o} value={o}>{level === "zip" && zipInfo[o]?.city ? `${o} – ${zipInfo[o].city}` : o}</option>
+                            <option key={o} value={o}>{o}</option>
                         ))}
                     </select>
             </div>
+
+            <p className="mt-3 flex items-start gap-2 text-sm text-gray-600 bg-blue-50 border border-blue-100 rounded-md px-3 py-2">
+                <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="w-4 h-4 mt-0.5 shrink-0 text-blue-600">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-7-4a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM9 9a.75.75 0 0 0 0 1.5h.25v3.25a.75.75 0 0 0 1.5 0V9.75A.75.75 0 0 0 10 9H9Z" clipRule="evenodd" />
+                </svg>
+                <span>{UPDATE_NOTE}</span>
+            </p>
 
             {context?.rent != null && (
                 <p className="mt-4 text-base text-gray-800">
@@ -228,7 +230,7 @@ export default function RentDriversSection({ metro = DFW_METRO, areaName = "DFW"
                                 <span className={`px-2 py-0.5 rounded text-xs font-medium ${c === "same" ? "bg-gray-200 text-gray-700" : "bg-blue-100 text-blue-800"}`}>{chip}</span>
                             </div>
                             <p className="mt-1 text-sm text-gray-700 tabular-nums">
-                                {level === "county" ? "This county" : "This ZIP"}: <b>{d.format(d.area)}</b>
+                                This county: <b>{d.format(d.area)}</b>
                                 <span className="text-gray-400"> · </span>Metro typical: {d.format(d.metro)}
                             </p>
                             <p className="mt-2 text-sm text-gray-600 leading-relaxed">{d.research}</p>
