@@ -201,7 +201,7 @@ export default function RentDriversSection({ metro = DFW_METRO, areaName = "DFW"
                     <div className="flex items-center gap-2">
                         <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls={bodyId}
                             className="text-left rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
-                            <span id="drivers-title" className="block text-xl font-bold text-gray-900">What drives rents in {areaName}?</span>
+                            <span id="drivers-title" className="block text-xl font-bold text-gray-900">What drives rents { open && 'in ' + areaLabel}?</span>
                         </button>
                         <InfoTip text={UPDATE_NOTE} className="text-blue-700 hover:text-blue-900" />
                     </div>
