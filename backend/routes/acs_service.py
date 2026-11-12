@@ -30,6 +30,32 @@ from services.macro_indicators_service import (
 from services.rent_divergence_model import NotEnoughZips, fit_divergence_model
 
 
+# ===========================================================================
+# Rental dashboard endpoints: what's available now
+#
+#   GET /dfw-zori               Zillow rents (ZORI) per ZIP x month for a metro, with national
+#                               macro values joined in. Feeds the dashboard, map, charts and grid.
+#   GET /rent-metros            Every metro Zillow covers (the metro picker).
+#   GET /rent-locate            Metro nearest to the viewer's location.
+#   GET /rent-preview-metros    Small preview of the largest metros for the main dashboard.
+#   GET /dfw-zip-covariates     Census values per ZIP (income, density, new housing, rental growth,
+#                               distance to downtown). Used by the map and by "What drives rents?"
+#                               (RentDriversSection.jsx), which compares each county with the metro.
+#   GET /rent-panel-with-acs    CSV download: rent panel plus the Census values.
+#   GET /dfw-rent-divergence    Boom-divergence research model.
+#   GET /dfw-macro, /macro-indicators   Macro indicators and the cycle score.
+#
+# Pending (paid version): "Local market report" in RentDriversSection.jsx
+#   The dashboard shows it as Pending and offers a fixed sample report for Collin County, DFW
+#   (SAMPLE_REPORT in RentDriversSection.jsx). No backend endpoint is used for it yet.
+#   Planned: GET /rent-report?metro=&county= returning a report in the same format as
+#   SAMPLE_REPORT, written by an AI model with web search (e.g. the Claude API), saved for
+#   about 30 days, created only for signed-in subscribers, with a monthly spending cap.
+#
+# Removed for now: the local research agents (news search with Ollama, and the schools/
+# hospitals/OpenStreetMap graph) and their /rent-context and /rent-amenities endpoints.
+# ===========================================================================
+
 router = APIRouter()
 
 
