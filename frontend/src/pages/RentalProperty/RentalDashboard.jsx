@@ -97,10 +97,10 @@ const metroTitle = (metro) => (metro === DFW_METRO ? "Dallas-Fort Worth (DFW)" :
 const metroShort = (metro) => (metro === DFW_METRO ? "DFW" : metro.replace(/, [A-Z]{2}(-[A-Z]{2})*$/, ""));
 const metroSlug = (metro) => metro.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
 
-/** Which metro is shown, with a list of every metro Zillow covers. The viewer's location is
- *  asked for automatically on their first visit (useRentMetro); the list changes it after that. */
-function MetroBar({ metro, match, note, locating, metros, onChoose }) {
-  // A–Z, searchable. The shown metro stays selectable even if the list hasn't loaded or lacks it.
+/** The metro picker for the page header: every metro Zillow covers, A–Z and searchable. The
+ *  viewer's location is asked for automatically on their first visit (useRentMetro); the list
+ *  changes it after that. The shown metro stays selectable even if the list hasn't loaded. */
+function MetroSelect({ metro, metros, onChoose }) {
   const options = useMemo(() => {
     const list = metros?.length ? [...metros] : [];
     if (!list.some((m) => m.metro === metro)) list.push({ metro, zip_count: null });
@@ -109,52 +109,49 @@ function MetroBar({ metro, match, note, locating, metros, onChoose }) {
       .map((m) => ({ value: m.metro, label: m.metro, zips: m.zip_count }));
   }, [metros, metro]);
   const selected = options.find((o) => o.value === metro) ?? null;
+  return (
+    <div className="flex items-center gap-2 w-full md:w-auto">
+      <label htmlFor="metro-select" className="shrink-0 text-sm font-semibold text-gray-600">
+        <span aria-hidden="true">📍 </span>Metro
+      </label>
+      <Select
+        inputId="metro-select"
+        className="w-full md:w-80 text-sm"
+        classNamePrefix="react-select"
+        options={options}
+        value={selected}
+        onChange={(o) => o && o.value !== metro && onChoose(o.value)}
+        placeholder="Search for a metro…"
+        noOptionsMessage={({ inputValue }) => `No metro matches "${inputValue}"`}
+        // Search the metro name only; the ZIP count is shown but not searched
+        filterOption={(o, input) => o.label.toLowerCase().includes(input.trim().toLowerCase())}
+        formatOptionLabel={(o, { context }) => (
+          <span>
+            {o.label}
+            {context === "menu" && o.zips ? <span className="text-gray-400"> · {o.zips} ZIPs</span> : null}
+          </span>
+        )}
+        menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+        styles={{ menuPortal: (base) => ({ ...base, zIndex: 50 }) }}
+      />
+    </div>
+  );
+}
+
+/** One short line under the page title: finding the viewer's area, where it matched, or why not. */
+function LocationNote({ match, note, locating }) {
   const near = match?.city ? `${match.city} (${match.zip_code})` : match?.zip_code;
   return (
-    <section aria-label="Location" className="mb-6 bg-white border border-gray-200 rounded-lg px-6 py-4">
-      <div className="flex flex-col md:flex-row md:items-center gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold uppercase tracking-wider text-blue-700">📍 Selected area</div>
-          <p className="text-base text-gray-900 font-semibold mt-0.5">{metro}</p>
-          <div aria-live="polite">
-            {locating && (
-              <p className="text-sm text-gray-500">Finding your area… (allow location access when your browser asks). You're seeing this metro until then.</p>
-            )}
-            {!locating && match && (
-              <p className="text-sm text-gray-500">
-                Matched from your location{near ? `, near ${near}` : ""}. Showing all{" "}
-                {match.metro_zip_count ? `${match.metro_zip_count} ` : ""}ZIP codes Zillow tracks in this metro.
-              </p>
-            )}
-            {!locating && note && <p className="text-sm text-amber-700">{note}</p>}
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="sr-only" htmlFor="metro-select">Metro area</label>
-          <Select
-            inputId="metro-select"
-            aria-label="Metro area"
-            className="w-80 max-w-full text-sm"
-            classNamePrefix="react-select"
-            options={options}
-            value={selected}
-            onChange={(o) => o && o.value !== metro && onChoose(o.value)}
-            placeholder="Search for a metro…"
-            noOptionsMessage={({ inputValue }) => `No metro matches "${inputValue}"`}
-            // Search the metro name only; the ZIP count is shown but not searched
-            filterOption={(o, input) => o.label.toLowerCase().includes(input.trim().toLowerCase())}
-            formatOptionLabel={(o, { context }) => (
-              <span>
-                {o.label}
-                {context === "menu" && o.zips ? <span className="text-gray-400"> · {o.zips} ZIPs</span> : null}
-              </span>
-            )}
-            menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-            styles={{ menuPortal: (base) => ({ ...base, zIndex: 50 }) }}
-          />
-        </div>
-      </div>
-    </section>
+    <div aria-live="polite" className="text-sm">
+      {locating && <p className="text-gray-500">Finding your area… allow location access when your browser asks.</p>}
+      {!locating && match && (
+        <p className="text-gray-500">
+          Matched to your location{near ? ` near ${near}` : ""}
+          {match.metro_zip_count ? ` · ${match.metro_zip_count} ZIP codes` : ""}
+        </p>
+      )}
+      {!locating && note && <p className="text-amber-700">{note}</p>}
+    </div>
   );
 }
 
@@ -326,18 +323,18 @@ export default function RentalDashboard() {
   return (
     // pb-28: room below Data views so it scrolls clear of the fixed footer
     <div className="p-6 pb-28 bg-gray-50 min-h-screen">
-      <div className="flex flex-col md:flex-row md:items-center justify-between pb-4 mb-4 border-b border-gray-200 gap-4">
-        <div className="flex items-start gap-2">
+      {/* Header: ← and the metro on the left, the metro picker on the right */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-4 mb-4 border-b border-gray-200">
+        <div className="flex items-start gap-2 min-w-0">
           <BackButton onClick={() => navigate(MAIN_DASHBOARD_ROUTE)} label="Back to dashboard" />
-          <div className="pt-1">
+          <div className="pt-1 min-w-0">
             <h1 className="text-xl font-bold text-gray-900 tracking-tight">{metroTitle(metro)} Rental Property Portal</h1>
-            <p className="text-sm text-gray-500 mt-1">Powered by Zillow Observed Rent Index (ZORI) & Macroeconomic Transmissions</p>
+            <p className="text-sm text-gray-500 mt-0.5">Zillow Observed Rent Index (ZORI) and macroeconomic indicators</p>
+            <LocationNote match={match} note={note} locating={locating} />
           </div>
         </div>
+        <MetroSelect metro={metro} metros={metroList.data?.metros} onChoose={chooseMetro} />
       </div>
-
-      <MetroBar metro={metro} match={match} note={note} locating={locating} metros={metroList.data?.metros}
-                onChoose={chooseMetro} />
 
       {/* Boom-divergence research for the metro shown (its own counties and main city) */}
       <BoomDivergenceSummary metro={metro} areaName={metroShort(metro)} onOpenReport={() => go("research")} />
