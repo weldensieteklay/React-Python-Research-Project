@@ -10,7 +10,9 @@ import { DFW_METRO } from "./RentalProperty/useRentMetro";
 //
 //   <ProductPreview />
 //
-// Renders nothing if the data can't load, so the card still works without it.
+// While the data loads, each panel shows a spinner with a label, at the size the map and chart
+// will take, so the card doesn't jump. Renders nothing if the data can't load, so the card
+// still works without it.
 // ===========================================================================
 
 const SAMPLE_METRO = DFW_METRO;
@@ -26,6 +28,19 @@ function Panel({ caption, children }) {
     );
 }
 
+/** Spinner and label filling a panel while its data loads (decorative; the status line below is read out) */
+function Loading({ label }) {
+    return (
+        <div className="w-full aspect-[5/3] rounded-md bg-gray-100 flex flex-col items-center justify-center gap-3" aria-hidden="true">
+            <svg className="animate-spin h-8 w-8 text-[#0071CE]" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z" />
+            </svg>
+            <span className="text-sm font-medium text-gray-600">{label}</span>
+        </div>
+    );
+}
+
 export default function ProductPreview() {
     const preview = useFetchData();
 
@@ -38,15 +53,16 @@ export default function ProductPreview() {
 
     // The preview is a bonus: if the data can't load, leave it out rather than show an error
     if (preview.error || metro === null) return null;
-    const placeholder = <div className="w-full aspect-[5/3] rounded-md bg-gray-200/70 animate-pulse" aria-hidden="true" />;
 
     return (
         <div className="grid gap-5 md:grid-cols-2" aria-busy={!metro}>
+            {/* One announcement for screen readers while loading */}
+            <p role="status" className="sr-only">{metro ? "" : "Loading the rent map and chart…"}</p>
             <Panel caption="Rent by ZIP code">
-                {metro ? <RentPreviewZipMap metro={metro} /> : placeholder}
+                {metro ? <RentPreviewZipMap metro={metro} /> : <Loading label="Loading rent map…" />}
             </Panel>
             <Panel caption="Rent over time by county">
-                {metro ? <RentPreviewCountyChart metro={metro} /> : placeholder}
+                {metro ? <RentPreviewCountyChart metro={metro} /> : <Loading label="Loading rent chart…" />}
             </Panel>
         </div>
     );
