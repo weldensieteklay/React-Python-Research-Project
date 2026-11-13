@@ -5,10 +5,11 @@ import { DFW_METRO } from "./useRentMetro";
 // ===========================================================================
 // "What drives rents here?" for the rental dashboard.
 //
-//   <RentDriversSection metro={metro} areaName="DFW" rows={actualRows} />
+//   <RentDriversSection metro={metro} areaName="DFW" rows={actualRows} asPage />
 //
-// Collapsed by default: one header line with a Show button. Neighborhood data is loaded the
-// first time the section is opened.
+// asPage: the section fills its own page (RentalDashboard's "drivers" page supplies the title and
+// the back arrow), so it is always open and has no header of its own. Without asPage it is a
+// collapsible card with a Show button. Neighborhood data is loaded the first time it is open.
 //
 // For a county the viewer picks, each driver shows the county's value next to the metro's
 // typical (median) value, what published research says about that driver, and a
@@ -146,7 +147,8 @@ const shortDate = (d) => {
 // ---------------------------------------------------------------------------
 // "Local market report": what local news and published reports say is driving rents in a
 // county, with numbered references. Pending for now: full reports for every county come with
-// the paid version. Every viewer, in any metro, can open the Collin County sample below.
+// the paid version. Every viewer, in any metro, can open the Collin County sample below
+// (collapsed until they click it).
 // To refresh the sample, update SAMPLE_REPORT (same format the paid version will produce).
 // ---------------------------------------------------------------------------
 const SAMPLE_REPORT = {
@@ -344,7 +346,6 @@ function SampleReport({ report }) {
 }
 
 function LocalMarketReport({ metro, county }) {
-    const isSampleCounty = county === SAMPLE_REPORT.county && metro === SAMPLE_REPORT.metro;
     return (
         <section className="mt-6 border-t border-gray-100 pt-5" aria-labelledby="market-report-title">
             <div className="flex flex-wrap items-center gap-2">
@@ -361,7 +362,7 @@ function LocalMarketReport({ metro, county }) {
                 Reports will cover every county in every metro on this dashboard and are refreshed regularly.
             </p>
 
-            <details className="mt-3 group/sample" open={isSampleCounty}>
+            <details className="mt-3 group/sample">
                 <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-md text-sm font-semibold text-blue-700 hover:text-blue-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 [&::-webkit-details-marker]:hidden">
                     <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="w-4 h-4 transition-transform group-open/sample:rotate-90">
                         <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 0 1 .02-1.06L11.17 10 7.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 0 1-1.06-.02Z" clipRule="evenodd" />
@@ -380,8 +381,9 @@ function LocalMarketReport({ metro, county }) {
     );
 }
 
-export default function RentDriversSection({ metro = DFW_METRO, areaName = "DFW", rows }) {
-    const [open, setOpen] = useState(false);
+export default function RentDriversSection({ metro = DFW_METRO, areaName = "DFW", rows, asPage = false }) {
+    const [expanded, setOpen] = useState(false);
+    const open = asPage || expanded;
     const bodyId = useId();
     const cov = useFetchData();
     useEffect(() => {
@@ -446,8 +448,10 @@ export default function RentDriversSection({ metro = DFW_METRO, areaName = "DFW"
     const areaLabel = current;
 
     return (
-        <section className="mb-6 bg-white border border-gray-200 rounded-lg" aria-labelledby="drivers-title">
-            {/* Header: always visible. The title or the button opens and closes the details. */}
+        <section className="mb-6 bg-white border border-gray-200 rounded-lg" aria-labelledby={asPage ? undefined : "drivers-title"}
+                 aria-label={asPage ? `What drives rents in ${areaName}` : undefined}>
+            {/* Header (card mode only): the title or the button opens and closes the details */}
+            {!asPage && (
             <div className={`flex items-center justify-between gap-3 flex-wrap px-6 py-4 ${open ? "border-b border-gray-100" : ""}`}>
                 <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
@@ -472,10 +476,18 @@ export default function RentDriversSection({ metro = DFW_METRO, areaName = "DFW"
                     </svg>
                 </button>
             </div>
+            )}
 
             {open && (
                 <div id={bodyId} className="px-6 py-5">
-                    <div className="flex flex-wrap items-center justify-end gap-2">
+                    <div className={`flex flex-wrap items-center gap-2 ${asPage ? "justify-between" : "justify-end"}`}>
+                        {asPage && (
+                            <div className="flex items-center gap-1.5">
+                                <p className="text-sm text-gray-600">Compare a county with the metro on factors that published research links to rents.</p>
+                                <InfoTip text={UPDATE_NOTE} />
+                            </div>
+                        )}
+                        <div className="flex items-center gap-2">
                         <label htmlFor="drivers-county" className="text-sm font-semibold text-gray-600">County</label>
                         <select id="drivers-county" value={current} onChange={(e) => setChoice(e.target.value)}
                             className="border border-gray-300 bg-white rounded-md px-3 py-1.5 text-sm font-medium max-w-[16rem]">
@@ -483,6 +495,7 @@ export default function RentDriversSection({ metro = DFW_METRO, areaName = "DFW"
                                 <option key={o} value={o}>{o}</option>
                             ))}
                         </select>
+                        </div>
                     </div>
 
 
