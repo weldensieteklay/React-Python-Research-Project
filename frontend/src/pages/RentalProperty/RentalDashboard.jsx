@@ -66,6 +66,26 @@ function ViewPicker({ onOpen }) {
   );
 }
 
+/** Dashboard card that opens the "What drives rents?" page */
+function DriversCard({ areaName, onOpen }) {
+  return (
+    <section aria-labelledby="drivers-card-title" className="mb-6 bg-white border border-gray-200 rounded-lg">
+      <button onClick={onOpen}
+              className="w-full flex flex-col md:flex-row md:items-center justify-between gap-3 text-left px-6 py-4 rounded-lg transition-colors hover:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+        <div className="min-w-0">
+          <div className="text-sm font-semibold uppercase tracking-wider text-blue-700">Rent drivers</div>
+          <h2 id="drivers-card-title" className="text-xl font-bold text-gray-900 mt-1">What drives rents in {areaName}?</h2>
+          <p className="text-sm text-gray-600 mt-1">
+            Compare any county with the metro on income, new housing, rental growth, distance to downtown, density and
+            mortgage rates, with the research behind each, plus a sample local market report.
+          </p>
+        </div>
+        <span className="shrink-0 text-sm font-semibold text-blue-700">Open →</span>
+      </button>
+    </section>
+  );
+}
+
 /** Full-screen page: ← at the top left, title, optional controls on the right. */
 function DataPage({ title, subtitle, onBack, actions, children }) {
   return (
@@ -177,7 +197,7 @@ export default function RentalDashboard() {
   const { metro, match, note, locating, chooseMetro } = useRentMetro();
   const isDfw = metro === DFW_METRO;
 
-  // Screens visited, newest last; ← goes back one. dashboard | map | charts | grid | research | forecast
+  // Screens visited, newest last; ← goes back one. dashboard | map | charts | grid | drivers | research | forecast
   const [history, setHistory] = useState(["dashboard"]);
   const page = history[history.length - 1];
   const go = (p) => setHistory((h) => [...h, p]);
@@ -292,6 +312,16 @@ export default function RentalDashboard() {
     );
   }
 
+  if (page === "drivers") {
+    return (
+      <DataPage title={`What drives rents in ${metroShort(metro)}?`}
+                subtitle="Neighborhood factors from the U.S. Census, compared by county, with the research behind each"
+                onBack={back}>
+        <RentDriversSection metro={metro} areaName={metroShort(metro)} rows={actualRows} asPage />
+      </DataPage>
+    );
+  }
+
   if (page === "charts") {
     return (
       <DataPage title="Rent charts" subtitle="Compare counties, or follow one ZIP code over time"
@@ -339,8 +369,8 @@ export default function RentalDashboard() {
       {/* Boom-divergence research for the metro shown (its own counties and main city) */}
       <BoomDivergenceSummary metro={metro} areaName={metroShort(metro)} onOpenReport={() => go("research")} />
 
-      {/* Drivers of rent for a county or ZIP code, with links to the research behind each */}
-      <RentDriversSection metro={metro} areaName={metroShort(metro)} rows={actualRows} />
+      {/* Drivers of rent: a short card here; the details are on their own page */}
+      <DriversCard areaName={metroShort(metro)} onOpen={() => go("drivers")} />
 
       {modelReport}
 
