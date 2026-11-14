@@ -18,7 +18,8 @@ import { DFW_METRO } from "./useRentMetro";
 // These are associations from research, not a forecast or proof of cause for one area.
 //
 // Below the drivers, "Local market report" is marked Pending (paid version) and offers every
-// viewer a sample report for Collin County, DFW (SAMPLE_REPORT). No AI or extra endpoint is used.
+// viewer sample reports for Collin, Dallas and Denton counties (SAMPLE_REPORTS). While
+// REPORTS_LIVE is false, no AI or extra endpoint is used.
 // ===========================================================================
 
 // Shares may arrive as fractions (0.42) or percents (42); treat values up to 1.5 as fractions
@@ -147,11 +148,12 @@ const shortDate = (d) => {
 // ---------------------------------------------------------------------------
 // "Local market report": what local news and published reports say is driving rents in a
 // county, with numbered references. Pending for now: full reports for every county come with
-// the paid version. Every viewer, in any metro, can open the Collin County sample below
-// (collapsed until they click it).
-// To refresh the sample, update SAMPLE_REPORT (same format the paid version will produce).
+// the paid version. Every viewer, in any metro, can open the sample reports below (Collin,
+// Dallas and Denton counties), each collapsed until clicked.
+// To refresh a sample, edit it below. The paid version's /rent-report endpoint returns the same format.
 // ---------------------------------------------------------------------------
-const SAMPLE_REPORT = {
+const COLLIN_SAMPLE = {
+    id: "collin",
     county: "Collin County",
     metro: DFW_METRO,
     place: "Collin County, Dallas-Fort Worth, Texas",
@@ -255,6 +257,210 @@ const SAMPLE_REPORT = {
     ],
 };
 
+const DALLAS_SAMPLE = {
+    id: "dallas",
+    county: "Dallas County",
+    metro: DFW_METRO,
+    place: "Dallas County, Dallas-Fort Worth, Texas",
+    as_of: "2026-11-14",
+    overall:
+        "Dallas County has the metro's most expensive urban apartments, but slightly more residents are moving out than in, and big " +
+        "employers are both arriving (Goldman Sachs) and leaving (AT&T to Plano). Apartment construction across DFW has slowed sharply " +
+        "while demand stayed strong, so vacancy is easing; concessions still hold rents back, and reports expect rent growth to return " +
+        "slowly from late 2026.",
+    drivers: [
+        {
+            id: "new_supply", name: "Apartment construction (now slowing)", direction: "down", strength: "Pressure easing",
+            points: [
+                { text: "The DFW apartment construction pipeline has shrunk to near a 10-year low.", refs: [1] },
+                { text: "About 30,200 units were under construction across DFW in Q1 2026; vacancy is expected to peak in 2026 before gradually tightening.", refs: [2] },
+                { text: "DFW absorbed about 28,600 units in the year to Q2 2026, up 10% from a year earlier, while completions fell 26%, and overall vacancy dropped about 0.4 points.", refs: [3] },
+            ],
+        },
+        {
+            id: "concessions", name: "Move-in concessions", direction: "down",
+            points: [
+                { text: "Among Texas's major metros, Dallas is second only to Austin in rent concessions, and Dallas is among the metros with the sharpest rent drops.", refs: [4] },
+            ],
+        },
+        {
+            id: "population", name: "Slow population growth, more move-outs than move-ins", direction: "down",
+            points: [
+                { text: "Census estimates put Dallas County at 2,661,397 people on July 1, 2025, only 1.9% more than in April 2020.", refs: [5] },
+                { text: "Between 2024 and 2025, about 2,616 more people moved out of Dallas County than moved in, while nearby suburban counties led national growth.", refs: [6] },
+            ],
+        },
+        {
+            id: "jobs", name: "Corporate moves, in and out", direction: "mixed",
+            points: [
+                { text: "Goldman Sachs is building a downtown Dallas campus expected to hold more than 5,000 workers, due to open around late 2027 to early 2028.", refs: [7] },
+                { text: "In early 2026 AT&T shifted its global headquarters operations from downtown Dallas to Plano (Collin County). DFW still led the nation in headquarters relocations, with 11 of 164 last year.", refs: [8] },
+            ],
+        },
+        {
+            id: "urban_core", name: "Downtown and Uptown investment", direction: "up",
+            points: [
+                { text: "Asking rents are highest in the urban core: about $2,667 a month in Uptown/Park Cities and $2,207 in Downtown Dallas (Q1 2026).", refs: [2] },
+                { text: "Downtown has nearly 16,000 residents and about $8 billion of development underway, including a $3.7 billion convention center expansion targeted for 2029.", refs: [9, 10] },
+                { text: "Rent performance is diverging between urban areas such as Uptown and the suburbs, so county-wide averages hide large local differences.", refs: [11] },
+            ],
+        },
+        {
+            id: "schools", name: "School ratings (mixed)", direction: "mixed",
+            points: [
+                { text: "2024-25 Texas Education Agency ratings: Dallas ISD B (83, up from C), Garland ISD B (84) and Richardson ISD C (79).", refs: [12, 13, 14] },
+                { text: "Mixed school ratings mean family demand varies more by neighborhood here than in Collin County's mostly A-rated districts.", refs: [] },
+            ],
+        },
+        {
+            id: "transit", name: "Rail transit", direction: "up",
+            points: [
+                { text: "DART's Silver Line opened on October 25, 2025, running through northern Dallas County (including Addison and Richardson) to DFW Airport, adding to DART's existing rail network.", refs: [15] },
+            ],
+        },
+        {
+            id: "home_buying", name: "Cost of buying a home", direction: "mixed",
+            points: [
+                { text: "The median sale price across the Dallas area was about $399,900, down about 1.7% from a year earlier.", refs: [16] },
+                { text: "Zillow's typical home value in the city of Dallas is down about 1.7% from a year earlier. Lower prices than in the northern suburbs make buying somewhat more reachable here.", refs: [17] },
+            ],
+        },
+        {
+            id: "policy", name: "State zoning law (SB 840)", direction: "down", strength: "Longer-term effect",
+            points: [
+                { text: "Since September 1, 2025, Texas cities must allow apartments in zones that allow offices, at up to 36 units per acre, which could add supply over time.", refs: [18] },
+            ],
+        },
+    ],
+    rents: [
+        { text: "DFW effective rents rose 0.5% in Q2 2026, only the third quarterly gain in 12 quarters.", refs: [19] },
+        { text: "Dallas-area rents were down about 2.6% from a year earlier in Apartment List's estimate.", refs: [20] },
+    ],
+    references: [
+        { id: 1, publisher: "Northmarq", title: "Multifamily construction pipeline in Dallas shrinks to near 10-year low", type: "Market report", published: "2026", covers: "DFW metro", url: "https://www.northmarq.com/insights/insights/multifamily-construction-pipeline-dallas-shrinks-near-10-year-low" },
+        { id: 2, publisher: "Matthews", title: "Q1 2026 Dallas-Fort Worth Multifamily Market Report (CoStar data)", type: "Market report", published: "2026-04", covers: "DFW metro and submarkets", url: "https://cms.matthews.com/wp-content/uploads/2026/04/Q126-Dallas-Fort-Worth-Multifamily-Market-Report.pdf" },
+        { id: 3, publisher: "CoStar News", title: "Multifamily demand in Dallas-Fort Worth endures as vacancy turns a corner", type: "News", published: "2026", covers: "DFW metro", url: "https://www.costar.com/article/1946352486/multifamily-demand-in-dallas-fort-worth-endures-as-vacancy-turns-a-corner", note: "Full article may require a CoStar subscription." },
+        { id: 4, publisher: "Federal Reserve Bank of Dallas", title: "Southwest Economy (2026): Texas apartment markets", type: "Research", published: "2026", covers: "Texas metros", url: "https://www.dallasfed.org/research/swe/2026/swe2605" },
+        { id: 5, publisher: "U.S. Census Bureau", title: "QuickFacts: Dallas County, Texas", type: "Data", published: "July 2025 estimates", covers: "Dallas County", url: "https://www.census.gov/quickfacts/dallascountytexas" },
+        { id: 6, publisher: "KBTX (Texas Tribune)", title: "Texas suburbs lead U.S. for population growth as international migration slows, census finds", type: "News", published: "2026-03-27", covers: "Texas counties", url: "https://www.kbtx.com/2026/03/27/texas-suburbs-lead-us-population-growth-international-migration-slows-census-finds/" },
+        { id: 7, publisher: "Dallas Innovates", title: "Goldman Sachs kicks off construction on sustainable, all-electric Dallas campus", type: "News", covers: "Downtown Dallas", url: "https://dallasinnovates.com/goldman-sachs-kicks-off-construction-on-sustainable-all-electric-dallas-campus/", note: "Reported opening dates and costs vary by source." },
+        { id: 8, publisher: "Bisnow", title: "DFW still leads U.S. in corporate relocations, but momentum slows", type: "News", published: "2026-04", covers: "DFW metro", url: "https://www.bisnow.com/news/dallas-ft-worth/commercial-real-estate/dfw-corporate-relocations-134175" },
+        { id: 9, publisher: "Bisnow", title: "Downtown Dallas set for major change, if slow retail, old buildings and tariffs don't get in the way", type: "News", covers: "Downtown Dallas", url: "https://www.bisnow.com/news/dallas-ft-worth/construction-development/dallas-convention-center-remodel-therme-wellness-resort-to-lead-wave-of-phenomenal-growth-in-downtown-128951" },
+        { id: 10, publisher: "Downtown Dallas Inc.", title: "Downtown Dallas Big Moves", type: "Organization report", published: "2026", covers: "Downtown Dallas", url: "https://downtowndallas.com/members/state-of-downtown/downtown-dallas-big-moves/" },
+        { id: 11, publisher: "CoStar News", title: "Apartment rent growth divergence sharpens in Dallas-Fort Worth between urban and suburban submarkets", type: "News", published: "2026", covers: "DFW submarkets", url: "https://www.costar.com/article/36082025/apartment-rent-growth-divergence-sharpens-in-dallas-fort-worth-between-urban-and-suburban-submarkets", note: "Full article may require a CoStar subscription." },
+        { id: 12, publisher: "Dallas Regional Chamber", title: "North Texas school districts show improvement in newly released school accountability ratings", type: "Organization report", published: "2025", covers: "North Texas school districts", url: "https://www.dallaschamber.org/blog/north-texas-school-districts-show-improvement-in-newly-released-school-accountability-ratings/", note: "Official ratings are published by the Texas Education Agency; 2025-26 ratings have since been released." },
+        { id: 13, publisher: "NBC DFW", title: "TEA releases 2024-25 school ratings: best and worst districts and charters", type: "News", covers: "North Texas school districts", url: "https://www.nbcdfw.com/news/local/tea-releases-2024-25-school-ratings-best-worst-districts-and-charters/3905164/" },
+        { id: 14, publisher: "Community Impact", title: "Richardson ISD earns C for 2023-24, 2024-25 school year from TEA", type: "News", covers: "Richardson ISD", url: "https://communityimpact.com/richardson/education/richardson-isd-earns-c-for-2023-24-2024-25-school-year-from-tea/" },
+        { id: 15, publisher: "Community Impact", title: "Roundup: Silver Line opening, service cuts and other recent DART updates", type: "News", covers: "DART service area", url: "https://communityimpact.com/richardson/transportation/roundup-silver-line-opening-service-cuts-and-other-recent-dart-updates/" },
+        { id: 16, publisher: "The Real Deal", title: "Home prices across Dallas area fell in 2026", type: "Data", published: "2026", covers: "Dallas region", url: "https://therealdeal.com/data/texas/2026/home-prices-across-dallas-area-fell-in-2026/" },
+        { id: 17, publisher: "Zillow", title: "Dallas, TX home values", type: "Data", covers: "City of Dallas", url: "https://www.zillow.com/Dallas-TX/home-values/" },
+        { id: 18, publisher: "Texas Legislature", title: "Local Government Code, Chapter 218 (Senate Bill 840)", type: "Law", published: "Effective 2025-09-01", covers: "Texas", url: "https://statutes.capitol.texas.gov/Docs/LG/pdf/LG.218.pdf" },
+        { id: 19, publisher: "RealPage", title: "Dallas apartment supply peaked as job growth slowed, prolonging a performance trough", type: "Market report", published: "2026 Q2", covers: "DFW metro", url: "https://www.realpage.com/analytics/dallas-jobs-2nd-quarter-2026/" },
+        { id: 20, publisher: "Apartment List", title: "Dallas rent report", type: "Data", covers: "Dallas metro", url: "https://www.apartmentlist.com/rent-report/tx/dallas", note: "Rent measures differ by provider (asking vs. effective rents)." },
+    ],
+};
+
+const DENTON_SAMPLE = {
+    id: "denton",
+    county: "Denton County",
+    metro: DFW_METRO,
+    place: "Denton County, Dallas-Fort Worth, Texas",
+    as_of: "2026-11-14",
+    overall:
+        "Denton County is growing fast (about 18% more people than in 2020), which keeps rental demand strong. But heavy apartment " +
+        "construction in Denton and the Frisco/Little Elm area, plus widespread move-in deals, have pushed rents in the city of Denton " +
+        "down about 5% from a year earlier. Home prices are also slipping, and reports expect rents to firm gradually from late 2026 " +
+        "as construction slows.",
+    drivers: [
+        {
+            id: "new_supply", name: "New apartment construction", direction: "down", strength: "Strongest driver",
+            points: [
+                { text: "In Q1 2026 about 2,819 apartments were under construction in the Denton submarket (asking rent about $1,426) and about 3,503 in Frisco/Little Elm (about $1,738).", refs: [1] },
+                { text: "Denton, Frisco and Allen/McKinney are among the DFW areas with the heaviest apartment construction.", refs: [2] },
+            ],
+        },
+        {
+            id: "concessions", name: "Move-in concessions", direction: "down",
+            points: [
+                { text: "Texas apartment vacancy has improved since peaking in mid-2024, but rents are still falling in most metros and concessions remain widespread.", refs: [3] },
+            ],
+        },
+        {
+            id: "population", name: "Fast population growth", direction: "up",
+            points: [
+                { text: "Census estimates put Denton County at 1,069,346 people on July 1, 2025, up from 1,045,120 a year earlier (about 24,000 more people) and 18.0% above April 2020.", refs: [4] },
+            ],
+        },
+        {
+            id: "schools", name: "Strong suburban school districts", direction: "up",
+            points: [
+                { text: "2024-25 Texas Education Agency ratings: Argyle ISD A (92), Lewisville ISD B and Denton ISD B (80).", refs: [5, 6, 7] },
+                { text: "In the newer 2025-26 ratings, Denton ISD received a C (76).", refs: [8] },
+            ],
+        },
+        {
+            id: "health", name: "Growing hospital and health care capacity", direction: "up", strength: "Shown for context",
+            points: [
+                { text: "Medical City Denton added an ICU expansion (about $4.1 million, due February 2026) and a new inpatient rehabilitation unit.", refs: [9, 10] },
+                { text: "Baylor Scott & White's Heart Hospital Denton is opening clinics in Argyle and Highland Village, and TotalCare planned a new Denton emergency room for mid-2026.", refs: [11, 12] },
+            ],
+        },
+        {
+            id: "transit", name: "Limited rail transit", direction: "mixed", strength: "Shown for context",
+            points: [
+                { text: "The DCTA A-train links Denton with Carrollton. A connection to DART's Silver Line at Downtown Carrollton is planned but wasn't available when the Silver Line opened.", refs: [13] },
+            ],
+        },
+        {
+            id: "home_buying", name: "Cost of buying a home", direction: "mixed",
+            points: [
+                { text: "Denton County's median home price has been falling, to roughly $420,000–$445,000 depending on the source and period, with more homes for sale.", refs: [14, 15] },
+                { text: "Falling prices make buying gradually more reachable, which can pull some renters into ownership.", refs: [] },
+            ],
+        },
+        {
+            id: "policy", name: "State zoning law (SB 840)", direction: "down", strength: "Longer-term effect",
+            points: [
+                { text: "Since September 1, 2025, Texas cities must allow apartments in zones that allow offices, at up to 36 units per acre, which could add supply over time.", refs: [16] },
+            ],
+        },
+    ],
+    rents: [
+        { text: "City of Denton average apartment rent: about $1,519 in May 2026, down 5.1% from a year earlier.", refs: [17] },
+        { text: "Another estimate puts it at $1,529, down 4.57% from a year earlier.", refs: [18] },
+    ],
+    references: [
+        { id: 1, publisher: "Matthews", title: "Q1 2026 Dallas-Fort Worth Multifamily Market Report (CoStar data)", type: "Market report", published: "2026-04", covers: "DFW submarkets (Frisco/Little Elm is partly in Collin County)", url: "https://cms.matthews.com/wp-content/uploads/2026/04/Q126-Dallas-Fort-Worth-Multifamily-Market-Report.pdf" },
+        { id: 2, publisher: "Transwestern", title: "Dallas-Fort Worth multifamily market factsheet", type: "Market report", published: "2026", covers: "DFW submarkets", url: "https://transwestern.com/Upload/MarketResearchFactsheet_PDF/639208669297027801.pdf" },
+        { id: 3, publisher: "Federal Reserve Bank of Dallas", title: "Southwest Economy (2026): Texas apartment markets", type: "Research", published: "2026", covers: "Texas metros", url: "https://www.dallasfed.org/research/swe/2026/swe2605" },
+        { id: 4, publisher: "U.S. Census Bureau", title: "QuickFacts: Denton County, Texas", type: "Data", published: "July 2025 estimates", covers: "Denton County", url: "https://www.census.gov/quickfacts/dentoncountytexas" },
+        { id: 5, publisher: "Community Impact", title: "Argyle ISD receives A accountability rating from state", type: "News", published: "2025-08-15", covers: "Argyle ISD", url: "https://communityimpact.com/dallas-fort-worth/flower-mound-highland-village-argyle/education/2025/08/15/argyle-isd-receives-a-accountability-rating-from-state" },
+        { id: 6, publisher: "Community Impact", title: "Lewisville ISD receives B accountability rating from state", type: "News", published: "2025-08-15", covers: "Lewisville ISD", url: "https://beta2.communityimpact.com/dallas-fort-worth/flower-mound-highland-village-argyle/education/2025/08/15/lewisville-isd-receives-b-accountability-rating-from-state" },
+        { id: 7, publisher: "KERA News", title: "School accountability grades from the Texas Education Agency (2025)", type: "News", published: "2025-08-15", covers: "North Texas school districts", url: "https://www.keranews.org/education/2025-08-15/school-accountability-grades-texas-education-agency-2025", note: "Official ratings are published by the Texas Education Agency." },
+        { id: 8, publisher: "Community Impact", title: "Denton ISD earns C accountability rating from TEA for 2025-26", type: "News", covers: "Denton ISD", url: "https://communityimpact.com/denton/education/denton-isd-earns-c-accountability-rating-from-tea-for-2025-26/" },
+        { id: 9, publisher: "Texas Department of Licensing and Regulation", title: "Project filing: ICU expansion at Medical City Denton", type: "Government record", covers: "Denton", url: "https://www.tdlr.texas.gov/TABS/Search/Print/TABS2026005817", note: "Planned completion date from the filing; confirm current status with the hospital." },
+        { id: 10, publisher: "Healthcare Design Magazine", title: "Medical City Denton Hospital opens $15M rehabilitation unit in Denton, Texas", type: "News", covers: "Denton", url: "https://healthcaredesignmagazine.com/news/medical-city-denton-hospital-opens-15m-rehabilitation-unit-in-denton-texas/165306/" },
+        { id: 11, publisher: "Community Impact", title: "Baylor Scott & White to open new heart clinic in Argyle", type: "News", published: "2025-09-22", covers: "Argyle", url: "https://communityimpact.com/dallas-fort-worth/flower-mound-highland-village-argyle/business/2025/09/22/baylor-scott-white-to-open-new-heart-clinic-in-argyle" },
+        { id: 12, publisher: "Community Impact", title: "TotalCare to open emergency room in Denton", type: "News", published: "2025-12-12", covers: "Denton", url: "https://communityimpact.com/dallas-fort-worth/denton/health-care/2025/12/12/totalcare-to-open-emergency-room-in-denton" },
+        { id: 13, publisher: "DART", title: "Silver Line project page", type: "Transit agency", covers: "Silver Line corridor and Downtown Carrollton", url: "https://www.dart.org/about/project-and-initiatives/expansion/silver-line" },
+        { id: 14, publisher: "Cross Timbers Gazette", title: "Denton County housing market report", type: "News", published: "2026", covers: "Denton County", url: "https://www.crosstimbersgazette.com/?p=87839", note: "Figures differ by source, month and method (median sale price vs. typical value)." },
+        { id: 15, publisher: "The Real Deal", title: "Home prices across Dallas area fell in 2026", type: "Data", published: "2026", covers: "Dallas-area counties", url: "https://therealdeal.com/data/texas/2026/home-prices-across-dallas-area-fell-in-2026/" },
+        { id: 16, publisher: "Texas Legislature", title: "Local Government Code, Chapter 218 (Senate Bill 840)", type: "Law", published: "Effective 2025-09-01", covers: "Texas", url: "https://statutes.capitol.texas.gov/Docs/LG/pdf/LG.218.pdf" },
+        { id: 17, publisher: "Point2 (Yardi Matrix data)", title: "Denton, Texas rental market trends", type: "Data", published: "2026-05", covers: "City of Denton", url: "https://www.point2homes.com/US/Average-Rent/TX/Denton.html" },
+        { id: 18, publisher: "RentCafe (Yardi Matrix data)", title: "Denton, TX rental market trends", type: "Data", covers: "City of Denton", url: "https://www.rentcafe.com/average-rent-market-trends/us/tx/denton/" },
+    ],
+};
+
+// Sample reports every viewer can open, in any metro
+const SAMPLE_REPORTS = [COLLIN_SAMPLE, DALLAS_SAMPLE, DENTON_SAMPLE];
+
+// ---------------------------------------------------------------------------
+// Live reports (paid version). OFF for now: while false, the page never calls the backend for
+// reports and shows the samples above. Turn on together with RENT_REPORTS_ENABLED on the server.
+// ---------------------------------------------------------------------------
+const REPORTS_LIVE = false;
+const POLL_MS = 20000;   // while a report is being written
+
 const DIRECTION_GROUPS = [
     ["down", "Pushing rents down"],
     ["up", "Pushing rents up"],
@@ -276,12 +482,12 @@ function Cites({ refs, prefix }) {
     );
 }
 
-function SampleReport({ report }) {
+function SampleReport({ report, heading }) {
     const prefix = useId().replace(/[^a-zA-Z0-9_-]/g, "");
     return (
         <article className="mt-3 rounded-lg border border-gray-200 bg-white p-4 md:p-5">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h4 className="text-base font-bold text-gray-900">Sample report: {report.place}</h4>
+                <h4 className="text-base font-bold text-gray-900">{heading ?? `Sample report: ${report.place}`}</h4>
                 <span className="text-xs text-gray-500">Researched {shortDate(report.as_of)} · {report.references.length} sources</span>
             </div>
             <p className="mt-2 text-sm text-gray-800 leading-relaxed"><b>Summary.</b> {report.overall}</p>
@@ -345,13 +551,34 @@ function SampleReport({ report }) {
     );
 }
 
-function LocalMarketReport({ metro, county }) {
+const SAMPLE_NOTE =
+    "Sample reports show what a full report looks like. Each summarizes what published sources say as of its research " +
+    "date; it is not a forecast or investment advice. Some figures describe a city, an apartment submarket or the whole " +
+    "metro rather than the county, and each reference says which. Sources use different methods and dates, so open a " +
+    "source before relying on a specific number.";
+
+/** One collapsible sample report (closed until the viewer opens it) */
+function SampleDetails({ report, isCurrent }) {
     return (
-        <section className="mt-6 border-t border-gray-100 pt-5" aria-labelledby="market-report-title">
-            <div className="flex flex-wrap items-center gap-2">
-                <h3 id="market-report-title" className="text-lg font-bold text-gray-900">Local market report for {county}</h3>
-                <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">Pending</span>
-            </div>
+        <details className="group/sample">
+            <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-md text-sm font-semibold text-blue-700 hover:text-blue-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 [&::-webkit-details-marker]:hidden">
+                <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="w-4 h-4 transition-transform group-open/sample:rotate-90">
+                    <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 0 1 .02-1.06L11.17 10 7.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 0 1-1.06-.02Z" clipRule="evenodd" />
+                </svg>
+                More details: see a sample report for {report.place}
+                {isCurrent && <span className="ml-1 px-1.5 py-0.5 rounded bg-blue-50 text-xs font-medium text-blue-800">this county</span>}
+            </summary>
+            <SampleReport report={report} />
+        </details>
+    );
+}
+
+/** The pending notice plus every sample, the viewer's own county first when it has one */
+function PendingWithSamples({ metro, county }) {
+    const isCurrent = (r) => r.county === county && r.metro === metro;
+    const samples = [...SAMPLE_REPORTS].sort((a, b) => Number(isCurrent(b)) - Number(isCurrent(a)));
+    return (
+        <>
             <p className="mt-1 text-sm text-gray-700 leading-relaxed">
                 <b>Will be available with the paid version.</b> Each report reads recent local news, apartment market reports and
                 public announcements, and explains what is pushing rents up or down in a county: new construction, vacancies and
@@ -361,22 +588,66 @@ function LocalMarketReport({ metro, county }) {
             <p className="mt-1 text-sm text-gray-600">
                 Reports will cover every county in every metro on this dashboard and are refreshed regularly.
             </p>
+            <div className="mt-3 space-y-2">
+                {samples.map((r) => <SampleDetails key={r.id} report={r} isCurrent={isCurrent(r)} />)}
+            </div>
+            <p className="mt-3 text-xs text-gray-500 leading-relaxed">{SAMPLE_NOTE}</p>
+        </>
+    );
+}
 
-            <details className="mt-3 group/sample">
-                <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-md text-sm font-semibold text-blue-700 hover:text-blue-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 [&::-webkit-details-marker]:hidden">
-                    <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="w-4 h-4 transition-transform group-open/sample:rotate-90">
-                        <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 0 1 .02-1.06L11.17 10 7.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 0 1-1.06-.02Z" clipRule="evenodd" />
-                    </svg>
-                    More details: see a sample report for {SAMPLE_REPORT.place}
-                </summary>
-                <SampleReport report={SAMPLE_REPORT} />
-                <p className="mt-3 text-xs text-gray-500 leading-relaxed">
-                    This sample shows what a full report looks like. It summarizes what published sources say as of the research
-                    date; it is not a forecast or investment advice. Some figures describe a city, an apartment submarket or the
-                    whole metro rather than the county, and the reference list says which. Sources use different methods and
-                    dates, so open a source before relying on a specific number.
-                </p>
-            </details>
+/** Paid version: the county's report from the backend (only used when REPORTS_LIVE is true) */
+function LiveMarketReport({ metro, county }) {
+    const req = useFetchData();
+    const [tick, setTick] = useState(0);
+    useEffect(() => {
+        req.handleFetch("data/rent-report", { metro, county });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [metro, county, tick]);
+    const data = req.data && req.data.county === county && req.data.metro === metro ? req.data : null;
+    const status = data?.status;
+    useEffect(() => {
+        if (status !== "running") return undefined;
+        const t = setTimeout(() => setTick((n) => n + 1), POLL_MS);
+        return () => clearTimeout(t);
+    }, [status, data]);
+
+    // Server switched off, not signed in, over budget, or failed: fall back to the samples
+    if (!data || ["disabled", "unavailable", "failed", "needs_review"].includes(status)) {
+        return (
+            <>
+                {req.loading && !data && <p className="mt-2 text-sm text-blue-700 animate-pulse" role="status">Loading…</p>}
+                {data?.message && <p className="mt-2 text-sm text-gray-600">{data.message}</p>}
+                <PendingWithSamples metro={metro} county={county} />
+            </>
+        );
+    }
+    if (status === "running") {
+        return <p className="mt-2 text-sm text-blue-700" role="status">Researching {county}. This can take a minute or two; this page checks again on its own.</p>;
+    }
+    return (
+        <>
+            <p className="mt-2 text-xs text-gray-500">
+                {data.reviewed ? "Reviewed report." : "AI-generated report, not reviewed by a person."} Researched {shortDate(data.report.as_of)}.
+            </p>
+            <SampleReport report={data.report} heading={`Local market report: ${data.report.place}`} />
+            <p className="mt-3 text-xs text-gray-500 leading-relaxed">
+                This report summarizes what published sources say; it is not a forecast or investment advice. Open a source before relying on a specific number.
+            </p>
+        </>
+    );
+}
+
+function LocalMarketReport({ metro, county }) {
+    return (
+        <section className="mt-6 border-t border-gray-100 pt-5" aria-labelledby="market-report-title">
+            <div className="flex flex-wrap items-center gap-2">
+                <h3 id="market-report-title" className="text-lg font-bold text-gray-900">Local market report for {county}</h3>
+                {!REPORTS_LIVE && <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">Pending</span>}
+            </div>
+            {REPORTS_LIVE
+                ? <LiveMarketReport metro={metro} county={county} />
+                : <PendingWithSamples metro={metro} county={county} />}
         </section>
     );
 }
@@ -385,11 +656,14 @@ export default function RentDriversSection({ metro = DFW_METRO, areaName = "DFW"
     const [expanded, setOpen] = useState(false);
     const open = asPage || expanded;
     const bodyId = useId();
+    // "Neighborhood factors" (the first section): closed by default; its Census data loads when first opened
+    const [factorsOpen, setFactorsOpen] = useState(false);
+    const factorsId = useId();
     const cov = useFetchData();
     useEffect(() => {
-        if (open) cov.handleFetch("data/dfw-zip-covariates", { metro });
+        if (open && factorsOpen) cov.handleFetch("data/dfw-zip-covariates", { metro });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [metro, open]);
+    }, [metro, open, factorsOpen]);
     const covRows = cov.data && (cov.data.metro ?? DFW_METRO) === metro && Array.isArray(cov.data.rows) ? cov.data.rows : null;
 
     const [choice, setChoice] = useState("");
@@ -499,65 +773,85 @@ export default function RentDriversSection({ metro = DFW_METRO, areaName = "DFW"
                     </div>
 
 
-                    {context?.rent != null && (
-                        <p className="mt-4 text-base text-gray-800">
-                            Typical rent in <b>{areaLabel}</b>: <b>{usd(context.rent)}</b> a month
-                            {context.yoy != null ? <>, {context.yoy >= 0 ? "up" : "down"} <b>{Math.abs(context.yoy).toFixed(1)}%</b> from a year earlier</> : ""}.
+                    {/* First section: neighborhood factors vs. the metro. Same layout as the Local market report:
+                        heading, summary, then a "More details" link that opens the cards (closed by default). */}
+                    <section className="mt-5" aria-labelledby="factors-title">
+                        <h3 id="factors-title" className="text-lg font-bold text-gray-900">Neighborhood factors compared with the metro</h3>
+                        <p className="mt-1 text-sm text-gray-700 leading-relaxed">
+                            {context?.rent != null && (
+                                <>
+                                    Typical rent in {areaLabel}: <b>{usd(context.rent)}</b> a month
+                                    {context.yoy != null ? <>, {context.yoy >= 0 ? "up" : "down"} <b>{Math.abs(context.yoy).toFixed(1)}%</b> from a year earlier</> : ""}.{" "}
+                                </>
+                            )}
+                            How {areaLabel} compares with the rest of the metro on {DRIVERS.length + 1} factors that published research links to
+                            rents: income, new housing, rental growth, distance to downtown, density and mortgage rates.
                         </p>
-                    )}
+                        <button type="button" onClick={() => setFactorsOpen((o) => !o)} aria-expanded={factorsOpen} aria-controls={factorsId}
+                            className="mt-3 inline-flex items-center gap-1 rounded-md text-sm font-semibold text-blue-700 hover:text-blue-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+                            <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className={`w-4 h-4 transition-transform ${factorsOpen ? "rotate-90" : ""}`}>
+                                <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 0 1 .02-1.06L11.17 10 7.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 0 1-1.06-.02Z" clipRule="evenodd" />
+                            </svg>
+                            More details: see the {DRIVERS.length + 1} factors for {areaLabel}
+                        </button>
+                        {factorsOpen && (
+                        <div id={factorsId} className="mt-3">
 
-                    {cov.loading && !covRows && <p className="mt-4 text-sm text-blue-700 animate-pulse" role="status">Loading neighborhood data…</p>}
-                    {cov.error && !covRows && (
-                        <p className="mt-4 text-sm text-gray-500">
-                            Neighborhood data isn't available right now.{" "}
-                            <button onClick={() => cov.handleFetch("data/dfw-zip-covariates", { metro })} className="font-semibold underline text-gray-700">Try again</button>
-                        </p>
-                    )}
+                        {cov.loading && !covRows && <p className="mt-2 text-sm text-blue-700 animate-pulse" role="status">Loading neighborhood data…</p>}
+                        {cov.error && !covRows && (
+                            <p className="mt-4 text-sm text-gray-500">
+                                Neighborhood data isn't available right now.{" "}
+                                <button onClick={() => cov.handleFetch("data/dfw-zip-covariates", { metro })} className="font-semibold underline text-gray-700">Try again</button>
+                            </p>
+                        )}
 
-                    <ul className="mt-4 grid gap-4 md:grid-cols-2">
-                        {drivers.map((d) => {
-                            const c = compare(d.area, d.metro);
-                            const chip = c === "higher" ? d.higher : c === "lower" ? d.lower : "About the same as the metro";
-                            return (
-                                <li key={d.key} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                        <ul className="mt-2 grid gap-4 md:grid-cols-2">
+                            {drivers.map((d) => {
+                                const c = compare(d.area, d.metro);
+                                const chip = c === "higher" ? d.higher : c === "lower" ? d.lower : "About the same as the metro";
+                                return (
+                                    <li key={d.key} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                                        <div className="flex flex-wrap items-baseline justify-between gap-2">
+                                            <h4 className="text-base font-semibold text-gray-900">{d.name}</h4>
+                                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${c === "same" ? "bg-gray-200 text-gray-700" : "bg-blue-100 text-blue-800"}`}>{chip}</span>
+                                        </div>
+                                        <p className="mt-1 text-sm text-gray-700 tabular-nums">
+                                            This county: <b>{d.format(d.area)}</b>
+                                            <span className="text-gray-400"> · </span>Metro typical: {d.format(d.metro)}
+                                        </p>
+                                        <p className="mt-2 text-sm text-gray-600 leading-relaxed">{d.research}</p>
+                                        <SourceLink source={d.source} />
+                                    </li>
+                                );
+                            })}
+                            {context?.rate != null && (
+                                <li className="border border-gray-200 rounded-lg p-4 bg-gray-50">
                                     <div className="flex flex-wrap items-baseline justify-between gap-2">
-                                        <h3 className="text-base font-semibold text-gray-900">{d.name}</h3>
-                                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${c === "same" ? "bg-gray-200 text-gray-700" : "bg-blue-100 text-blue-800"}`}>{chip}</span>
+                                        <h4 className="text-base font-semibold text-gray-900">{MORTGAGE.name}</h4>
+                                        {context.rateBefore != null && (
+                                            <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-200 text-gray-700">
+                                                {context.rate > context.rateBefore + 0.1 ? "Up from a year ago" : context.rate < context.rateBefore - 0.1 ? "Down from a year ago" : "Similar to a year ago"}
+                                            </span>
+                                        )}
                                     </div>
                                     <p className="mt-1 text-sm text-gray-700 tabular-nums">
-                                        This county: <b>{d.format(d.area)}</b>
-                                        <span className="text-gray-400"> · </span>Metro typical: {d.format(d.metro)}
+                                        Latest: <b>{context.rate.toFixed(2)}%</b>
+                                        {context.rateBefore != null && <><span className="text-gray-400"> · </span>A year earlier: {context.rateBefore.toFixed(2)}%</>}
                                     </p>
-                                    <p className="mt-2 text-sm text-gray-600 leading-relaxed">{d.research}</p>
-                                    <SourceLink source={d.source} />
+                                    <p className="mt-2 text-sm text-gray-600 leading-relaxed">{MORTGAGE.research}</p>
+                                    <SourceLink source={MORTGAGE.source} />
                                 </li>
-                            );
-                        })}
-                        {context?.rate != null && (
-                            <li className="border border-gray-200 rounded-lg p-4 bg-gray-50">
-                                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                                    <h3 className="text-base font-semibold text-gray-900">{MORTGAGE.name}</h3>
-                                    {context.rateBefore != null && (
-                                        <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-200 text-gray-700">
-                                            {context.rate > context.rateBefore + 0.1 ? "Up from a year ago" : context.rate < context.rateBefore - 0.1 ? "Down from a year ago" : "Similar to a year ago"}
-                                        </span>
-                                    )}
-                                </div>
-                                <p className="mt-1 text-sm text-gray-700 tabular-nums">
-                                    Latest: <b>{context.rate.toFixed(2)}%</b>
-                                    {context.rateBefore != null && <><span className="text-gray-400"> · </span>A year earlier: {context.rateBefore.toFixed(2)}%</>}
-                                </p>
-                                <p className="mt-2 text-sm text-gray-600 leading-relaxed">{MORTGAGE.research}</p>
-                                <SourceLink source={MORTGAGE.source} />
-                            </li>
-                        )}
-                    </ul>
+                            )}
+                        </ul>
 
-                    <p className="mt-4 text-xs text-gray-500 leading-relaxed">
-                        Neighborhood values are from the U.S. Census American Community Survey; rents are from Zillow. "Metro typical" is the median
-                        across the metro's ZIP codes, and a county's value is the median of its ZIP codes. Research findings describe patterns across
-                        many places; they explain what tends to matter, not the exact cause of rent changes in one area.
-                    </p>
+                        <p className="mt-4 text-xs text-gray-500 leading-relaxed">
+                            Neighborhood values are from the U.S. Census American Community Survey; rents are from Zillow. "Metro typical" is the median
+                            across the metro's ZIP codes, and a county's value is the median of its ZIP codes. Research findings describe patterns across
+                            many places; they explain what tends to matter, not the exact cause of rent changes in one area.
+                        </p>
+                        </div>
+                        )}
+                    </section>
 
                     {current && <LocalMarketReport metro={metro} county={current} />}
                 </div>
