@@ -133,6 +133,18 @@ function InfoTip({ text, className = "text-blue-700 hover:text-blue-900" }) {
     );
 }
 
+/** A short "how we use AI" note under a section heading: sparkle icon, soft violet callout. */
+function AiNote({ children }) {
+    return (
+        <p className="mt-2 flex items-start gap-2 rounded-md border-l-4 border-violet-400 bg-violet-50 px-3 py-2 text-sm text-violet-900 leading-relaxed">
+            <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-violet-600">
+                <path d="M10 1.5l1.6 4.4 4.4 1.6-4.4 1.6L10 13.5l-1.6-4.4L4 7.5l4.4-1.6L10 1.5Zm5.5 10l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2Z" />
+            </svg>
+            <span>{children}</span>
+        </p>
+    );
+}
+
 // Direction chips used by the local market report
 const DIRECTION = {
     up: { text: "Pushing rents up", cls: "bg-red-50 text-red-800" },
@@ -628,7 +640,7 @@ function LiveMarketReport({ metro, county }) {
     return (
         <>
             <p className="mt-2 text-xs text-gray-500">
-                {data.reviewed ? "Reviewed report." : "AI-generated report, not reviewed by a person."} Researched {shortDate(data.report.as_of)}.
+                {data.reviewed ? "Researched with AI and reviewed by a person." : "Researched with AI, not yet reviewed by a person."} Researched {shortDate(data.report.as_of)}.
             </p>
             <SampleReport report={data.report} heading={`Local market report: ${data.report.place}`} />
             <p className="mt-3 text-xs text-gray-500 leading-relaxed">
@@ -645,6 +657,10 @@ function LocalMarketReport({ metro, county }) {
                 <h3 id="market-report-title" className="text-lg font-bold text-gray-900">Local market report for {county}</h3>
                 {!REPORTS_LIVE && <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">Pending</span>}
             </div>
+            <AiNote>
+                <b>Researched with AI.</b> We use AI (Claude, by Anthropic) to search the web for local news, apartment market
+                reports and public announcements and find what is driving rents in each county. Every point links to its source.
+            </AiNote>
             {REPORTS_LIVE
                 ? <LiveMarketReport metro={metro} county={county} />
                 : <PendingWithSamples metro={metro} county={county} />}
@@ -777,6 +793,10 @@ export default function RentDriversSection({ metro = DFW_METRO, areaName = "DFW"
                         heading, summary, then a "More details" link that opens the cards (closed by default). */}
                     <section className="mt-5" aria-labelledby="factors-title">
                         <h3 id="factors-title" className="text-lg font-bold text-gray-900">Neighborhood factors compared with the metro</h3>
+                        <AiNote>
+                            <b>Researched with AI.</b> We used AI (Claude, by Anthropic) to search the web for what drives rental
+                            prices and the published research behind each factor.
+                        </AiNote>
                         <p className="mt-1 text-sm text-gray-700 leading-relaxed">
                             {context?.rent != null && (
                                 <>
