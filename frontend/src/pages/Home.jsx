@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import axios from "axios";
 import { GoogleLogin } from "@react-oauth/google";
 import { jwtDecode } from "jwt-decode";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useUser } from "../hooks/useUser";
 import LegalModal from "../components/LegalModal";
 
@@ -34,7 +34,11 @@ const SCREENS = {
 
 const Home = () => {
     const navigate = useNavigate();
+    const location = useLocation();
     const { setUser } = useUser();
+    // Set by AuthWatcher / ProtectedRoute when a session ended: { sessionExpired, from }
+    const sessionExpired = Boolean(location.state?.sessionExpired);
+    const returnTo = location.state?.from?.startsWith("/dashboard") ? location.state.from : "/dashboard";
     const [agreed, setAgreed] = useState(false);
     const [modalOpen, setModalOpen] = useState(false);
     const [modalTab, setModalTab] = useState("terms");
@@ -62,7 +66,8 @@ const Home = () => {
                 daysLeft: status.days_left,
             },
         });
-        navigate("/dashboard");
+        // Back to the page they were on when the session ended, otherwise the dashboard
+        navigate(returnTo, { replace: true });
     };
 
     const describeError = (err) => {
@@ -190,6 +195,11 @@ const Home = () => {
     // ------------------------------------------------------------------
     return (
         <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-6 text-center">
+            {sessionExpired && !error && (
+                <p role="status" className="max-w-md text-sm bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-4 py-3">
+                    Your session has expired. Please sign in again to continue.
+                </p>
+            )}
             <h2 className="text-3xl font-bold text-gray-800">Welcome</h2>
             <p className="text-base text-gray-600">Sign in with your Google Account</p>
             <p className="text-sm text-gray-500 max-w-md">
