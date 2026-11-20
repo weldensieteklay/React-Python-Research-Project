@@ -4,18 +4,19 @@ import { lazy, Suspense } from "react";
 
 //Internal components
 import Layout from '../components/Layout';
-import Home from '../pages/Home';
+import Home from './Home';
 import DataCleanup from '../components/DataCleanup';
 import { useUser } from '../hooks/useUser';
 import ProtectedRoute from '../pages/ProtectedRoute';
-import RentalDashboard from '../pages/RentalProperty/RentalDashboard';
+import AuthWatcher from '../components/AuthWatcher';
+import RentalDashboard from './RentalProperty/RentalDashboard';
 
 const CrossSectionalData = lazy(() => import("../components/CrossSectionalData"));
 const TimeSeriesData = lazy(() => import("../components/TimeSeriesData"));
 const PanelData = lazy(() => import("../components/PanelData"));
-const Dashboard = lazy(() => import("../pages/Dashboard"));
-const RentalDataDownload = lazy(() => import("../pages/RentalProperty/RentalDashboard"));
-const RealEstateDashboard = lazy(() => import("../pages/RentalProperty/RealEstateDashboard"));
+const Dashboard = lazy(() => import("./Dashboard"));
+const RentalDataDownload = lazy(() => import("./RentalProperty/RentalDashboard"));
+const RealEstateDashboard = lazy(() => import("./RentalProperty/RealEstateDashboard"));
 
 
 
@@ -24,11 +25,13 @@ const AppRoutes = () => {
     return (
 
         <BrowserRouter>
+            {/* Sends the user to the login page from anywhere when the session ends */}
+            <AuthWatcher />
             <Suspense fallback={<div>Loading page...</div>}>
                 <Routes>
                     <Route path="/" element={<Layout user={user} setUser={setUser} clearUser={clearUser} />}>
                         <Route path="/" element={<Home />} />
-                       // Wrap every dashboard route:
+                        {/* Every dashboard route is wrapped in ProtectedRoute */}
                         <Route path="/dashboard" element={
                             <ProtectedRoute><Dashboard /></ProtectedRoute>
                         } />
