@@ -39,30 +39,31 @@ function UserMenu({ user, onLogout }) {
     const name = user?.given_name || user?.name || "there";
     const initial = name.charAt(0).toUpperCase();
 
+    // Fixed width (w-56) shared by the button and the dropdown so they line up
     return (
-        <div ref={ref} className="relative">
+        <div ref={ref} className="relative w-56">
             <button
                 type="button"
                 onClick={() => setOpen((o) => !o)}
                 aria-haspopup="menu"
                 aria-expanded={open}
-                className="flex items-center gap-3 bg-white rounded-lg shadow-md pl-2 pr-3 py-2 hover:shadow-lg transition-shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0071CE]"
+                className="w-full flex items-center gap-3 bg-white rounded-lg shadow-md pl-2 pr-3 py-2 hover:shadow-lg transition-shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0071CE]"
             >
-                <span className="w-9 h-9 rounded-full bg-gray-200 text-gray-700 flex items-center justify-center font-semibold" aria-hidden="true">
+                <span className="shrink-0 w-9 h-9 rounded-full bg-gray-200 text-gray-700 flex items-center justify-center font-semibold" aria-hidden="true">
                     {initial}
                 </span>
-                <span className="text-left leading-tight">
-                    <span className="block text-sm font-semibold text-gray-800 max-w-[10rem] truncate">{name}</span>
+                <span className="flex-1 min-w-0 text-left leading-tight">
+                    <span className="block text-sm font-semibold text-gray-800 truncate">{name}</span>
                 </span>
                 <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"
-                    className={`w-5 h-5 text-gray-500 transition-transform ${open ? "rotate-180" : ""}`}>
+                    className={`shrink-0 w-5 h-5 text-gray-500 transition-transform ${open ? "rotate-180" : ""}`}>
                     <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.06l3.71-3.83a.75.75 0 1 1 1.08 1.04l-4.25 4.39a.75.75 0 0 1-1.08 0L5.21 8.27a.75.75 0 0 1 .02-1.06z" clipRule="evenodd" />
                 </svg>
             </button>
 
             {open && (
-                <div role="menu" className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-100 py-2">
-                    <p className="px-4 pb-2 text-xs text-gray-500 truncate border-b border-gray-100">{user?.email}</p>
+                <div role="menu" className="absolute left-0 right-0 mt-2 bg-white rounded-lg shadow-lg border border-gray-100 py-2">
+                    <p className="px-4 pb-2 text-xs text-gray-500 truncate border-b border-gray-100" title={user?.email}>{user?.email}</p>
                     <button
                         type="button"
                         role="menuitem"
