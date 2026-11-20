@@ -100,7 +100,8 @@ function SourceLink({ source }) {
 }
 
 // Shown by the (i) icon next to the title. Update it when how the section is refreshed changes.
-const UPDATE_NOTE = "Neighborhood values update with each new Census and Zillow release. Detailed local market reports for every county are coming with the paid version.";
+const UPDATE_NOTE = "Neighborhood values update with each new Census and Zillow release. Automated local market reports for every county are currently in development.";
+
 
 /** An (i) icon that shows `text` on hover or keyboard focus, and toggles it on tap (phones). */
 function InfoTip({ text, className = "text-blue-700 hover:text-blue-900" }) {
@@ -486,7 +487,7 @@ function Cites({ refs, prefix }) {
         <span className="whitespace-nowrap">
             {refs.map((n) => (
                 <a key={n} href={`#${prefix}-ref-${n}`} aria-label={`Reference ${n}`}
-                   className="ml-0.5 align-super text-[0.7rem] font-semibold text-blue-700 hover:text-blue-900 hover:underline">
+                    className="ml-0.5 align-super text-[0.7rem] font-semibold text-blue-700 hover:text-blue-900 hover:underline">
                     [{n}]
                 </a>
             ))}
@@ -547,7 +548,7 @@ function SampleReport({ report, heading }) {
                             <span className="w-7 shrink-0 text-right font-semibold text-gray-500">{r.id}.</span>
                             <div className="min-w-0">
                                 <a href={r.url} target="_blank" rel="noopener noreferrer"
-                                   className="font-semibold text-blue-700 hover:text-blue-900 hover:underline break-words">
+                                    className="font-semibold text-blue-700 hover:text-blue-900 hover:underline break-words">
                                     {r.title} ↗
                                 </a>
                                 <div className="text-xs text-gray-500">
@@ -592,14 +593,15 @@ function PendingWithSamples({ metro, county }) {
     return (
         <>
             <p className="mt-1 text-sm text-gray-700 leading-relaxed">
-                <b>Will be available with the paid version.</b> Each report reads recent local news, apartment market reports and
+                <b>Live reports are currently in development.</b> Each report reads recent local news, apartment market reports and
                 public announcements, and explains what is pushing rents up or down in a county: new construction, vacancies and
                 move-in deals, jobs and population growth, schools, hospitals, transit, home buying costs and local policy. Every
                 point links to its source.
             </p>
             <p className="mt-1 text-sm text-gray-600">
-                Reports will cover every county in every metro on this dashboard and are refreshed regularly.
+                Full coverage for every county across all metros is rolling out soon—explore the sample reports below in the meantime.
             </p>
+
             <div className="mt-3 space-y-2">
                 {samples.map((r) => <SampleDetails key={r.id} report={r} isCurrent={isCurrent(r)} />)}
             </div>
@@ -655,7 +657,11 @@ function LocalMarketReport({ metro, county }) {
         <section className="mt-6 border-t border-gray-100 pt-5" aria-labelledby="market-report-title">
             <div className="flex flex-wrap items-center gap-2">
                 <h3 id="market-report-title" className="text-lg font-bold text-gray-900">Local market report for {county}</h3>
-                {!REPORTS_LIVE && <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">Pending</span>}
+                {!REPORTS_LIVE && (
+                    <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-800">
+                        Preview · Coming soon
+                    </span>
+                )}
             </div>
             <AiNote>
                 <b>Researched with AI.</b> We use AI (Claude, by Anthropic) to search the web for local news, apartment market
@@ -667,6 +673,7 @@ function LocalMarketReport({ metro, county }) {
         </section>
     );
 }
+
 
 export default function RentDriversSection({ metro = DFW_METRO, areaName = "DFW", rows, asPage = false }) {
     const [expanded, setOpen] = useState(false);
@@ -739,33 +746,33 @@ export default function RentDriversSection({ metro = DFW_METRO, areaName = "DFW"
 
     return (
         <section className="mb-6 bg-white border border-gray-200 rounded-lg" aria-labelledby={asPage ? undefined : "drivers-title"}
-                 aria-label={asPage ? `What drives rents in ${areaName}` : undefined}>
+            aria-label={asPage ? `What drives rents in ${areaName}` : undefined}>
             {/* Header (card mode only): the title or the button opens and closes the details */}
             {!asPage && (
-            <div className={`flex items-center justify-between gap-3 flex-wrap px-6 py-4 ${open ? "border-b border-gray-100" : ""}`}>
-                <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                        <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls={bodyId}
-                            className="text-left rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
-                            <span id="drivers-title" className="block text-xl font-bold text-gray-900">What drives rents { open && 'in ' + areaLabel}?</span>
-                        </button>
-                        <InfoTip text={UPDATE_NOTE} className="text-blue-700 hover:text-blue-900" />
+                <div className={`flex items-center justify-between gap-3 flex-wrap px-6 py-4 ${open ? "border-b border-gray-100" : ""}`}>
+                    <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                            <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls={bodyId}
+                                className="text-left rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+                                <span id="drivers-title" className="block text-xl font-bold text-gray-900">What drives rents {open && 'in ' + areaLabel}?</span>
+                            </button>
+                            <InfoTip text={UPDATE_NOTE} className="text-blue-700 hover:text-blue-900" />
+                        </div>
+                        <p className="mt-0.5 text-sm text-gray-600">
+                            {open
+                                ? "Compare a county with the metro on factors that published research links to rents."
+                                : `${DRIVERS.length + 1} drivers from published research, compared by county.`}
+                        </p>
                     </div>
-                    <p className="mt-0.5 text-sm text-gray-600">
-                        {open
-                            ? "Compare a county with the metro on factors that published research links to rents."
-                            : `${DRIVERS.length + 1} drivers from published research, compared by county.`}
-                    </p>
+                    <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls={bodyId}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-blue-600 bg-blue-50 text-blue-800 text-base font-semibold hover:bg-blue-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 shrink-0">
+                        {open ? "Hide drivers" : "Show drivers"}
+                        <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"
+                            className={`w-5 h-5 transition-transform ${open ? "rotate-180" : ""}`}>
+                            <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.06l3.71-3.83a.75.75 0 1 1 1.08 1.04l-4.25 4.39a.75.75 0 0 1-1.08 0L5.21 8.27a.75.75 0 0 1 .02-1.06z" clipRule="evenodd" />
+                        </svg>
+                    </button>
                 </div>
-                <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls={bodyId}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-blue-600 bg-blue-50 text-blue-800 text-base font-semibold hover:bg-blue-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 shrink-0">
-                    {open ? "Hide drivers" : "Show drivers"}
-                    <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"
-                        className={`w-5 h-5 transition-transform ${open ? "rotate-180" : ""}`}>
-                        <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.06l3.71-3.83a.75.75 0 1 1 1.08 1.04l-4.25 4.39a.75.75 0 0 1-1.08 0L5.21 8.27a.75.75 0 0 1 .02-1.06z" clipRule="evenodd" />
-                    </svg>
-                </button>
-            </div>
             )}
 
             {open && (
@@ -778,13 +785,13 @@ export default function RentDriversSection({ metro = DFW_METRO, areaName = "DFW"
                             </div>
                         )}
                         <div className="flex items-center gap-2">
-                        <label htmlFor="drivers-county" className="text-sm font-semibold text-gray-600">County</label>
-                        <select id="drivers-county" value={current} onChange={(e) => setChoice(e.target.value)}
-                            className="border border-gray-300 bg-white rounded-md px-3 py-1.5 text-sm font-medium max-w-[16rem]">
-                            {options.map((o) => (
-                                <option key={o} value={o}>{o}</option>
-                            ))}
-                        </select>
+                            <label htmlFor="drivers-county" className="text-sm font-semibold text-gray-600">County</label>
+                            <select id="drivers-county" value={current} onChange={(e) => setChoice(e.target.value)}
+                                className="border border-gray-300 bg-white rounded-md px-3 py-1.5 text-sm font-medium max-w-[16rem]">
+                                {options.map((o) => (
+                                    <option key={o} value={o}>{o}</option>
+                                ))}
+                            </select>
                         </div>
                     </div>
 
@@ -815,61 +822,61 @@ export default function RentDriversSection({ metro = DFW_METRO, areaName = "DFW"
                             More details: see the {DRIVERS.length + 1} factors for {areaLabel}
                         </button>
                         {factorsOpen && (
-                        <div id={factorsId} className="mt-3">
+                            <div id={factorsId} className="mt-3">
 
-                        {cov.loading && !covRows && <p className="mt-2 text-sm text-blue-700 animate-pulse" role="status">Loading neighborhood data…</p>}
-                        {cov.error && !covRows && (
-                            <p className="mt-4 text-sm text-gray-500">
-                                Neighborhood data isn't available right now.{" "}
-                                <button onClick={() => cov.handleFetch("data/dfw-zip-covariates", { metro })} className="font-semibold underline text-gray-700">Try again</button>
-                            </p>
-                        )}
-
-                        <ul className="mt-2 grid gap-4 md:grid-cols-2">
-                            {drivers.map((d) => {
-                                const c = compare(d.area, d.metro);
-                                const chip = c === "higher" ? d.higher : c === "lower" ? d.lower : "About the same as the metro";
-                                return (
-                                    <li key={d.key} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
-                                        <div className="flex flex-wrap items-baseline justify-between gap-2">
-                                            <h4 className="text-base font-semibold text-gray-900">{d.name}</h4>
-                                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${c === "same" ? "bg-gray-200 text-gray-700" : "bg-blue-100 text-blue-800"}`}>{chip}</span>
-                                        </div>
-                                        <p className="mt-1 text-sm text-gray-700 tabular-nums">
-                                            This county: <b>{d.format(d.area)}</b>
-                                            <span className="text-gray-400"> · </span>Metro typical: {d.format(d.metro)}
-                                        </p>
-                                        <p className="mt-2 text-sm text-gray-600 leading-relaxed">{d.research}</p>
-                                        <SourceLink source={d.source} />
-                                    </li>
-                                );
-                            })}
-                            {context?.rate != null && (
-                                <li className="border border-gray-200 rounded-lg p-4 bg-gray-50">
-                                    <div className="flex flex-wrap items-baseline justify-between gap-2">
-                                        <h4 className="text-base font-semibold text-gray-900">{MORTGAGE.name}</h4>
-                                        {context.rateBefore != null && (
-                                            <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-200 text-gray-700">
-                                                {context.rate > context.rateBefore + 0.1 ? "Up from a year ago" : context.rate < context.rateBefore - 0.1 ? "Down from a year ago" : "Similar to a year ago"}
-                                            </span>
-                                        )}
-                                    </div>
-                                    <p className="mt-1 text-sm text-gray-700 tabular-nums">
-                                        Latest: <b>{context.rate.toFixed(2)}%</b>
-                                        {context.rateBefore != null && <><span className="text-gray-400"> · </span>A year earlier: {context.rateBefore.toFixed(2)}%</>}
+                                {cov.loading && !covRows && <p className="mt-2 text-sm text-blue-700 animate-pulse" role="status">Loading neighborhood data…</p>}
+                                {cov.error && !covRows && (
+                                    <p className="mt-4 text-sm text-gray-500">
+                                        Neighborhood data isn't available right now.{" "}
+                                        <button onClick={() => cov.handleFetch("data/dfw-zip-covariates", { metro })} className="font-semibold underline text-gray-700">Try again</button>
                                     </p>
-                                    <p className="mt-2 text-sm text-gray-600 leading-relaxed">{MORTGAGE.research}</p>
-                                    <SourceLink source={MORTGAGE.source} />
-                                </li>
-                            )}
-                        </ul>
+                                )}
 
-                        <p className="mt-4 text-xs text-gray-500 leading-relaxed">
-                            Neighborhood values are from the U.S. Census American Community Survey; rents are from Zillow. "Metro typical" is the median
-                            across the metro's ZIP codes, and a county's value is the median of its ZIP codes. Research findings describe patterns across
-                            many places; they explain what tends to matter, not the exact cause of rent changes in one area.
-                        </p>
-                        </div>
+                                <ul className="mt-2 grid gap-4 md:grid-cols-2">
+                                    {drivers.map((d) => {
+                                        const c = compare(d.area, d.metro);
+                                        const chip = c === "higher" ? d.higher : c === "lower" ? d.lower : "About the same as the metro";
+                                        return (
+                                            <li key={d.key} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                                                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                                                    <h4 className="text-base font-semibold text-gray-900">{d.name}</h4>
+                                                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${c === "same" ? "bg-gray-200 text-gray-700" : "bg-blue-100 text-blue-800"}`}>{chip}</span>
+                                                </div>
+                                                <p className="mt-1 text-sm text-gray-700 tabular-nums">
+                                                    This county: <b>{d.format(d.area)}</b>
+                                                    <span className="text-gray-400"> · </span>Metro typical: {d.format(d.metro)}
+                                                </p>
+                                                <p className="mt-2 text-sm text-gray-600 leading-relaxed">{d.research}</p>
+                                                <SourceLink source={d.source} />
+                                            </li>
+                                        );
+                                    })}
+                                    {context?.rate != null && (
+                                        <li className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                                            <div className="flex flex-wrap items-baseline justify-between gap-2">
+                                                <h4 className="text-base font-semibold text-gray-900">{MORTGAGE.name}</h4>
+                                                {context.rateBefore != null && (
+                                                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-200 text-gray-700">
+                                                        {context.rate > context.rateBefore + 0.1 ? "Up from a year ago" : context.rate < context.rateBefore - 0.1 ? "Down from a year ago" : "Similar to a year ago"}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="mt-1 text-sm text-gray-700 tabular-nums">
+                                                Latest: <b>{context.rate.toFixed(2)}%</b>
+                                                {context.rateBefore != null && <><span className="text-gray-400"> · </span>A year earlier: {context.rateBefore.toFixed(2)}%</>}
+                                            </p>
+                                            <p className="mt-2 text-sm text-gray-600 leading-relaxed">{MORTGAGE.research}</p>
+                                            <SourceLink source={MORTGAGE.source} />
+                                        </li>
+                                    )}
+                                </ul>
+
+                                <p className="mt-4 text-xs text-gray-500 leading-relaxed">
+                                    Neighborhood values are from the U.S. Census American Community Survey; rents are from Zillow. "Metro typical" is the median
+                                    across the metro's ZIP codes, and a county's value is the median of its ZIP codes. Research findings describe patterns across
+                                    many places; they explain what tends to matter, not the exact cause of rent changes in one area.
+                                </p>
+                            </div>
                         )}
                     </section>
 
