@@ -162,7 +162,7 @@ export default function DataExplorer({ rows, onBack, censusLoaded = false }) {
           <>
             <Paper variant="outlined" sx={{ ...cardSx, p: 3 }}>
               <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 1.5, mb: 1.5 }}>
-                <Typography variant="h3" sx={{ fontWeight: 700, color: "gray.800" }}>
+                <Typography variant="h3" sx={{ fontSize: "1.125rem", fontWeight: 700, color: "gray.800" }}>
                   {columnLabel(metric)} by {GROUP_LEVELS.find((g) => g.value === groupBy).label.toLowerCase()}
                 </Typography>
                 {groupBy !== "market" && (
@@ -197,7 +197,7 @@ export default function DataExplorer({ rows, onBack, censusLoaded = false }) {
 
             <Paper variant="outlined" sx={{ ...cardSx, p: 3 }}>
               <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1.5 }}>
-                <Typography variant="h3" sx={{ fontWeight: 700, color: "gray.800" }}>Peak and change, {result.months[0]} to {result.months[result.months.length - 1]}</Typography>
+                <Typography variant="h3" sx={{ fontSize: "1.125rem", fontWeight: 700, color: "gray.800" }}>Peak and change, {result.months[0]} to {result.months[result.months.length - 1]}</Typography>
                 <Button variant="outlined" onClick={exportSummary} sx={outlineButtonSx}>📥 Export table</Button>
               </Box>
               <Box sx={{ overflowX: "auto", maxHeight: 520, overflowY: "auto" }}>

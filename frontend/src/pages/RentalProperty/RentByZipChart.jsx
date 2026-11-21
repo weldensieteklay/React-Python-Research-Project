@@ -61,7 +61,7 @@ export default function RentByZipChart({ rows, height = 400 }) {
     <Paper variant="outlined" sx={cardSx}>
       <Box sx={{ display: "flex", flexDirection: { xs: "column", md: "row" }, alignItems: { md: "flex-start" }, justifyContent: "space-between", gap: 1.5, mb: 2 }}>
         <div>
-          <Typography variant="h3" sx={{ fontWeight: 700, color: "gray.800" }}>
+          <Typography variant="h3" sx={{ fontSize: "1.125rem", fontWeight: 700, color: "gray.800" }}>
             Rent over time: ZIP {zip}{info?.city ? ` (${info.city})` : ""}
           </Typography>
           <Typography variant="caption" component="p" sx={{ color: "gray.400", mt: 0.25 }}>
