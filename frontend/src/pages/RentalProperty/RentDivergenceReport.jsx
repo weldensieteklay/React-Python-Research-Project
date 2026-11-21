@@ -16,7 +16,7 @@ import Typography from "@mui/material/Typography";
 import { pulse } from "../../theme";
 
 const cardSx = { borderColor: "gray.200", borderRadius: 2 };
-const cardTitleSx = { fontWeight: 700, color: "gray.800" };
+const cardTitleSx = { fontSize: "1.125rem", fontWeight: 700, color: "gray.800" };
 const howToReadSx = { color: "gray.500", mt: 0.25, mb: 2 };
 const noteBoxSx = { fontSize: "0.875rem", bgcolor: "amber.50", border: 1, borderColor: "amber.200", borderRadius: 2, px: 2, py: 1.5, color: "amber.900" };
 
