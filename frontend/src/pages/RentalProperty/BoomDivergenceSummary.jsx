@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo } from "react";
 import { useFetchData } from "../../hooks/useFetchData";
-import { interpretDivergence, coverageText } from "./interpretDivergence";
+import { interpretDivergence } from "./interpretDivergence";
 import { DFW_METRO } from "./useRentMetro";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -23,12 +23,6 @@ import Typography from "@mui/material/Typography";
 
 const pathFor = (metro) => `data/dfw-rent-divergence?spec=full&event_study=false&metro=${encodeURIComponent(metro)}`;
 const MAX_FINDINGS = 2;
-
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const shortMonth = (ym) => {
-  const [y, m] = String(ym ?? "").split("-").map(Number);
-  return y && m ? `${MONTHS[m - 1]} ${y}` : "";
-};
 
 function MoreLink({ onClick, children = "Want more details? See the full report →" }) {
   return (
@@ -107,13 +101,6 @@ export default function BoomDivergenceSummary({ metro = DFW_METRO, areaName = "D
           )}
           <Box sx={{ mt: 2, display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
             <MoreLink onClick={onOpenReport} />
-            {data?.n_zips && (
-              <Typography component="span" variant="body2" sx={{ color: "gray.500", maxWidth: 576 }}>
-                {coverageText(data) ?? `Based on monthly Zillow rents for ${data.n_zips} ZIP codes.`}
-                {data.panel?.window?.[1] ? ` Rents through ${shortMonth(data.panel.window[1])}` : ""}
-                {data.tier === "full" || !data.tier ? ", plus U.S. Census data." : "."}
-              </Typography>
-            )}
           </Box>
         </>
       )}
