@@ -1,6 +1,7 @@
 import React from "react";
 import pptxgen from "pptxgenjs";
-import { ArrowDownTrayIcon } from "@heroicons/react/24/solid";
+import Button from "@mui/material/Button";
+import FileDownloadIcon from "@mui/icons-material/FileDownload";
 
 const COLORS = {
     accent: "1D4ED8",
@@ -169,22 +170,21 @@ const DownloadSummaryStatsPptxButton = ({
     filenamePrefix = "summary_statistics",
     variables = {},
     showExtended = false,
-    className = "",
+    sx,
     label = "Download as PowerPoint",
 }) => {
     if (!stats || stats.length === 0) return null;
 
     return (
-        <button
+        <Button
+            variant="contained"
+            color="success"
             onClick={() => buildSummaryStatsPptx(stats, { title, variables, filenamePrefix, showExtended })}
-            className={
-                className ||
-                "flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm rounded hover:bg-emerald-700"
-            }
+            startIcon={<FileDownloadIcon fontSize="small" />}
+            sx={[{ fontSize: "0.875rem", fontWeight: 400, px: 2, py: 1, borderRadius: 1 }, ...(Array.isArray(sx) ? sx : [sx])]}
         >
-            <ArrowDownTrayIcon className="h-4 w-4" />
             {label}
-        </button>
+        </Button>
     );
 };
 

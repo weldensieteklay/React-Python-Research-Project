@@ -1,4 +1,8 @@
 import React from "react";
+import Backdrop from "@mui/material/Backdrop";
+import CircularProgress from "@mui/material/CircularProgress";
+import Paper from "@mui/material/Paper";
+import Typography from "@mui/material/Typography";
 
 const LoadingOverlay = ({
     show = true,
@@ -8,24 +12,17 @@ const LoadingOverlay = ({
     if (!show) return null;
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-            <div className="bg-white p-8 rounded-lg shadow-lg flex flex-col items-center gap-4 min-w-[250px]">
-
-                {/* Spinner */}
-                <div className="w-14 h-14 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-
-                {/* Title */}
-                <div className="text-xl font-semibold text-gray-800 text-center">
+        <Backdrop open sx={{ zIndex: (theme) => theme.zIndex.modal, bgcolor: "rgba(0,0,0,0.4)" }}>
+            <Paper elevation={8} sx={{ p: 4, borderRadius: 2, display: "flex", flexDirection: "column", alignItems: "center", gap: 2, minWidth: 250 }}>
+                <CircularProgress size={56} thickness={4} sx={{ color: "blue.500" }} />
+                <Typography sx={{ fontSize: "1.25rem", fontWeight: 600, color: "gray.800", textAlign: "center" }}>
                     {title}
-                </div>
-
-                {/* Subtitle */}
-                <div className="text-sm text-gray-500 text-center">
+                </Typography>
+                <Typography variant="body2" sx={{ color: "gray.500", textAlign: "center" }}>
                     {subtitle}
-                </div>
-
-            </div>
-        </div>
+                </Typography>
+            </Paper>
+        </Backdrop>
     );
 };
 

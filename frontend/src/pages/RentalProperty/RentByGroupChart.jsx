@@ -1,5 +1,24 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import Box from "@mui/material/Box";
+import ButtonBase from "@mui/material/ButtonBase";
+import Paper from "@mui/material/Paper";
+import ToggleButton from "@mui/material/ToggleButton";
+import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
+import Typography from "@mui/material/Typography";
+
+const cardSx = { borderColor: "gray.200", borderRadius: 2, p: 3 };
+// Segmented control: dark fill on the chosen option
+const segmentedSx = {
+  bgcolor: "common.white", flexShrink: 0,
+  "& .MuiToggleButton-root": {
+    px: 1.5, fontSize: "0.875rem", fontWeight: 600, lineHeight: 1.43, textTransform: "none", color: "gray.700", borderColor: "gray.300", borderRadius: 1.5,
+    "&:hover": { bgcolor: "gray.50" },
+    "&.Mui-selected, &.Mui-selected:hover": { bgcolor: "gray.800", color: "common.white" },
+  },
+};
+const chipSx = { display: "inline-flex", alignItems: "center", gap: 0.75, px: 1.25, py: 0.5, borderRadius: 999, border: 1, fontSize: "0.875rem", transition: "border-color 150ms, background-color 150ms" };
+const swatchLine = { width: 12, height: 2, borderRadius: 0.5 };
 
 // ===========================================================================
 // Rent over time by group of ZIP codes (county by default; works for City too), as a line chart.
@@ -88,19 +107,19 @@ function ChartTooltip({ active, payload, label, selected, colorOf, data, groupLa
     .sort((a, b) => b.value - a.value);
   if (!items.length) return null;
   return (
-    <div className="bg-white border border-gray-200 rounded-md shadow-sm px-3 py-2 text-sm">
-      <div className="font-semibold text-gray-900 mb-1">
+    <Paper variant="outlined" sx={{ borderColor: "gray.200", borderRadius: 1.5, boxShadow: 1, px: 1.5, py: 1, fontSize: "0.875rem" }}>
+      <Box sx={{ fontWeight: 600, color: "gray.900", mb: 0.5 }}>
         {monthName(label)}{items.some((i) => i.forecast) ? " (forecast)" : ""}
-      </div>
+      </Box>
       {items.map((i) => (
-        <div key={i.g} className={`flex items-center gap-2 ${focus === i.g ? "text-blue-800 font-semibold" : "text-gray-700"}`}>
-          <span className="w-3 h-0.5 rounded" style={{ background: colorOf[i.g] }} />
-          <span className="flex-1">{shortName(i.g)}</span>
-          <b className="tabular-nums text-gray-900">{usd(i.value)}</b>
-        </div>
+        <Box key={i.g} sx={{ display: "flex", alignItems: "center", gap: 1, ...(focus === i.g ? { color: "blue.800", fontWeight: 600 } : { color: "gray.700" }) }}>
+          <Box component="span" sx={swatchLine} style={{ background: colorOf[i.g] }} />
+          <Box component="span" sx={{ flex: 1 }}>{shortName(i.g)}</Box>
+          <Box component="b" sx={{ fontVariantNumeric: "tabular-nums", color: "gray.900" }}>{usd(i.value)}</Box>
+        </Box>
       ))}
-      <div className="text-xs text-gray-400 mt-1">Average of each {groupLabel.toLowerCase()}'s ZIP codes</div>
-    </div>
+      <Box sx={{ fontSize: "0.75rem", color: "gray.400", mt: 0.5 }}>Average of each {groupLabel.toLowerCase()}'s ZIP codes</Box>
+    </Paper>
   );
 }
 
@@ -226,91 +245,89 @@ export default function RentByGroupChart({
   }, [selected, points, axis, height]);
 
   if (!groups.length) {
-    return <div className="border border-gray-200 bg-white rounded-lg p-6 text-sm text-gray-400">No {groupLabel.toLowerCase()} data to chart.</div>;
+    return <Paper variant="outlined" sx={{ ...cardSx, fontSize: "0.875rem", color: "gray.400" }}>No {groupLabel.toLowerCase()} data to chart.</Paper>;
   }
 
   return (
-    <div className="border border-gray-200 bg-white rounded-lg p-6">
-      <div className="flex flex-col md:flex-row md:items-start justify-between gap-3 mb-3">
+    <Paper variant="outlined" sx={cardSx}>
+      <Box sx={{ display: "flex", flexDirection: { xs: "column", md: "row" }, alignItems: { md: "flex-start" }, justifyContent: "space-between", gap: 1.5, mb: 1.5 }}>
         <div>
-          <h3 className="text-lg font-bold text-gray-900">Rent over time by {groupLabel.toLowerCase()}</h3>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <Typography variant="h3" sx={{ fontSize: "1.125rem", fontWeight: 700, color: "gray.900" }}>Rent over time by {groupLabel.toLowerCase()}</Typography>
+          <Typography variant="body2" sx={{ color: "gray.500", mt: 0.25 }}>
             Average monthly rent of each {groupLabel.toLowerCase()}'s ZIP codes, from Zillow.
             {hasForecast ? " Dashed lines are the forecast." : ""} Hover the chart to read every value for a month.
-          </p>
+          </Typography>
         </div>
-        <div role="group" aria-label="Time range" className="inline-flex rounded-md border border-gray-300 overflow-hidden bg-white shrink-0">
+        <ToggleButtonGroup exclusive size="small" aria-label="Time range" value={range}
+                           onChange={(_, v) => { if (v != null) setRange(v); }}
+                           sx={[segmentedSx, { alignSelf: { xs: "flex-start", md: "auto" }, "& .MuiToggleButton-root": { py: 0.75 } }]}>
           {RANGES.map(([v, text]) => (
-            <button key={v} onClick={() => setRange(v)} aria-pressed={range === v}
-                    className={`px-3 py-1.5 text-sm font-semibold border-r last:border-r-0 border-gray-300 ${range === v ? "bg-gray-800 text-white" : "text-gray-700 hover:bg-gray-50"}`}>
-              {text}
-            </button>
+            <ToggleButton key={v} value={v}>{text}</ToggleButton>
           ))}
-        </div>
-      </div>
+        </ToggleButtonGroup>
+      </Box>
 
       {/* Group picker: also the legend */}
-      <div className="mb-3">
-        <div className="flex flex-wrap items-center gap-3 mb-2">
-          <div role="group" aria-label="Which lines to show" className="inline-flex rounded-md border border-gray-300 overflow-hidden bg-white">
+      <Box sx={{ mb: 1.5 }}>
+        <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 1.5, mb: 1 }}>
+          <ToggleButtonGroup exclusive size="small" aria-label="Which lines to show" value={showAll}
+                             onChange={(_, v) => { if (v != null) { setShowAll(v); setHovered(null); setPinned(null); } }}
+                             sx={[segmentedSx, { "& .MuiToggleButton-root": { py: 0.5 } }]}>
             {[[false, `Compare up to ${MAX_LINES}`], [true, `All ${plural}`]].map(([v, text]) => (
-              <button key={String(v)} onClick={() => { setShowAll(v); setHovered(null); setPinned(null); }} aria-pressed={showAll === v}
-                      className={`px-3 py-1 text-sm font-semibold border-r last:border-r-0 border-gray-300 ${showAll === v ? "bg-gray-800 text-white" : "text-gray-700 hover:bg-gray-50"}`}>
-                {text}
-              </button>
+              <ToggleButton key={String(v)} value={v}>{text}</ToggleButton>
             ))}
-          </div>
-          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+          </ToggleButtonGroup>
+          <Box component="span" sx={{ fontSize: "0.75rem", fontWeight: 600, color: "gray.500", textTransform: "uppercase", letterSpacing: "0.05em" }}>
             {showAll ? `Point at a ${groupLabel.toLowerCase()} to highlight its line · click to keep it highlighted` : "Click to add or remove"}
-          </span>
-        </div>
-        <div className="flex flex-wrap gap-2">
+          </Box>
+        </Box>
+        <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
           {groups.map((g) => {
             if (showAll) {
               const on = focusGroup === g;
               return (
-                <button key={g} aria-pressed={pinned === g}
+                <ButtonBase key={g} aria-pressed={pinned === g}
                         onMouseEnter={() => setHovered(g)} onMouseLeave={() => setHovered(null)}
                         onFocus={() => setHovered(g)} onBlur={() => setHovered(null)}
                         onClick={() => setPinned((p) => (p === g ? null : g))}
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-sm transition-colors ${on ? "bg-blue-50 border-blue-400 text-blue-900 font-semibold" : "bg-white border-gray-300 text-gray-800 hover:border-gray-400"}`}>
-                  <span className="w-3 h-0.5 rounded" style={{ background: strokeOf(g) }} />
+                        sx={{ ...chipSx, ...(on ? { bgcolor: "blue.50", borderColor: "blue.400", color: "blue.900", fontWeight: 600 } : { bgcolor: "common.white", borderColor: "gray.300", color: "gray.800", "&:hover": { borderColor: "gray.400" } }) }}>
+                  <Box component="span" sx={swatchLine} style={{ background: strokeOf(g) }} />
                   {shortName(g)}
-                  {latest[g] && <span className="tabular-nums text-gray-500 font-normal">{usd(latest[g].rent)}</span>}
-                </button>
+                  {latest[g] && <Box component="span" sx={{ fontVariantNumeric: "tabular-nums", color: "gray.500", fontWeight: 400 }}>{usd(latest[g].rent)}</Box>}
+                </ButtonBase>
               );
             }
             const on = Boolean(colorOf[g]);
             const disabled = !on && full;
             return (
-              <button key={g} onClick={() => toggle(g)} disabled={disabled} aria-pressed={on}
+              <ButtonBase key={g} onClick={() => toggle(g)} disabled={disabled} aria-pressed={on}
                       title={disabled ? `Remove one to add another (up to ${MAX_LINES} at a time), or choose All ${plural}` : on ? "Click to remove" : "Click to add"}
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-sm transition-colors ${
-                        on ? "bg-white border-gray-400 text-gray-900 font-semibold"
-                          : disabled ? "bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed"
-                          : "bg-gray-50 border-gray-200 text-gray-600 hover:border-gray-400"}`}>
-                <span className="w-3 h-3 rounded-full border" style={on ? { background: colorOf[g], borderColor: colorOf[g] } : { borderColor: "#d1d5db" }} />
+                      sx={{ ...chipSx,
+                        ...(on ? { bgcolor: "common.white", borderColor: "gray.400", color: "gray.900", fontWeight: 600 }
+                          : disabled ? { bgcolor: "gray.50", borderColor: "gray.200", color: "gray.300", "&.Mui-disabled": { pointerEvents: "auto", cursor: "not-allowed" } }
+                          : { bgcolor: "gray.50", borderColor: "gray.200", color: "gray.600", "&:hover": { borderColor: "gray.400" } }) }}>
+                <Box component="span" sx={{ width: 12, height: 12, borderRadius: 999, border: 1 }} style={on ? { background: colorOf[g], borderColor: colorOf[g] } : { borderColor: "#d1d5db" }} />
                 {shortName(g)}
-                {latest[g] && <span className={`tabular-nums ${on ? "text-gray-600" : "text-gray-400"} font-normal`}>{usd(latest[g].rent)}</span>}
-              </button>
+                {latest[g] && <Box component="span" sx={{ fontVariantNumeric: "tabular-nums", color: on ? "gray.600" : "gray.400", fontWeight: 400 }}>{usd(latest[g].rent)}</Box>}
+              </ButtonBase>
             );
           })}
-        </div>
-      </div>
+        </Box>
+      </Box>
 
       {selected.length === 0 ? (
-        <div className="flex items-center justify-center text-sm text-gray-400 border border-dashed border-gray-200 rounded-md" style={{ height }}>
+        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.875rem", color: "gray.400", border: "1px dashed", borderColor: "gray.200", borderRadius: 1.5 }} style={{ height }}>
           Pick a {groupLabel.toLowerCase()} above to draw its line.
-        </div>
+        </Box>
       ) : (
-        <div className="relative" style={{ height }}>
+        <Box sx={{ position: "relative" }} style={{ height }}>
           <ResponsiveContainer width="100%" height={height}>
             <LineChart data={points} margin={MARGIN}>
               <CartesianGrid strokeDasharray="3 3" stroke="#eef0f2" vertical={false} />
-              <XAxis dataKey="month" height={X_AXIS_HEIGHT} stroke="#9ca3af" tick={{ fontSize: 12, fill: "#4b5563" }} minTickGap={36}
+              <XAxis dataKey="month" height={X_AXIS_HEIGHT} stroke="#9ca3af" tick={{ fontSize: 14, fill: "#4b5563" }} minTickGap={36}
                      tickFormatter={(m) => (m.endsWith("-01") ? m.slice(0, 4) : monthName(m))} />
               <YAxis domain={axis.domain} ticks={axis.ticks} allowDataOverflow tickFormatter={(v) => `$${v.toLocaleString()}`}
-                     stroke="#9ca3af" tick={{ fontSize: 12, fill: "#4b5563" }} width={64} />
+                     stroke="#9ca3af" tick={{ fontSize: 14, fill: "#4b5563" }} width={64} />
               <Tooltip content={<ChartTooltip selected={selected} colorOf={Object.fromEntries(selected.map((g) => [g, strokeOf(g)]))} data={data} groupLabel={groupLabel} focus={showAll ? focusGroup : null} />}
                        cursor={{ stroke: "#9ca3af", strokeDasharray: "3 3" }} />
               {drawOrder.map((g) => (
@@ -326,27 +343,29 @@ export default function RentByGroupChart({
           </ResponsiveContainer>
 
           {/* Direct labels at the right end of each line */}
-          <div className="absolute top-0 right-0 pointer-events-none" style={{ width: MARGIN.right - 8, height }} aria-hidden="true">
+          <Box sx={{ position: "absolute", top: 0, right: 0, pointerEvents: "none" }} style={{ width: MARGIN.right - 8, height }} aria-hidden="true">
             {endLabels.map((l) => (
-              <div key={l.g}
+              <Box key={l.g}
                    onMouseEnter={showAll ? () => setHovered(l.g) : undefined}
                    onMouseLeave={showAll ? () => setHovered(null) : undefined}
                    onClick={showAll ? () => setPinned((p) => (p === l.g ? null : l.g)) : undefined}
-                   className={`absolute left-2 flex items-center gap-1.5 whitespace-nowrap -translate-y-1/2 ${showAll ? "pointer-events-auto cursor-pointer text-[13px]" : "text-sm"} ${showAll && focusGroup && focusGroup !== l.g ? "opacity-50" : ""}`}
+                   sx={{ position: "absolute", left: 8, display: "flex", alignItems: "center", gap: 0.75, whiteSpace: "nowrap", transform: "translateY(-50%)",
+                         ...(showAll ? { pointerEvents: "auto", cursor: "pointer", fontSize: "15px" } : { fontSize: "0.875rem" }),
+                         ...(showAll && focusGroup && focusGroup !== l.g && { opacity: 0.5 }) }}
                    style={{ top: l.y }}>
-                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: strokeOf(l.g) }} />
-                <span className={`font-semibold ${showAll && focusGroup === l.g ? "text-blue-800" : "text-gray-900"}`}>{shortName(l.g)}</span>
-                <span className={`tabular-nums text-gray-600 ${l.forecast ? "italic" : ""}`}>{l.forecast ? "≈" : ""}{usd(l.v)}</span>
-              </div>
+                <Box component="span" sx={{ width: 10, height: 10, borderRadius: 999, flexShrink: 0 }} style={{ background: strokeOf(l.g) }} />
+                <Box component="span" sx={{ fontWeight: 600, color: showAll && focusGroup === l.g ? "blue.800" : "gray.900" }}>{shortName(l.g)}</Box>
+                <Box component="span" sx={{ fontVariantNumeric: "tabular-nums", color: "gray.600", fontStyle: l.forecast ? "italic" : "normal" }}>{l.forecast ? "≈" : ""}{usd(l.v)}</Box>
+              </Box>
             ))}
-          </div>
-        </div>
+          </Box>
+        </Box>
       )}
 
-      <p className="text-xs text-gray-400 mt-3">
+      <Typography variant="caption" component="p" sx={{ color: "gray.400", mt: 1.5 }}>
         A {groupLabel.toLowerCase()}'s line is the average of its ZIP codes each month. Zillow adds ZIP codes over time,
         so a line can shift slightly when new ZIP codes join the average.
-      </p>
-    </div>
+      </Typography>
+    </Paper>
   );
 }

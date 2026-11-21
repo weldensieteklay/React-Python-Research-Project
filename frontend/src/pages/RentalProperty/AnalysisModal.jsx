@@ -1,75 +1,55 @@
-import React, { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import React, { useEffect, useState } from "react";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import Dialog from "@mui/material/Dialog";
+import DialogActions from "@mui/material/DialogActions";
+import DialogContent from "@mui/material/DialogContent";
+import IconButton from "@mui/material/IconButton";
+import Typography from "@mui/material/Typography";
+import CloseIcon from "@mui/icons-material/Close";
 
 const VERDICT_STYLES = {
-  positive: "bg-emerald-50 border-emerald-200 text-emerald-950",
-  mixed: "bg-amber-50 border-amber-200 text-amber-950",
-  caution: "bg-amber-50 border-amber-200 text-amber-950",
-  neutral: "bg-gray-50 border-gray-200 text-gray-900",
+  positive: { bgcolor: "emerald.50", borderColor: "emerald.200", color: "emerald.950" },
+  mixed: { bgcolor: "amber.50", borderColor: "amber.200", color: "amber.950" },
+  caution: { bgcolor: "amber.50", borderColor: "amber.200", color: "amber.950" },
+  neutral: { bgcolor: "gray.50", borderColor: "gray.200", color: "gray.900" },
 };
 
 const BADGE_STYLES = {
-  positive: "bg-emerald-100 text-emerald-800",
-  caution: "bg-amber-100 text-amber-800",
-  negative: "bg-red-100 text-red-800",
-  neutral: "bg-gray-100 text-gray-600",
+  positive: { bgcolor: "emerald.100", color: "emerald.800" },
+  caution: { bgcolor: "amber.100", color: "amber.800" },
+  negative: { bgcolor: "red.100", color: "red.800" },
+  neutral: { bgcolor: "gray.100", color: "gray.600" },
 };
 
+const itemSx = { fontSize: "0.875rem", color: "gray.700", lineHeight: 1.625 };
+
 function Item({ item }) {
-  if (typeof item === "string") return <li className="text-sm text-gray-700 leading-relaxed">{item}</li>;
+  if (typeof item === "string") return <Box component="li" sx={itemSx}>{item}</Box>;
   return (
-    <li className="text-sm text-gray-700 leading-relaxed">
+    <Box component="li" sx={itemSx}>
       {(item.label || item.badge) && (
-        <div className="flex flex-wrap items-center gap-2 mb-0.5">
-          {item.label && <span className="font-semibold text-gray-900">{item.label}</span>}
+        <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 1, mb: 0.25 }}>
+          {item.label && <Box component="span" sx={{ fontWeight: 600, color: "gray.900" }}>{item.label}</Box>}
           {item.badge && (
-            <span className={`px-2 py-0.5 rounded text-xs font-medium ${BADGE_STYLES[item.badge.tone] || BADGE_STYLES.neutral}`}>
+            <Box component="span" sx={{ px: 1, py: 0.25, borderRadius: 1, fontSize: "0.75rem", fontWeight: 500, ...(BADGE_STYLES[item.badge.tone] || BADGE_STYLES.neutral) }}>
               {item.badge.label}
-            </span>
+            </Box>
           )}
-        </div>
+        </Box>
       )}
       <div>{item.text}</div>
-      {item.detail && <div className="text-xs text-gray-400 tabular-nums mt-0.5">{item.detail}</div>}
-    </li>
+      {item.detail && <Box sx={{ fontSize: "0.75rem", color: "gray.400", fontVariantNumeric: "tabular-nums", mt: 0.25 }}>{item.detail}</Box>}
+    </Box>
   );
 }
 
 export default function AnalysisModal({ open, onClose, report, copyText, children }) {
-  const dialogRef = useRef(null);
-  const closeRef = useRef(null);
-  const openerRef = useRef(null);
   const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    openerRef.current = typeof document !== "undefined" ? document.activeElement : null;
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    closeRef.current?.focus();
-
-    const onKey = (e) => {
-      if (e.key === "Escape") { e.stopPropagation(); onClose?.(); return; }
-      if (e.key !== "Tab" || !dialogRef.current) return;
-      // keep keyboard focus inside the dialog
-      const nodes = dialogRef.current.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
-      if (!nodes.length) return;
-      const first = nodes[0];
-      const last = nodes[nodes.length - 1];
-      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prevOverflow;
-      openerRef.current?.focus?.();
-    };
-  }, [open, onClose]);
 
   useEffect(() => { if (!open) setCopied(false); }, [open]);
 
-  if (!open || !report || typeof document === "undefined") return null;
+  if (!open || !report) return null;
 
   const handleCopy = async () => {
     try {
@@ -80,60 +60,67 @@ export default function AnalysisModal({ open, onClose, report, copyText, childre
     }
   };
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-gray-900/40" onClick={onClose} aria-hidden="true" />
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="analysis-modal-title"
-        className="relative bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col"
-      >
-        <div className="flex items-start justify-between gap-4 px-6 pt-5 pb-3 border-b border-gray-100">
-          <div>
-            <h2 id="analysis-modal-title" className="text-lg font-bold text-gray-900">{report.title}</h2>
-            {report.subtitle && <p className="text-sm text-gray-500 mt-0.5">{report.subtitle}</p>}
-          </div>
-          <button ref={closeRef} onClick={onClose} aria-label="Close"
-                  className="text-gray-400 hover:text-gray-700 text-2xl leading-none px-1 -mt-1">
-            ×
-          </button>
+  // Dialog handles the backdrop, Escape, focus trapping, scroll lock and returning focus
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      fullWidth
+      maxWidth="md"
+      aria-labelledby="analysis-modal-title"
+      slotProps={{
+        backdrop: { sx: { bgcolor: "rgba(17,24,39,0.4)" } },
+        paper: { sx: { maxWidth: 768, maxHeight: "90vh", m: 2, borderRadius: 3 } },
+      }}
+    >
+      <Box sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 2, px: 3, pt: 2.5, pb: 1.5, borderBottom: 1, borderColor: "gray.100" }}>
+        <div>
+          <Typography variant="h2" id="analysis-modal-title" sx={{ fontSize: "1.125rem", fontWeight: 700, color: "gray.900" }}>{report.title}</Typography>
+          {report.subtitle && <Typography variant="body2" sx={{ color: "gray.500", mt: 0.25 }}>{report.subtitle}</Typography>}
         </div>
+        <IconButton autoFocus onClick={onClose} aria-label="Close" size="small" sx={{ color: "gray.400", mt: -0.5, "&:hover": { color: "gray.700" } }}>
+          <CloseIcon />
+        </IconButton>
+      </Box>
 
-        <div className="overflow-y-auto px-6 py-4 space-y-5">
-          {report.verdict?.text && (
-            <div className={`border rounded-lg px-4 py-3 ${VERDICT_STYLES[report.verdict.tone] || VERDICT_STYLES.neutral}`}>
-              <div className="text-xs font-semibold uppercase tracking-wider opacity-70 mb-0.5">Takeaway</div>
-              <div className="text-sm font-medium leading-relaxed">{report.verdict.text}</div>
-            </div>
-          )}
+      <DialogContent sx={{ px: 3, py: 2, display: "flex", flexDirection: "column", gap: 2.5 }}>
+        {report.verdict?.text && (
+          <Box sx={{ border: 1, borderRadius: 2, px: 2, py: 1.5, ...(VERDICT_STYLES[report.verdict.tone] || VERDICT_STYLES.neutral) }}>
+            <Box sx={{ fontSize: "0.75rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", opacity: 0.7, mb: 0.25 }}>Takeaway</Box>
+            <Box sx={{ fontSize: "0.875rem", fontWeight: 500, lineHeight: 1.625 }}>{report.verdict.text}</Box>
+          </Box>
+        )}
 
-          {(report.sections ?? []).filter((s) => s.items?.length).map((s) => (
-            <section key={s.heading}>
-              <h3 className="text-sm font-bold text-gray-800 mb-2">{s.heading}</h3>
-              <ul className="space-y-2.5 list-disc pl-5 marker:text-gray-300">
-                {s.items.map((it, i) => <Item key={i} item={it} />)}
-              </ul>
-            </section>
-          ))}
+        {(report.sections ?? []).filter((s) => s.items?.length).map((s) => (
+          <section key={s.heading}>
+            <Typography variant="h3" sx={{ fontSize: "0.875rem", fontWeight: 700, color: "gray.800", mb: 1 }}>{s.heading}</Typography>
+            <Box component="ul" sx={{ m: 0, listStyle: "disc", pl: 2.5, "& > li + li": { mt: 1.25 }, "& li::marker": { color: "gray.300" } }}>
+              {s.items.map((it, i) => <Item key={i} item={it} />)}
+            </Box>
+          </section>
+        ))}
 
-          {children}
-        </div>
+        {children}
+      </DialogContent>
 
-        <div className="flex items-center justify-end gap-2 px-6 py-3 border-t border-gray-100">
-          {copyText && (
-            <button onClick={handleCopy}
-                    className="px-3 py-1.5 text-sm font-semibold rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50">
-              {copied ? "Copied ✓" : "📋 Copy summary"}
-            </button>
-          )}
-          <button onClick={onClose} className="px-4 py-1.5 text-sm font-semibold rounded-md bg-gray-800 text-white hover:bg-gray-700">
-            Close
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body
+      <DialogActions sx={{ gap: 1, px: 3, py: 1.5, borderTop: 1, borderColor: "gray.100" }}>
+        {copyText && (
+          <Button
+            variant="outlined"
+            onClick={handleCopy}
+            sx={{ px: 1.5, py: 0.75, fontSize: "0.875rem", fontWeight: 600, borderColor: "gray.300", bgcolor: "common.white", color: "gray.700", "&:hover": { borderColor: "gray.300", bgcolor: "gray.50" } }}
+          >
+            {copied ? "Copied ✓" : "📋 Copy summary"}
+          </Button>
+        )}
+        <Button
+          variant="contained"
+          onClick={onClose}
+          sx={{ px: 2, py: 0.75, fontSize: "0.875rem", fontWeight: 600, bgcolor: "gray.800", "&:hover": { bgcolor: "gray.700" } }}
+        >
+          Close
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 }

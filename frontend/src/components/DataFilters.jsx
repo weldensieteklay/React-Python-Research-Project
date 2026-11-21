@@ -1,5 +1,9 @@
 import React, { useMemo } from "react";
 import Select from "react-select";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import IconButton from "@mui/material/IconButton";
+import Typography from "@mui/material/Typography";
 
 // ===========================================================================
 // Row filtering shared by the forecast screen (PanelData) and the Data Explorer.
@@ -75,7 +79,14 @@ const uniqueSorted = (rows, col) => {
   return [...vals].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 };
 
-const selectStyles = { menuPortal: (base) => ({ ...base, zIndex: 50 }) };
+// Menus sit above MUI dialogs (zIndex 1300)
+const menuPortal = (base) => ({ ...base, zIndex: 1500 });
+const sized = (container) => ({ menuPortal, container: (base) => ({ ...base, fontSize: "0.875rem", ...container }) });
+const columnSelectStyles = sized({ width: 192 });
+const valuesSelectStyles = sized({ flex: 1, minWidth: 220 });
+const dateSelectStyles = sized({ width: 144 });
+
+const linkButtonSx = { p: 0, minWidth: 0, fontWeight: 600, color: "blue.700", "&:hover": { bgcolor: "transparent", textDecoration: "underline" } };
 
 export default function DataFilters({
   rows,
@@ -109,39 +120,37 @@ export default function DataFilters({
   const updateCondition = (i, patch) => setConditions(conditions.map((c, j) => (j === i ? { ...c, ...patch } : c)));
 
   return (
-    <div className="w-full border border-gray-200 rounded-lg bg-gray-50 px-4 py-3">
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-sm font-semibold text-gray-800">
+    <Box sx={{ width: "100%", border: 1, borderColor: "gray.200", borderRadius: 2, bgcolor: "gray.50", px: 2, py: 1.5 }}>
+      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
+        <Typography variant="body2" sx={{ fontWeight: 600, color: "gray.800" }}>
           Filter data
           {matchCount != null && (
-            <span className="ml-2 font-normal text-gray-500">
+            <Box component="span" sx={{ ml: 1, fontWeight: 400, color: "gray.500" }}>
               {matchCount.toLocaleString()} of {rows.length.toLocaleString()} rows
-            </span>
+            </Box>
           )}
-        </div>
+        </Typography>
         {activeFilterCount(filters) > 0 && (
-          <button className="text-xs font-semibold text-blue-700 hover:underline" onClick={() => onChange(EMPTY_FILTERS)}>
+          <Button size="small" disableRipple sx={{ ...linkButtonSx, fontSize: "0.75rem" }} onClick={() => onChange(EMPTY_FILTERS)}>
             Clear filters
-          </button>
+          </Button>
         )}
-      </div>
+      </Box>
 
-      <div className="space-y-2">
+      <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
         {conditions.map((c, i) => (
-          <div key={i} className="flex flex-wrap items-center gap-2">
+          <Box key={i} sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 1 }}>
             <Select
-              className="w-48 text-sm"
               placeholder="Column"
               options={columnOptions.filter((o) => o.value === c.column || !usedColumns.has(o.value))}
               value={c.column ? { value: c.column, label: label(c.column) } : null}
               onChange={(o) => updateCondition(i, { column: o.value, values: [] })}
               menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-              styles={selectStyles}
+              styles={columnSelectStyles}
             />
-            <span className="text-xs text-gray-500">is one of</span>
+            <Typography variant="caption" sx={{ color: "gray.500" }}>is one of</Typography>
             <Select
               isMulti
-              className="flex-1 min-w-[220px] text-sm"
               placeholder={c.column ? "Choose values" : "Pick a column first"}
               isDisabled={!c.column}
               options={valueOptions[c.column] ?? []}
@@ -149,55 +158,56 @@ export default function DataFilters({
               onChange={(opts) => updateCondition(i, { values: (opts ?? []).map((o) => o.value) })}
               closeMenuOnSelect={false}
               menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-              styles={selectStyles}
+              styles={valuesSelectStyles}
             />
-            <button
-              className="text-gray-400 hover:text-red-600 text-lg leading-none px-1"
+            <IconButton
+              size="small"
               title="Remove filter"
+              aria-label="Remove filter"
+              sx={{ color: "gray.400", fontSize: "1.125rem", lineHeight: 1, px: 0.5, "&:hover": { color: "red.600" } }}
               onClick={() => setConditions(conditions.filter((_, j) => j !== i))}
             >
               ×
-            </button>
-          </div>
+            </IconButton>
+          </Box>
         ))}
 
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            className="text-sm font-medium text-blue-700 hover:underline disabled:text-gray-400 disabled:no-underline"
+        <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 1.5 }}>
+          <Button
+            disableRipple
+            sx={{ ...linkButtonSx, fontSize: "0.875rem", fontWeight: 500, "&.Mui-disabled": { color: "gray.400" } }}
             disabled={usedColumns.size >= columnOptions.length}
             onClick={() => setConditions([...conditions, { column: "", values: [] }])}
           >
             + Add filter
-          </button>
+          </Button>
 
           {dateColumn && dateOptions.length > 0 && (
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-gray-500">{label(dateColumn)} from</span>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1, fontSize: "0.875rem" }}>
+              <Box component="span" sx={{ color: "gray.500" }}>{label(dateColumn)} from</Box>
               <Select
-                className="w-36"
                 isClearable
                 placeholder="Start"
                 options={dateOptions}
                 value={filters?.start ? { value: filters.start, label: filters.start } : null}
                 onChange={(o) => onChange({ ...filters, start: o?.value || "" })}
                 menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-                styles={selectStyles}
+                styles={dateSelectStyles}
               />
-              <span className="text-gray-500">to</span>
+              <Box component="span" sx={{ color: "gray.500" }}>to</Box>
               <Select
-                className="w-36"
                 isClearable
                 placeholder="End"
                 options={dateOptions}
                 value={filters?.end ? { value: filters.end, label: filters.end } : null}
                 onChange={(o) => onChange({ ...filters, end: o?.value || "" })}
                 menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-                styles={selectStyles}
+                styles={dateSelectStyles}
               />
-            </div>
+            </Box>
           )}
-        </div>
-      </div>
-    </div>
+        </Box>
+      </Box>
+    </Box>
   );
 }

@@ -32,7 +32,7 @@ export default function DataGrid({
   );
 
   return (
-    <div className="ag-theme-quartz" style={{ height, width: "100%" }}>
+    <div className="ag-theme-quartz" style={{ height, width: "100%", "--ag-font-size": "16px" }}>
       {extraStyles && <style>{extraStyles}</style>}
       <AgGridReact
         rowData={rowData}

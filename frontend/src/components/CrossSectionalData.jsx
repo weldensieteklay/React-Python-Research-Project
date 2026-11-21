@@ -4,8 +4,6 @@ import Select from 'react-select';
 import { parseCsvFile, computeSummaryStatistics } from '../utils/utils';
 import SummaryStatisticsTable from './SummaryStatisticsTable';
 import { usePrediction } from '../hooks/usePrediction';
-import { Link } from 'react-router-dom';
-import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import CrossSectionalTable from './CrossSectionalTable';
 import LoadingOverlay from './LoadingOverlay';
 import DownloadPptxButton from './dowload/DownloadPptxButton';
@@ -14,6 +12,8 @@ import { guideContent } from "../guideMe/Guidecontent";
 import MultiCheckboxDropdown from './MultiCheckboxDropdown';
 import DownloadSummaryStatsPptxButton from './dowload/SummaryStatisticsPptxDowload';
 import UserGuideButton from "../guideMe/UserGuideButton";
+import Box from '@mui/material/Box';
+import { ActionButton, ButtonRow, ControlsCard, EndRow, ErrorNote, Field, FileInput, HeaderButton, PageHeader, Section } from './ui';
 
 const CrossSectionalData = () => {
     const [parsedData, setParsedData] = useState([]);
@@ -152,209 +152,176 @@ const CrossSectionalData = () => {
     return (
         <>
             {/* Header */}
-            <div className="w-full px-4 my-6">
-                <div className="relative bg-blue-100 py-3 rounded shadow-sm flex items-center justify-center">
-                    <Link
-                        to="/dashboard"
-                        className="absolute left-4 text-gray-700 hover:text-gray-900"
-                    >
-                        <ArrowLeftIcon className="h-6 w-6" />
-                    </Link>
-
-                    <h2 className="text-2xl font-semibold text-gray-800 text-center">
-                        Data Analysis and Prediction
-                    </h2>
-
-                    <div className="absolute right-4 flex items-center gap-2">
-                        <UserGuideButton className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-black text-sm rounded-lg shadow-sm hover:bg-gray-100 transition-colors" />
-                        <button
-                            onClick={() => setShowGuide((o) => !o)}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-white text-black text-sm rounded-lg shadow-sm hover:bg-gray-100 transition-colors"
-                        >
-                            <span className="font-medium">Guide Me</span>
-                        </button>
-                    </div>
-                </div>
-                {/* Guide panel — inline, no overlay */}
-                <div className="flex justify-center mt-3">
+            <Section>
+                <PageHeader
+                    title="Data Analysis and Prediction"
+                    backTo="/dashboard"
+                    actions={
+                        <>
+                            <UserGuideButton />
+                            <HeaderButton onClick={() => setShowGuide((o) => !o)}>Guide Me</HeaderButton>
+                        </>
+                    }
+                />
+                {/* Guide panel */}
+                <Box sx={{ display: "flex", justifyContent: "center", mt: 1.5 }}>
                     <GuidePanel
                         open={showGuide}
                         onClose={() => setShowGuide(false)}
                         content={guideContent.crossSectional}
                     />
-                </div>
-            </div>
+                </Box>
+            </Section>
 
             {/* Form */}
-            <div className="w-full px-4 my-6">
-                <div className="flex justify-center">
-                    <div className="flex flex-wrap justify-center gap-6 p-6 border-2 border-gray-300 rounded-lg w-full bg-white shadow-sm">
+            <Section>
+                <ControlsCard>
 
-                        {/* Upload */}
-                        <div className="flex flex-col w-48">
-                            <label className="text-sm text-gray-700 mb-1">Upload File</label>
-                            <input
-                                type="file"
-                                accept=".csv"
-                                ref={fileInputRef}
-                                onChange={(e) => {
-                                    const file = e.target.files[0];
-                                    if (file) {
-                                        setFileUploaded(true);
-                                        parseCsvFile(file, onDataParsed);
-                                    }
-                                }}
-                                className="px-2 py-[5px] border border-gray-300 rounded text-sm"
-                            />
-                        </div>
-
-                        {/* Method */}
-                        <div className="flex flex-col w-48">
-                            <label className="text-sm text-gray-700 mb-1">Methods</label>
-                            <Select
-                                options={methodOptions}
-                                value={methodOptions.find(opt => opt.value === method) || null}
-                                onChange={(selected) => setMethod(selected.value)}
-                            />
-                        </div>
-
-                        {/* ID */}
-                        <div className="flex flex-col w-48">
-                            <label className="text-sm text-gray-700 mb-1">ID Column</label>
-                            <Select
-                                options={columnOptions}
-                                value={columnOptions.find(opt => opt.value === idColumn) || null}
-                                onChange={(selected) => setIdColumn(selected.value)}
-                            />
-                        </div>
-
-                        {/* Dependent */}
-                        <div className="flex flex-col w-48">
-                            <label className="text-sm text-gray-700 mb-1">Dependent Variable</label>
-                            <Select
-                                options={columnOptions}
-                                value={columnOptions.find(opt => opt.value === dependentVar) || null}
-                                onChange={(selected) => setDependentVar(selected.value)}
-                            />
-                        </div>
-
-                        {/* Independent — click-to-open dropdown with checkboxes */}
-                        <MultiCheckboxDropdown
-                            label="Independent Variables"
-                            options={columns}
-                            selected={independentVar}
-                            onToggle={handleIndependentToggle}
-                            onSelectAll={handleSelectAllIndependent}
-                            placeholder="Select variables"
-                            emptyMessage="Upload a file to see columns"
+                    {/* Upload */}
+                    <Field label="Upload File">
+                        <FileInput
+                            accept=".csv"
+                            ref={fileInputRef}
+                            onChange={(e) => {
+                                const file = e.target.files[0];
+                                if (file) {
+                                    setFileUploaded(true);
+                                    parseCsvFile(file, onDataParsed);
+                                }
+                            }}
+                            sx={{ boxShadow: 0 }}
                         />
+                    </Field>
 
-                        {/* Categorical — click-to-open dropdown, options limited to chosen Independent Variables */}
-                        <MultiCheckboxDropdown
-                            label="Categorical Variables"
-                            options={independentVar}
-                            selected={categoricalVar}
-                            onToggle={handleCategoricalToggle}
-                            onSelectAll={handleSelectAllCategorical}
-                            placeholder="Select variables"
-                            emptyMessage="Select independent variables first"
+                    {/* Method */}
+                    <Field label="Methods">
+                        <Select
+                            options={methodOptions}
+                            value={methodOptions.find(opt => opt.value === method) || null}
+                            onChange={(selected) => setMethod(selected.value)}
                         />
+                    </Field>
 
-                        {/* Outliers */}
-                        <div className="flex flex-col w-48">
-                            <label className="text-sm text-gray-700 mb-1">Outliers</label>
-                            <Select
-                                options={outlierOptions}
-                                value={outlierOptions.find(opt => opt.value === outliers) || null}
-                                onChange={(selected) => setOutliers(selected.value)}
-                            />
-                        </div>
+                    {/* ID */}
+                    <Field label="ID Column">
+                        <Select
+                            options={columnOptions}
+                            value={columnOptions.find(opt => opt.value === idColumn) || null}
+                            onChange={(selected) => setIdColumn(selected.value)}
+                        />
+                    </Field>
 
-                        {/* Buttons */}
-                        <div className="w-full flex flex-wrap justify-center gap-4 mt-6">
-                            <button
-                                className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                                onClick={() => {
-                                    handleSummaryStatistics();
-                                    setActiveView('summary');
-                                }}
-                            >
-                                Summary Statistics
-                            </button>
+                    {/* Dependent */}
+                    <Field label="Dependent Variable">
+                        <Select
+                            options={columnOptions}
+                            value={columnOptions.find(opt => opt.value === dependentVar) || null}
+                            onChange={(selected) => setDependentVar(selected.value)}
+                        />
+                    </Field>
 
-                            <button
-                                className={`w-40 px-4 py-2 rounded ${isReadyToPredict && !loading
-                                    ? "bg-blue-500 text-white hover:bg-blue-600"
-                                    : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                                    }`}
-                                disabled={!isReadyToPredict || loading}
-                                onClick={handlePredict}
-                            >
-                                {loading ? "Predicting..." : "Predict"}
-                            </button>
+                    {/* Independent — click-to-open dropdown with checkboxes */}
+                    <MultiCheckboxDropdown
+                        label="Independent Variables"
+                        options={columns}
+                        selected={independentVar}
+                        onToggle={handleIndependentToggle}
+                        onSelectAll={handleSelectAllIndependent}
+                        placeholder="Select variables"
+                        emptyMessage="Upload a file to see columns"
+                    />
 
-                            <button
-                                className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                                onClick={handleClear}
-                            >
-                                Clear
-                            </button>
-                        </div>
+                    {/* Categorical — click-to-open dropdown, options limited to chosen Independent Variables */}
+                    <MultiCheckboxDropdown
+                        label="Categorical Variables"
+                        options={independentVar}
+                        selected={categoricalVar}
+                        onToggle={handleCategoricalToggle}
+                        onSelectAll={handleSelectAllCategorical}
+                        placeholder="Select variables"
+                        emptyMessage="Select independent variables first"
+                    />
 
-                        {/* Loading */}
-                        {loading && <LoadingOverlay />}
-                        {/* Error */}
-                        {error && activeView != "summary" && (
-                            <div className="w-full text-center text-red-600 bg-red-50 p-2 rounded mt-4">
-                                Something went wrong. Try agin!!
-                            </div>
-                        )}
+                    {/* Outliers */}
+                    <Field label="Outliers">
+                        <Select
+                            options={outlierOptions}
+                            value={outlierOptions.find(opt => opt.value === outliers) || null}
+                            onChange={(selected) => setOutliers(selected.value)}
+                        />
+                    </Field>
 
-                        {/* Results: Summary Statistics view, now with PPT download */}
-                        {activeView === 'summary' && summaryStats.length > 0 && !loading && !error && (
-                            <>
-                                <div className="w-full flex justify-end">
-                                    <DownloadSummaryStatsPptxButton
-                                        stats={summaryStats}
-                                        title="Summary Statistics"
-                                        filenamePrefix="summary_statistics"
-                                        showExtended={false}
-                                        variables={{
-                                            dependentVar,
-                                            independentVar,
-                                            categoricalVar,
-                                            idColumn,
-                                            outliers,
-                                        }}
-                                    />
-                                </div>
-                                <SummaryStatisticsTable stats={summaryStats} showExtended={false} />
-                            </>
-                        )}
+                    {/* Buttons */}
+                    <ButtonRow>
+                        <ActionButton
+                            onClick={() => {
+                                handleSummaryStatistics();
+                                setActiveView('summary');
+                            }}
+                        >
+                            Summary Statistics
+                        </ActionButton>
+
+                        <ActionButton disabled={!isReadyToPredict || loading} onClick={handlePredict}>
+                            {loading ? "Predicting..." : "Predict"}
+                        </ActionButton>
+
+                        <ActionButton onClick={handleClear}>
+                            Clear
+                        </ActionButton>
+                    </ButtonRow>
+
+                    {/* Loading */}
+                    {loading && <LoadingOverlay />}
+                    {/* Error */}
+                    {error && activeView != "summary" && (
+                        <ErrorNote>Something went wrong. Try agin!!</ErrorNote>
+                    )}
+
+                    {/* Results: Summary Statistics view, now with PPT download */}
+                    {activeView === 'summary' && summaryStats.length > 0 && !loading && !error && (
+                        <>
+                            <EndRow>
+                                <DownloadSummaryStatsPptxButton
+                                    stats={summaryStats}
+                                    title="Summary Statistics"
+                                    filenamePrefix="summary_statistics"
+                                    showExtended={false}
+                                    variables={{
+                                        dependentVar,
+                                        independentVar,
+                                        categoricalVar,
+                                        idColumn,
+                                        outliers,
+                                    }}
+                                />
+                            </EndRow>
+                            <SummaryStatisticsTable stats={summaryStats} showExtended={false} />
+                        </>
+                    )}
 
 
-                        {activeView === 'prediction' && result && !loading && !error && (
-                            <>
-                                <div className="w-full flex justify-end">
-                                    <DownloadPptxButton
-                                        result={result}
-                                        title="Cross-Sectional Data Analysis"
-                                        filenamePrefix="cross_sectional"
-                                        variables={{
-                                            dependentVar,
-                                            independentVar,
-                                            categoricalVar,
-                                            idColumn,
-                                            outliers,
-                                        }}
-                                    />
-                                </div>
-                                <CrossSectionalTable result={result} />
-                            </>
-                        )}
-                    </div>
-                </div>
-            </div>
+                    {activeView === 'prediction' && result && !loading && !error && (
+                        <>
+                            <EndRow>
+                                <DownloadPptxButton
+                                    result={result}
+                                    title="Cross-Sectional Data Analysis"
+                                    filenamePrefix="cross_sectional"
+                                    variables={{
+                                        dependentVar,
+                                        independentVar,
+                                        categoricalVar,
+                                        idColumn,
+                                        outliers,
+                                    }}
+                                />
+                            </EndRow>
+                            <CrossSectionalTable result={result} />
+                        </>
+                    )}
+                </ControlsCard>
+            </Section>
         </>
     );
 };

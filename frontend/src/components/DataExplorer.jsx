@@ -4,6 +4,17 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Referenc
 import DataFilters, { EMPTY_FILTERS, applyFilters } from "../../components/DataFilters";
 import { columnLabel, csvEscape, downloadCsv } from "./utils";
 import { GROUP_LEVELS, NEXT_LEVEL, MEASURES, numericColumns, buildExplorerData, toChartRows } from "./explorerData";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import Checkbox from "@mui/material/Checkbox";
+import Link from "@mui/material/Link";
+import Paper from "@mui/material/Paper";
+import Typography from "@mui/material/Typography";
+
+const cardSx = { borderColor: "gray.200", borderRadius: 2 };
+const fieldLabelSx = { display: "block", fontSize: "0.75rem", fontWeight: 600, color: "gray.500", textTransform: "uppercase", letterSpacing: "0.05em", mb: 0.5 };
+const outlineButtonSx = { px: 1.5, py: 0.75, fontSize: "0.875rem", fontWeight: 600, borderColor: "gray.300", bgcolor: "common.white", color: "gray.700", "&:hover": { borderColor: "gray.300", bgcolor: "gray.50" } };
+const selectStyles = { container: (base) => ({ ...base, fontSize: "0.875rem" }) };
 
 const COLORS = ["#059669", "#2563eb", "#d97706", "#7c3aed", "#dc2626", "#0891b2", "#4b5563", "#be185d", "#65a30d", "#0f766e"];
 const MAX_LINES = 10;
@@ -88,20 +99,20 @@ export default function DataExplorer({ rows, onBack, censusLoaded = false }) {
   const yFormatter = measure === "level" ? (v) => fmtNum(v, metric) : measure === "index" ? (v) => v.toFixed(0) : (v) => `${v.toFixed(0)}%`;
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
-      <div className="flex flex-col md:flex-row md:items-center justify-between pb-4 mb-4 border-b border-gray-200 gap-4">
+    <Box sx={{ p: 3, bgcolor: "gray.50", minHeight: "100vh" }}>
+      <Box sx={{ display: "flex", flexDirection: { xs: "column", md: "row" }, alignItems: { md: "center" }, justifyContent: "space-between", pb: 2, mb: 2, borderBottom: 1, borderColor: "gray.200", gap: 2 }}>
         <div>
-          <h1 className="text-xl font-bold text-gray-900 tracking-tight">Explore the DFW rent panel</h1>
-          <p className="text-sm text-gray-500 mt-1">Compare markets over time, find where rents peaked and how far they've moved since, then drill into cities and ZIP codes.</p>
+          <Typography variant="h1" sx={{ fontSize: "1.25rem", fontWeight: 700, color: "gray.900", letterSpacing: "-0.025em" }}>Explore the DFW rent panel</Typography>
+          <Typography variant="body2" sx={{ color: "gray.500", mt: 0.5 }}>Compare markets over time, find where rents peaked and how far they've moved since, then drill into cities and ZIP codes.</Typography>
         </div>
         {onBack && (
-          <button onClick={onBack} className="self-start md:self-auto px-4 py-1.5 text-sm font-semibold rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50">
+          <Button variant="outlined" onClick={onBack} sx={{ ...outlineButtonSx, px: 2, alignSelf: { xs: "flex-start", md: "auto" } }}>
             📋 Back to Grid
-          </button>
+          </Button>
         )}
-      </div>
+      </Box>
 
-      <div className="space-y-4">
+      <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
         <DataFilters
           rows={rows}
           filters={filters}
@@ -112,64 +123,64 @@ export default function DataExplorer({ rows, onBack, censusLoaded = false }) {
           matchCount={filtered.length}
         />
 
-        <div className="flex flex-wrap items-end gap-4 bg-white border border-gray-200 rounded-lg px-4 py-3">
-          <div className="w-48">
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Group by</label>
-            <Select options={GROUP_LEVELS} value={GROUP_LEVELS.find((g) => g.value === groupBy)} onChange={(o) => setGroupBy(o.value)} className="text-sm" />
-          </div>
-          <div className="w-64">
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Measure</label>
+        <Paper variant="outlined" sx={{ ...cardSx, display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 2, px: 2, py: 1.5 }}>
+          <Box sx={{ width: 192 }}>
+            <Box component="label" sx={fieldLabelSx}>Group by</Box>
+            <Select options={GROUP_LEVELS} value={GROUP_LEVELS.find((g) => g.value === groupBy)} onChange={(o) => setGroupBy(o.value)} styles={selectStyles} />
+          </Box>
+          <Box sx={{ width: 256 }}>
+            <Box component="label" sx={fieldLabelSx}>Measure</Box>
             <Select
               options={metrics.map((m) => ({ value: m, label: columnLabel(m) }))}
               value={{ value: metric, label: columnLabel(metric) }}
               onChange={(o) => setMetric(o.value)}
-              className="text-sm"
+              styles={selectStyles}
             />
-          </div>
-          <div className="w-56">
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Show as</label>
-            <Select options={MEASURES} value={MEASURES.find((m) => m.value === measure)} onChange={(o) => setMeasure(o.value)} className="text-sm" />
-          </div>
-          <label className="flex items-center gap-2 text-sm text-gray-700 pb-2" title="Average only ZIPs observed in every month of the range, so groups don't jump when ZIPs enter the data">
-            <input type="checkbox" checked={balanced} onChange={(e) => setBalanced(e.target.checked)} />
+          </Box>
+          <Box sx={{ width: 224 }}>
+            <Box component="label" sx={fieldLabelSx}>Show as</Box>
+            <Select options={MEASURES} value={MEASURES.find((m) => m.value === measure)} onChange={(o) => setMeasure(o.value)} styles={selectStyles} />
+          </Box>
+          <Box component="label" sx={{ display: "flex", alignItems: "center", gap: 1, fontSize: "0.875rem", color: "gray.700", pb: 1 }} title="Average only ZIPs observed in every month of the range, so groups don't jump when ZIPs enter the data">
+            <Checkbox size="small" sx={{ p: 0 }} checked={balanced} onChange={(e) => setBalanced(e.target.checked)} />
             Only ZIPs with complete history
-          </label>
-        </div>
+          </Box>
+        </Paper>
 
         {balanced && result.droppedZips > 0 && (
-          <div className="text-xs text-gray-500">
+          <Typography variant="caption" sx={{ color: "gray.500" }}>
             {result.droppedZips} ZIPs left out because they're missing months in this range ({result.zipsUsed} used). Narrow the date range to include more.
-          </div>
+          </Typography>
         )}
         {!censusLoaded && (
-          <div className="text-xs text-gray-500">Census measures (income, distance to downtown, new construction) appear in the Measure list once they finish loading.</div>
+          <Typography variant="caption" sx={{ color: "gray.500" }}>Census measures (income, distance to downtown, new construction) appear in the Measure list once they finish loading.</Typography>
         )}
 
         {result.summary.length === 0 ? (
-          <div className="p-8 text-center text-gray-400 bg-white border border-gray-200 rounded-lg">No data matches these filters.</div>
+          <Paper variant="outlined" sx={{ ...cardSx, p: 4, textAlign: "center", color: "gray.400" }}>No data matches these filters.</Paper>
         ) : (
           <>
-            <div className="bg-white border border-gray-200 rounded-lg p-6">
-              <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-                <h3 className="text-md font-bold text-gray-800">
+            <Paper variant="outlined" sx={{ ...cardSx, p: 3 }}>
+              <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 1.5, mb: 1.5 }}>
+                <Typography variant="h3" sx={{ fontWeight: 700, color: "gray.800" }}>
                   {columnLabel(metric)} by {GROUP_LEVELS.find((g) => g.value === groupBy).label.toLowerCase()}
-                </h3>
+                </Typography>
                 {groupBy !== "market" && (
                   <Select
                     isMulti
-                    className="min-w-[280px] max-w-xl text-sm"
+                    styles={{ container: (base) => ({ ...base, minWidth: 280, maxWidth: 576, fontSize: "0.875rem" }) }}
                     options={sortedSummary.map((s) => ({ value: s.group, label: s.group }))}
                     value={groups.map((g) => ({ value: g, label: g }))}
                     onChange={(opts) => setShownGroups((opts ?? []).slice(0, MAX_LINES).map((o) => o.value))}
                     placeholder="Choose lines to show"
                   />
                 )}
-              </div>
+              </Box>
               <ResponsiveContainer width="100%" height={380}>
                 <LineChart data={chartRows} margin={{ top: 10, right: 30, bottom: 10, left: 10 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="month" stroke="#6b7280" tick={{ fontSize: 11 }} minTickGap={24} />
-                  <YAxis tickFormatter={yFormatter} stroke="#6b7280" tick={{ fontSize: 11 }} domain={["auto", "auto"]} width={70} />
+                  <XAxis dataKey="month" stroke="#6b7280" tick={{ fontSize: 13 }} minTickGap={24} />
+                  <YAxis tickFormatter={yFormatter} stroke="#6b7280" tick={{ fontSize: 13 }} domain={["auto", "auto"]} width={70} />
                   {measure === "yoy" && <ReferenceLine y={0} stroke="#9ca3af" />}
                   {measure === "index" && <ReferenceLine y={100} stroke="#9ca3af" />}
                   <Tooltip formatter={(v) => (v == null ? "—" : yFormatter(v))} />
@@ -179,61 +190,62 @@ export default function DataExplorer({ rows, onBack, censusLoaded = false }) {
                   ))}
                 </LineChart>
               </ResponsiveContainer>
-              <p className="text-xs text-gray-400 mt-1">
+              <Typography variant="caption" component="p" sx={{ color: "gray.400", mt: 0.5 }}>
                 Each line is the average across the group's ZIPs in that month. Pick up to {MAX_LINES} lines.
-              </p>
-            </div>
+              </Typography>
+            </Paper>
 
-            <div className="bg-white border border-gray-200 rounded-lg p-6">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-md font-bold text-gray-800">Peak and change, {result.months[0]} to {result.months[result.months.length - 1]}</h3>
-                <button onClick={exportSummary} className="px-3 py-1.5 text-sm font-semibold rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50">📥 Export table</button>
-              </div>
-              <div className="overflow-x-auto max-h-[520px] overflow-y-auto">
-                <table className="w-full text-sm">
-                  <thead className="sticky top-0 bg-white">
-                    <tr className="text-left text-xs uppercase tracking-wider text-gray-500 border-b border-gray-200">
+            <Paper variant="outlined" sx={{ ...cardSx, p: 3 }}>
+              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1.5 }}>
+                <Typography variant="h3" sx={{ fontWeight: 700, color: "gray.800" }}>Peak and change, {result.months[0]} to {result.months[result.months.length - 1]}</Typography>
+                <Button variant="outlined" onClick={exportSummary} sx={outlineButtonSx}>📥 Export table</Button>
+              </Box>
+              <Box sx={{ overflowX: "auto", maxHeight: 520, overflowY: "auto" }}>
+                <Box component="table" sx={{ width: "100%", fontSize: "0.875rem", borderCollapse: "collapse" }}>
+                  <Box component="thead" sx={{ position: "sticky", top: 0, bgcolor: "common.white" }}>
+                    <Box component="tr" sx={{ textAlign: "left", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "gray.500", borderBottom: 1, borderColor: "gray.200" }}>
                       {SUMMARY_COLUMNS.map((c) => (
-                        <th key={c.key} onClick={() => toggleSort(c.key)}
-                            className={`py-2 pr-4 font-semibold cursor-pointer select-none hover:text-gray-800 ${c.numeric ? "text-right" : ""}`}>
+                        <Box component="th" key={c.key} onClick={() => toggleSort(c.key)}
+                            sx={{ py: 1, pr: 2, fontWeight: 600, cursor: "pointer", userSelect: "none", textAlign: c.numeric ? "right" : "left", "&:hover": { color: "gray.800" } }}>
                           {c.label}{sort.key === c.key ? (sort.dir === "desc" ? " ▼" : " ▲") : ""}
-                        </th>
+                        </Box>
                       ))}
-                      {NEXT_LEVEL[groupBy] && <th className="py-2" />}
-                    </tr>
-                  </thead>
+                      {NEXT_LEVEL[groupBy] && <Box component="th" sx={{ py: 1 }} />}
+                    </Box>
+                  </Box>
                   <tbody>
                     {sortedSummary.map((s) => (
-                      <tr key={s.group} className="border-b border-gray-100 hover:bg-gray-50">
+                      <Box component="tr" key={s.group} sx={{ borderBottom: 1, borderColor: "gray.100", "&:hover": { bgcolor: "gray.50" } }}>
                         {SUMMARY_COLUMNS.map((c) => {
                           const v = s[c.key];
                           const text = c.fmt === "num" ? fmtNum(v, metric) : c.fmt === "pct" ? fmtPct(v) : v;
-                          const tone = c.fmt === "pct" && Number.isFinite(v) ? (v < 0 ? "text-red-600" : v > 0 ? "text-emerald-700" : "") : "";
+                          const tone = c.fmt === "pct" && Number.isFinite(v) ? (v < 0 ? { color: "red.600" } : v > 0 ? { color: "emerald.700" } : {}) : {};
                           return (
-                            <td key={c.key} className={`py-1.5 pr-4 ${c.numeric ? "text-right tabular-nums" : ""} ${c.key === "group" ? "font-medium text-gray-900" : "text-gray-700"} ${tone}`}>
+                            <Box component="td" key={c.key}
+                                 sx={{ py: 0.75, pr: 2, ...(c.numeric && { textAlign: "right", fontVariantNumeric: "tabular-nums" }), ...(c.key === "group" ? { fontWeight: 500, color: "gray.900" } : { color: "gray.700" }), ...tone }}>
                               {text}
-                            </td>
+                            </Box>
                           );
                         })}
                         {NEXT_LEVEL[groupBy] && (
-                          <td className="py-1.5 text-right">
-                            <button onClick={() => drillIn(s.group)} className="text-xs font-semibold text-blue-700 hover:underline whitespace-nowrap">
+                          <Box component="td" sx={{ py: 0.75, textAlign: "right" }}>
+                            <Link component="button" underline="hover" onClick={() => drillIn(s.group)} sx={{ fontSize: "0.75rem", fontWeight: 600, color: "blue.700", whiteSpace: "nowrap" }}>
                               Drill in →
-                            </button>
-                          </td>
+                            </Link>
+                          </Box>
                         )}
-                      </tr>
+                      </Box>
                     ))}
                   </tbody>
-                </table>
-              </div>
-              <p className="text-xs text-gray-400 mt-2">
+                </Box>
+              </Box>
+              <Typography variant="caption" component="p" sx={{ color: "gray.400", mt: 1 }}>
                 Values are levels of {columnLabel(metric).toLowerCase()} averaged across the group's ZIPs. Click a column to sort.
-              </p>
-            </div>
+              </Typography>
+            </Paper>
           </>
         )}
-      </div>
-    </div>
+      </Box>
+    </Box>
   );
 }

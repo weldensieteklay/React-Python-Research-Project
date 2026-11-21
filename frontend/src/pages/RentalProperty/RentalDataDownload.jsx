@@ -1,6 +1,10 @@
 import React, { useState } from "react";
 import axios from "axios";
 import { DFW_METRO, readSavedMetro } from "./useRentMetro";
+import Button from "@mui/material/Button";
+import CircularProgress from "@mui/material/CircularProgress";
+import Stack from "@mui/material/Stack";
+import Typography from "@mui/material/Typography";
 
 // "attachment; filename="austin_tx_rent_panel_with_acs.csv"" -> the file name
 const fileNameFrom = (header, fallback) => /filename="?([^";]+)"?/i.exec(header ?? "")?.[1] ?? fallback;
@@ -61,66 +65,38 @@ const RentalDataDownload = () => {
     };
 
     return (
-        <main className="flex flex-col items-center mt-16 px-6 text-center space-y-6">
-            <h1 className="text-3xl font-bold text-gray-800">Rental Data Download</h1>
-            <p className="text-gray-600 max-w-xl">
+        <Stack component="main" spacing={3} sx={{ alignItems: "center", mt: 8, px: 3, textAlign: "center" }}>
+            <Typography variant="h1" sx={{ fontSize: "1.875rem", fontWeight: 700, color: "gray.800" }}>Rental Data Download</Typography>
+            <Typography sx={{ color: "gray.600", maxWidth: 576 }}>
                 Download the {metro} ZIP-code-level monthly rent panel (Zillow ZORI)
                 with monthly macro indicators, merged with distance to downtown, income,
                 renter share, density and new-construction data from the U.S. Census Bureau
                 (American Community Survey).
-            </p>
+            </Typography>
 
-            <button
+            <Button
+                variant="contained"
                 onClick={handleDownload}
                 disabled={isLoading}
-                className={`px-6 py-3 rounded-lg font-medium text-white transition-colors ${
-                    isLoading
-                        ? "bg-gray-400 cursor-not-allowed"
-                        : "bg-gray-800 hover:bg-gray-700"
-                }`}
+                startIcon={isLoading ? <CircularProgress size={16} color="inherit" /> : null}
+                sx={{ px: 3, py: 1.5, borderRadius: 2, fontWeight: 500, bgcolor: "gray.800", "&:hover": { bgcolor: "gray.700" }, "&.Mui-disabled": { bgcolor: "gray.400", color: "common.white" } }}
             >
-                {isLoading ? (
-                    <span className="flex items-center gap-2">
-                        <svg
-                            className="animate-spin h-4 w-4 text-white"
-                            xmlns="http://www.w3.org/2000/svg"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                        >
-                            <circle
-                                className="opacity-25"
-                                cx="12"
-                                cy="12"
-                                r="10"
-                                stroke="currentColor"
-                                strokeWidth="4"
-                            />
-                            <path
-                                className="opacity-75"
-                                fill="currentColor"
-                                d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-                            />
-                        </svg>
-                        Preparing data…
-                    </span>
-                ) : (
-                    "Download CSV"
-                )}
-            </button>
+                {isLoading ? "Preparing data…" : "Download CSV"}
+            </Button>
 
-            {error && <p className="text-sm text-red-500">{error}</p>}
-            {warning && <p className="text-sm text-amber-600 max-w-md">{warning}</p>}
+            {error && <Typography variant="body2" sx={{ color: "red.500" }}>{error}</Typography>}
+            {warning && <Typography variant="body2" sx={{ color: "amber.600", maxWidth: 448 }}>{warning}</Typography>}
             {success && (
-                <p className="text-sm text-green-600">
+                <Typography variant="body2" sx={{ color: "green.600" }}>
                     Download complete — check your browser's downloads folder.
-                </p>
+                </Typography>
             )}
 
-            <p className="text-xs text-gray-400 max-w-md">
+            <Typography variant="caption" component="p" sx={{ color: "gray.400", maxWidth: 448 }}>
                 This may take a few seconds while data is pulled live from the Census
                 Bureau and merged on the server.
-            </p>
-        </main>
+            </Typography>
+        </Stack>
     );
 };
 

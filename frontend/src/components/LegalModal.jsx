@@ -1,13 +1,42 @@
 import React, { useState, useEffect } from "react";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import Dialog from "@mui/material/Dialog";
+import DialogActions from "@mui/material/DialogActions";
+import DialogContent from "@mui/material/DialogContent";
+import DialogTitle from "@mui/material/DialogTitle";
+import IconButton from "@mui/material/IconButton";
+import Tab from "@mui/material/Tab";
+import Tabs from "@mui/material/Tabs";
+import CloseIcon from "@mui/icons-material/Close";
+
+// Typography for the legal text: section headings, paragraphs, bullet lists and links
+const LegalBody = ({ children }) => (
+    <Box
+        sx={{
+            fontSize: "0.875rem", color: "gray.700", lineHeight: 1.625,
+            "& > * + *": { mt: 2.5 },
+            "& h3": { fontSize: "inherit", fontWeight: 600, color: "gray.800", mt: 0, mb: 0.5 },
+            "& p": { m: 0 },
+            "& p + ul": { mt: 1 },
+            "& ul": { listStyle: "disc", pl: 2.5, my: 0 },
+            "& li + li": { mt: 0.5 },
+            "& b": { fontWeight: 500 },
+            "& a": { color: "inherit", textDecoration: "underline" },
+        }}
+    >
+        {children}
+    </Box>
+);
 
 const TermsContent = () => (
-    <div className="space-y-5 text-sm text-gray-700 leading-relaxed">
-        <p className="text-xs text-gray-400">
+    <LegalBody>
+        <Box component="p" sx={{ fontSize: "0.75rem", color: "gray.400" }}>
             EconWebCast · Owned and operated by WKAM Group LLC, Texas · Version 1.0
-        </p>
+        </Box>
 
         <section>
-            <h3 className="font-semibold text-gray-800 mb-1">1. Acceptance of Terms</h3>
+            <h3>1. Acceptance of Terms</h3>
             <p>
                 By signing in and using EconWebCast (the "Application"), you agree to these
                 Terms of Service and to our Privacy Policy. If you do not agree, please do not
@@ -16,7 +45,7 @@ const TermsContent = () => (
         </section>
 
         <section>
-            <h3 className="font-semibold text-gray-800 mb-1">2. What EconWebCast Does</h3>
+            <h3>2. What EconWebCast Does</h3>
             <p>
                 EconWebCast is a web-based tool that lets you upload your own tabular research
                 data (CSV files) and run statistical and machine-learning models on it. It
@@ -26,14 +55,14 @@ const TermsContent = () => (
         </section>
 
         <section>
-            <h3 className="font-semibold text-gray-800 mb-1">
+            <h3>
                 3. Your Responsibility for Uploaded Data
             </h3>
-            <p className="mb-2">
+            <p>
                 EconWebCast is a public application. It does not screen, vet, or verify the
                 content of any file you upload. By uploading a file, you confirm that:
             </p>
-            <ul className="list-disc pl-5 space-y-1">
+            <ul>
                 <li>
                     You have the right to use and upload that data, and doing so does not
                     violate any agreement, law, or policy that applies to you (including
@@ -52,7 +81,7 @@ const TermsContent = () => (
         </section>
 
         <section>
-            <h3 className="font-semibold text-gray-800 mb-1">4. Data Storage</h3>
+            <h3>4. Data Storage</h3>
             <p>
                 Uploaded files are stored only for the duration of your active session and are
                 used to generate the analysis, statistics, and exports you request.
@@ -60,7 +89,7 @@ const TermsContent = () => (
         </section>
 
         <section>
-            <h3 className="font-semibold text-gray-800 mb-1">5. No Warranty</h3>
+            <h3>5. No Warranty</h3>
             <p>
                 EconWebCast is provided "as is" and "as available," without warranties of any
                 kind, express or implied. We do not guarantee that any method, model, or output
@@ -71,7 +100,7 @@ const TermsContent = () => (
         </section>
 
         <section>
-            <h3 className="font-semibold text-gray-800 mb-1">6. Limitation of Liability</h3>
+            <h3>6. Limitation of Liability</h3>
             <p>
                 To the fullest extent permitted by law, WKAM Group LLC and EconWebCast shall not
                 be liable for any indirect, incidental, or consequential damages, or for any
@@ -80,7 +109,7 @@ const TermsContent = () => (
         </section>
 
         <section>
-            <h3 className="font-semibold text-gray-800 mb-1">7. Acceptable Use</h3>
+            <h3>7. Acceptable Use</h3>
             <p>
                 You agree not to use EconWebCast to upload data you are not authorized to use,
                 to attempt to disrupt or gain unauthorized access to the Application or its
@@ -89,7 +118,7 @@ const TermsContent = () => (
         </section>
 
         <section>
-            <h3 className="font-semibold text-gray-800 mb-1">8. Changes to These Terms</h3>
+            <h3>8. Changes to These Terms</h3>
             <p>
                 EconWebCast is under active development. We may update these Terms from time to
                 time; continued use of the Application after changes take effect constitutes
@@ -98,38 +127,38 @@ const TermsContent = () => (
         </section>
 
         <section>
-            <h3 className="font-semibold text-gray-800 mb-1">9. Contact</h3>
+            <h3>9. Contact</h3>
             <p>
                 Questions about these Terms can be sent to{" "}
-                <a href="mailto:kbretmanna@gmail.com" className="underline">
+                <a href="mailto:kbretmanna@gmail.com">
                     kbretmanna@gmail.com
                 </a>
                 .
             </p>
         </section>
-    </div>
+    </LegalBody>
 );
 
 const PrivacyContent = () => (
-    <div className="space-y-5 text-sm text-gray-700 leading-relaxed">
-        <p className="text-xs text-gray-400">
+    <LegalBody>
+        <Box component="p" sx={{ fontSize: "0.75rem", color: "gray.400" }}>
             EconWebCast · Owned and operated by WKAM Group LLC, Texas · Version 1.0
-        </p>
+        </Box>
 
         <section>
-            <h3 className="font-semibold text-gray-800 mb-1">1. Information We Collect</h3>
-            <ul className="list-disc pl-5 space-y-1">
+            <h3>1. Information We Collect</h3>
+            <ul>
                 <li>
-                    <span className="font-medium">Account information:</span> your name, email
+                    <b>Account information:</b> your name, email
                     address, and profile details provided by Google when you sign in.
                 </li>
                 <li>
-                    <span className="font-medium">Uploaded data:</span> the CSV files and column
+                    <b>Uploaded data:</b> the CSV files and column
                     selections you provide during a session, used solely to run the analysis you
                     request.
                 </li>
                 <li>
-                    <span className="font-medium">Consent record:</span> a record that you agreed
+                    <b>Consent record:</b> a record that you agreed
                     to these Terms and this Privacy Policy, including your account identifier and
                     the date/time of agreement.
                 </li>
@@ -137,7 +166,7 @@ const PrivacyContent = () => (
         </section>
 
         <section>
-            <h3 className="font-semibold text-gray-800 mb-1">2. How We Use Your Information</h3>
+            <h3>2. How We Use Your Information</h3>
             <p>
                 We use this information to authenticate you, run the statistical models and
                 exports you request, and maintain a record that you agreed to our Terms. We do
@@ -146,14 +175,14 @@ const PrivacyContent = () => (
         </section>
 
         <section>
-            <h3 className="font-semibold text-gray-800 mb-1">3. How Long We Keep Data</h3>
-            <ul className="list-disc pl-5 space-y-1">
+            <h3>3. How Long We Keep Data</h3>
+            <ul>
                 <li>
-                    <span className="font-medium">Uploaded CSV files:</span> retained only for
+                    <b>Uploaded CSV files:</b> retained only for
                     the duration of your active session, and not persisted afterward.
                 </li>
                 <li>
-                    <span className="font-medium">Account and consent records:</span> retained
+                    <b>Account and consent records:</b> retained
                     for as long as needed to operate the Application and maintain a record of
                     your agreement to these terms.
                 </li>
@@ -161,7 +190,7 @@ const PrivacyContent = () => (
         </section>
 
         <section>
-            <h3 className="font-semibold text-gray-800 mb-1">4. Where Data Is Stored</h3>
+            <h3>4. Where Data Is Stored</h3>
             <p>
                 Account and consent records are stored using MongoDB Atlas, a managed database
                 provider. The Application backend runs on Render. Data in transit is encrypted
@@ -170,7 +199,7 @@ const PrivacyContent = () => (
         </section>
 
         <section>
-            <h3 className="font-semibold text-gray-800 mb-1">5. Third-Party Services</h3>
+            <h3>5. Third-Party Services</h3>
             <p>
                 We use Google Sign-In for authentication. Your use of Google Sign-In is also
                 subject to Google's own privacy policy. We use Render and MongoDB Atlas as
@@ -179,7 +208,7 @@ const PrivacyContent = () => (
         </section>
 
         <section>
-            <h3 className="font-semibold text-gray-800 mb-1">6. Your Responsibility</h3>
+            <h3>6. Your Responsibility</h3>
             <p>
                 EconWebCast does not screen uploaded files for sensitive or personal information.
                 Please avoid uploading data you are not authorized to share, and use anonymized
@@ -188,7 +217,7 @@ const PrivacyContent = () => (
         </section>
 
         <section>
-            <h3 className="font-semibold text-gray-800 mb-1">7. Changes to This Policy</h3>
+            <h3>7. Changes to This Policy</h3>
             <p>
                 We may update this Privacy Policy as the Application evolves. Continued use of
                 EconWebCast after changes take effect constitutes acceptance of the revised
@@ -197,16 +226,16 @@ const PrivacyContent = () => (
         </section>
 
         <section>
-            <h3 className="font-semibold text-gray-800 mb-1">8. Contact</h3>
+            <h3>8. Contact</h3>
             <p>
                 Questions about this Privacy Policy can be sent to{" "}
-                <a href="mailto:kbretmanna@gmail.com" className="underline">
+                <a href="mailto:kbretmanna@gmail.com">
                     kbretmanna@gmail.com
                 </a>
                 .
             </p>
         </section>
-    </div>
+    </LegalBody>
 );
 
 const LegalModal = ({ isOpen, onClose, initialTab = "terms" }) => {
@@ -216,66 +245,50 @@ const LegalModal = ({ isOpen, onClose, initialTab = "terms" }) => {
         if (isOpen) setActiveTab(initialTab);
     }, [isOpen, initialTab]);
 
-    if (!isOpen) return null;
+    const tabSx = { minHeight: 0, minWidth: 0, p: 0, pb: 0.5, fontSize: "0.875rem", fontWeight: 500, color: "gray.400", "&:hover": { color: "gray.600" }, "&.Mui-selected": { color: "gray.800" } };
 
     return (
-        <div
-            className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
-            onClick={onClose}
+        <Dialog
+            open={isOpen}
+            onClose={onClose}
+            fullWidth
+            maxWidth="md"
+            slotProps={{
+                backdrop: { sx: { bgcolor: "rgba(0,0,0,0.4)" } },
+                paper: { sx: { maxWidth: 672, maxHeight: "85vh", m: 2, borderRadius: 2 } },
+            }}
         >
-            <div
-                className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[85vh] flex flex-col"
-                onClick={(e) => e.stopPropagation()}
-            >
-                {/* Header */}
-                <div className="flex items-center justify-between border-b px-6 py-4">
-                    <div className="flex gap-4">
-                        <button
-                            onClick={() => setActiveTab("terms")}
-                            className={`text-sm font-medium pb-1 border-b-2 transition-colors ${
-                                activeTab === "terms"
-                                    ? "border-gray-800 text-gray-800"
-                                    : "border-transparent text-gray-400 hover:text-gray-600"
-                            }`}
-                        >
-                            Terms of Service
-                        </button>
-                        <button
-                            onClick={() => setActiveTab("privacy")}
-                            className={`text-sm font-medium pb-1 border-b-2 transition-colors ${
-                                activeTab === "privacy"
-                                    ? "border-gray-800 text-gray-800"
-                                    : "border-transparent text-gray-400 hover:text-gray-600"
-                            }`}
-                        >
-                            Privacy Policy
-                        </button>
-                    </div>
-                    <button
-                        onClick={onClose}
-                        aria-label="Close"
-                        className="text-gray-400 hover:text-gray-600 text-xl leading-none"
-                    >
-                        ×
-                    </button>
-                </div>
+            {/* Header */}
+            <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: 1, borderColor: "gray.200", px: 3, py: 2 }}>
+                <Tabs
+                    value={activeTab}
+                    onChange={(_, tab) => setActiveTab(tab)}
+                    sx={{ minHeight: 0, "& .MuiTabs-flexContainer": { gap: 2 }, "& .MuiTabs-indicator": { bgcolor: "gray.800" } }}
+                >
+                    <Tab value="terms" label="Terms of Service" disableRipple sx={tabSx} />
+                    <Tab value="privacy" label="Privacy Policy" disableRipple sx={tabSx} />
+                </Tabs>
+                <IconButton onClick={onClose} aria-label="Close" size="small" sx={{ color: "gray.400", "&:hover": { color: "gray.600" } }}>
+                    <CloseIcon fontSize="small" />
+                </IconButton>
+            </DialogTitle>
 
-                {/* Body */}
-                <div className="overflow-y-auto px-6 py-5">
-                    {activeTab === "terms" ? <TermsContent /> : <PrivacyContent />}
-                </div>
+            {/* Body */}
+            <DialogContent sx={{ px: 3, py: 2.5 }}>
+                {activeTab === "terms" ? <TermsContent /> : <PrivacyContent />}
+            </DialogContent>
 
-                {/* Footer */}
-                <div className="border-t px-6 py-3 flex justify-end">
-                    <button
-                        onClick={onClose}
-                        className="text-sm bg-gray-800 text-white px-4 py-2 rounded hover:bg-gray-700"
-                    >
-                        Close
-                    </button>
-                </div>
-            </div>
-        </div>
+            {/* Footer */}
+            <DialogActions sx={{ borderTop: 1, borderColor: "gray.200", px: 3, py: 1.5 }}>
+                <Button
+                    variant="contained"
+                    onClick={onClose}
+                    sx={{ fontSize: "0.875rem", bgcolor: "gray.800", px: 2, py: 1, borderRadius: 1, "&:hover": { bgcolor: "gray.700" } }}
+                >
+                    Close
+                </Button>
+            </DialogActions>
+        </Dialog>
     );
 };
 

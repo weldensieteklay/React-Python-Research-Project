@@ -1,61 +1,74 @@
 import React from "react";
+import Box from "@mui/material/Box";
+import Table from "@mui/material/Table";
+import TableBody from "@mui/material/TableBody";
+import TableCell from "@mui/material/TableCell";
+import TableHead from "@mui/material/TableHead";
+import TableRow from "@mui/material/TableRow";
+import Typography from "@mui/material/Typography";
 
 const SummaryStatisticsTable = ({ stats, showExtended = true }) => {
   if (!stats || stats.length === 0) return null;
 
   return (
-    <div className="w-full mt-6">
-      <h3 className="text-lg font-semibold mb-4 text-center">
+    <Box sx={{ width: "100%", mt: 3 }}>
+      <Typography variant="h3" sx={{ fontSize: "1.125rem", fontWeight: 600, mb: 2, textAlign: "center" }}>
         Summary Statistics
-      </h3>
+      </Typography>
 
-      <table className="w-full border border-gray-300 rounded">
-        <thead className="bg-gray-100">
-          <tr>
-            <th className="p-2 border">Variable</th>
-            <th className="p-2 border">Type</th>
+      <Table
+        sx={{
+          width: "100%", border: 1, borderColor: "gray.300",
+          "& .MuiTableCell-root": { border: 1, borderColor: "gray.200", p: 1, fontSize: "inherit" },
+          "& .MuiTableCell-body": { textAlign: "center" },
+        }}
+      >
+        <TableHead sx={{ bgcolor: "gray.100" }}>
+          <TableRow sx={{ "& .MuiTableCell-root": { fontWeight: 700, textAlign: "center" } }}>
+            <TableCell>Variable</TableCell>
+            <TableCell>Type</TableCell>
 
-            {showExtended && <th className="p-2 border">Average (All)</th>}
-            {showExtended && <th className="p-2 border">Average (Non-Missing)</th>}
+            {showExtended && <TableCell>Average (All)</TableCell>}
+            {showExtended && <TableCell>Average (Non-Missing)</TableCell>}
 
-            <th className="p-2 border">Missing</th>
+            <TableCell>Missing</TableCell>
 
-            <th className="p-2 border">
+            <TableCell>
               Statistic
-            </th>
-          </tr>
-        </thead>
+            </TableCell>
+          </TableRow>
+        </TableHead>
 
-        <tbody>
+        <TableBody>
           {stats.map((stat) => (
-            <tr key={stat.column}>
-              <td className="border p-2 text-center">
+            <TableRow key={stat.column}>
+              <TableCell>
                 {stat.column}
-              </td>
+              </TableCell>
 
-              <td className="border p-2 text-center">
+              <TableCell>
                 {stat.type}
-              </td>
+              </TableCell>
 
               {showExtended && (
                 <>
-                  <td className="border p-2 text-center">
+                  <TableCell>
                     {stat.averageAll ?? "-"}
-                  </td>
+                  </TableCell>
 
-                  <td className="border p-2 text-center">
+                  <TableCell>
                     {stat.averageNonMissing ?? "-"}
-                  </td>
+                  </TableCell>
                 </>
               )}
 
-              <td className="border p-2 text-center">
+              <TableCell>
                 {stat.missingCount}
-              </td>
+              </TableCell>
 
-              <td className="border p-2">
+              <TableCell sx={{ "&&": { textAlign: "left" } }}>
                 {stat.type === "Numeric" ? (
-                      <div className="flex flex-col items-center text-center">
+                  <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
                     <div>
                       <strong>Mean:</strong> {stat.mean}
                     </div>
@@ -63,29 +76,29 @@ const SummaryStatisticsTable = ({ stats, showExtended = true }) => {
                     <div>
                       <strong>Std. Error:</strong> {stat.standardError}
                     </div>
-                  </div>
+                  </Box>
                 ) : (
-                  <div className="space-y-1">
+                  <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
                     {Object.entries(stat.frequencies).map(([value, info]) => (
-                      <div
+                      <Box
                         key={value}
-                        className="flex justify-between border-b last:border-b-0 py-1"
+                        sx={{ display: "flex", justifyContent: "space-between", borderBottom: 1, borderColor: "gray.200", py: 0.5, "&:last-of-type": { borderBottom: 0 } }}
                       >
                         <span>{value}</span>
 
                         <span>
                           {info.count} ({info.percentage}%)
                         </span>
-                      </div>
+                      </Box>
                     ))}
-                  </div>
+                  </Box>
                 )}
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
-    </div>
+        </TableBody>
+      </Table>
+    </Box>
   );
 };
 

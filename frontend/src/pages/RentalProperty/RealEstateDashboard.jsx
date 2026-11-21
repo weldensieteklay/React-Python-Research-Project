@@ -3,6 +3,15 @@ import { useFetchData } from "../../hooks/useFetchData";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
+import Box from "@mui/material/Box";
+import ButtonBase from "@mui/material/ButtonBase";
+import Link from "@mui/material/Link";
+import Paper from "@mui/material/Paper";
+import Typography from "@mui/material/Typography";
+
+const panelSx = { border: 1, borderColor: "gray.200", borderRadius: 1 };
+const dashedSx = { border: "1px dashed", borderColor: "gray.300", borderRadius: 1 };
+const heading4Sx = { fontSize: "0.875rem", fontWeight: 600, mb: 1 };
 
 const PHASE_BANDS = [
   { label: "Recession", min: 0, max: 20, color: "#dc2626" },
@@ -19,16 +28,16 @@ function phaseColor(phase) {
 function CycleScoreGauge({ score }) {
   if (score == null) return null;
   return (
-    <div className="relative h-4 rounded-full overflow-hidden flex">
+    <Box sx={{ position: "relative", height: 16, borderRadius: 999, overflow: "hidden", display: "flex" }}>
       {PHASE_BANDS.map((b) => (
         <div key={b.label} style={{ width: `${b.max - b.min}%`, backgroundColor: b.color }} />
       ))}
-      <div
-        className="absolute top-[-4px] w-1 h-6 bg-black rounded"
+      <Box
+        sx={{ position: "absolute", top: "-4px", width: 4, height: 24, bgcolor: "common.black", borderRadius: 0.5 }}
         style={{ left: `calc(${Math.min(Math.max(score, 0), 100)}% - 2px)` }}
         title={`Cycle Score: ${score}`}
       />
-    </div>
+    </Box>
   );
 }
 
@@ -41,114 +50,118 @@ function CycleScorePanel({ cycleScore }) {
     coverage_note, missing_indicators = [], indicator_breakdown = [],
   } = cycleScore;
 
+  const cell = { px: 1.5, py: 0.75 };
   return (
-    <div className="mb-6 border border-gray-200 rounded-lg p-4 bg-white">
-      <div className="flex items-center justify-between flex-wrap gap-3">
+    <Paper variant="outlined" sx={{ mb: 3, borderColor: "gray.200", borderRadius: 2, p: 2 }}>
+      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 1.5 }}>
         <div>
-          <div className="text-xs uppercase tracking-wide text-gray-500">Cycle Score</div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-4xl font-bold" style={{ color: phaseColor(phase) }}>
+          <Box sx={{ fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.025em", color: "gray.500" }}>Cycle Score</Box>
+          <Box sx={{ display: "flex", alignItems: "baseline", gap: 1 }}>
+            <Box component="span" sx={{ fontSize: "2.25rem", fontWeight: 700 }} style={{ color: phaseColor(phase) }}>
               {cycle_score ?? "—"}
-            </span>
-            <span className="text-sm text-gray-500">/ 100</span>
-          </div>
-          <div
-            className="inline-block mt-1 px-2 py-0.5 rounded text-xs font-medium text-white"
+            </Box>
+            <Box component="span" sx={{ fontSize: "0.875rem", color: "gray.500" }}>/ 100</Box>
+          </Box>
+          <Box
+            sx={{ display: "inline-block", mt: 0.5, px: 1, py: 0.25, borderRadius: 1, fontSize: "0.75rem", fontWeight: 500, color: "common.white" }}
             style={{ backgroundColor: phaseColor(phase) }}
           >
             {phase || "Unknown"}
-          </div>
+          </Box>
         </div>
 
-        <div className="text-right text-sm text-gray-600">
+        <Box sx={{ textAlign: "right", fontSize: "0.875rem", color: "gray.600" }}>
           <div>
-            Based on <span className="font-medium">{indicators_used}</span> of{" "}
-            <span className="font-medium">{indicators_in_methodology}</span> methodology indicators
+            Based on <Box component="span" sx={{ fontWeight: 500 }}>{indicators_used}</Box> of{" "}
+            <Box component="span" sx={{ fontWeight: 500 }}>{indicators_in_methodology}</Box> methodology indicators
           </div>
-          <button
+          <Link
+            component="button"
             onClick={() => setExpanded((e) => !e)}
-            className="text-blue-600 underline text-xs mt-1"
+            underline="always"
+            sx={{ color: "blue.600", fontSize: "0.75rem", mt: 0.5 }}
           >
             {expanded ? "Hide breakdown" : "Show breakdown"}
-          </button>
-        </div>
-      </div>
+          </Link>
+        </Box>
+      </Box>
 
-      <div className="mt-4">
+      <Box sx={{ mt: 2 }}>
         <CycleScoreGauge score={cycle_score} />
-        <div className="flex justify-between text-[10px] text-gray-500 mt-1">
+        <Box sx={{ display: "flex", justifyContent: "space-between", fontSize: "12px", color: "gray.500", mt: 0.5 }}>
           {PHASE_BANDS.map((b) => (
             <span key={b.label}>{b.label}</span>
           ))}
-        </div>
-      </div>
+        </Box>
+      </Box>
 
       {coverage_note && (
-        <p className="text-xs text-gray-500 mt-3">{coverage_note}</p>
+        <Typography variant="caption" component="p" sx={{ color: "gray.500", mt: 1.5 }}>{coverage_note}</Typography>
       )}
 
       {expanded && (
-        <div className="mt-4 space-y-4">
+        <Box sx={{ mt: 2, display: "flex", flexDirection: "column", gap: 2 }}>
           <div>
-            <h4 className="text-sm font-semibold mb-2">Indicator Breakdown</h4>
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm border-collapse">
+            <Typography variant="h4" sx={heading4Sx}>Indicator Breakdown</Typography>
+            <Box sx={{ overflowX: "auto" }}>
+              <Box component="table" sx={{ minWidth: "100%", fontSize: "0.875rem", borderCollapse: "collapse", "& th": { ...cell, borderBottom: 1, borderColor: "gray.200" }, "& td": cell, "& tbody tr:not(:last-of-type)": { borderBottom: 1, borderColor: "gray.200" } }}>
                 <thead>
-                  <tr className="bg-gray-50 text-left">
-                    <th className="px-3 py-1.5 border-b">Indicator</th>
-                    <th className="px-3 py-1.5 border-b text-right">Raw Value</th>
-                    <th className="px-3 py-1.5 border-b text-center">Score (0–5)</th>
-                    <th className="px-3 py-1.5 border-b">Note</th>
-                  </tr>
+                  <Box component="tr" sx={{ bgcolor: "gray.50", textAlign: "left" }}>
+                    <th>Indicator</th>
+                    <Box component="th" sx={{ textAlign: "right" }}>Raw Value</Box>
+                    <Box component="th" sx={{ textAlign: "center" }}>Score (0–5)</Box>
+                    <th>Note</th>
+                  </Box>
                 </thead>
                 <tbody>
                   {indicator_breakdown.map((ind) => (
-                    <tr key={ind.key} className="border-b last:border-b-0">
-                      <td className="px-3 py-1.5">{ind.label}</td>
-                      <td className="px-3 py-1.5 text-right font-mono">
+                    <tr key={ind.key}>
+                      <td>{ind.label}</td>
+                      <Box component="td" sx={{ textAlign: "right", fontFamily: "monospace" }}>
                         {typeof ind.raw_value === "object"
                           ? JSON.stringify(ind.raw_value)
                           : ind.raw_value != null
                           ? Number(ind.raw_value).toFixed(2)
                           : "—"}
-                      </td>
-                      <td className="px-3 py-1.5 text-center">
-                        <span
-                          className="inline-block w-6 h-6 leading-6 rounded-full text-white text-xs font-medium"
+                      </Box>
+                      <Box component="td" sx={{ textAlign: "center" }}>
+                        <Box
+                          component="span"
+                          sx={{ display: "inline-block", width: 24, height: 24, lineHeight: "24px", borderRadius: 999, color: "common.white", fontSize: "0.75rem", fontWeight: 500 }}
                           style={{
                             backgroundColor:
                               ind.score >= 4 ? "#16a34a" : ind.score >= 2 ? "#ca8a04" : "#dc2626",
                           }}
                         >
                           {ind.score ?? "—"}
-                        </span>
-                      </td>
-                      <td className="px-3 py-1.5 text-xs text-amber-700">{ind.note || ""}</td>
+                        </Box>
+                      </Box>
+                      <Box component="td" sx={{ fontSize: "0.75rem", color: "amber.700" }}>{ind.note || ""}</Box>
                     </tr>
                   ))}
                 </tbody>
-              </table>
-            </div>
+              </Box>
+            </Box>
           </div>
 
           {missing_indicators.length > 0 && (
             <div>
-              <h4 className="text-sm font-semibold mb-2">
+              <Typography variant="h4" sx={heading4Sx}>
                 Excluded from Score ({missing_indicators.length})
-              </h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              </Typography>
+              <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "repeat(2, minmax(0, 1fr))" }, gap: 1 }}>
                 {missing_indicators.map((m) => (
-                  <div key={m.key} className="border border-dashed border-gray-300 rounded p-2 text-xs">
-                    <div className="font-medium">{m.label}</div>
-                    <div className="text-gray-500 mt-0.5">{m.reason}</div>
-                  </div>
+                  <Box key={m.key} sx={{ ...dashedSx, p: 1, fontSize: "0.75rem" }}>
+                    <Box sx={{ fontWeight: 500 }}>{m.label}</Box>
+                    <Box sx={{ color: "gray.500", mt: 0.25 }}>{m.reason}</Box>
+                  </Box>
                 ))}
-              </div>
+              </Box>
             </div>
           )}
-        </div>
+        </Box>
       )}
-    </div>
+    </Paper>
   );
 }
 
@@ -178,59 +191,61 @@ export default function MacroIndicatorsDashboard() {
     }));
   }, [selectedKey, automated]);
 
-  if (loading) return <div className="p-4 text-gray-500">Loading macro indicators…</div>;
+  if (loading) return <Box sx={{ p: 2, color: "gray.500" }}>Loading macro indicators…</Box>;
   if (error) {
     return (
-      <div className="p-4 text-red-600">
+      <Box sx={{ p: 2, color: "red.600" }}>
         {error}
-        <button onClick={() => handleFetch("data/macro-indicators")} className="ml-3 underline">
+        <Link component="button" underline="always" onClick={() => handleFetch("data/macro-indicators")} sx={{ ml: 1.5, color: "inherit", fontSize: "inherit", verticalAlign: "baseline" }}>
           Retry
-        </button>
-      </div>
+        </Link>
+      </Box>
     );
   }
 
   return (
-    <div className="p-4">
-      <h2 className="text-lg font-semibold mb-1">Harvest Time Capital — Macro Indicators</h2>
-      <p className="text-sm text-gray-500 mb-4">
+    <Box sx={{ p: 2 }}>
+      <Typography variant="h2" sx={{ fontSize: "1.125rem", fontWeight: 600, mb: 0.5 }}>Harvest Time Capital — Macro Indicators</Typography>
+      <Typography variant="body2" sx={{ color: "gray.500", mb: 2 }}>
         {automatedKeys.length} automated indicators · {Object.keys(manualRequired).length} require manual import
-      </p>
+      </Typography>
 
       <CycleScorePanel cycleScore={cycleScore} />
 
       {Object.keys(failures).length > 0 && (
-        <div className="mb-4 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+        <Box sx={{ mb: 2, fontSize: "0.875rem", color: "amber.700", bgcolor: "amber.50", border: 1, borderColor: "amber.200", borderRadius: 1, px: 1.5, py: 1 }}>
           Some sources failed to load: {Object.entries(failures).map(([k, msg]) => `${k} (${msg})`).join(", ")}
-        </div>
+        </Box>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-        <div className="lg:col-span-1 border border-gray-200 rounded overflow-hidden">
+      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "repeat(4, minmax(0, 1fr))" }, gap: 2 }}>
+        <Box sx={{ gridColumn: { lg: "span 1" }, ...panelSx, overflow: "hidden" }}>
           {automatedKeys.map((key) => (
-            <button
+            <ButtonBase
               key={key}
               onClick={() => setSelectedKey(key)}
-              className={`w-full text-left px-3 py-2 text-sm border-b last:border-b-0 ${
-                selectedKey === key ? "bg-blue-50 font-medium" : "hover:bg-gray-50"
-              }`}
+              sx={{
+                display: "block", width: "100%", textAlign: "left", px: 1.5, py: 1, fontSize: "0.875rem",
+                borderBottom: 1, borderColor: "gray.200", "&:last-of-type": { borderBottom: 0 },
+                ...(selectedKey === key ? { bgcolor: "blue.50", fontWeight: 500 } : { "&:hover": { bgcolor: "gray.50" } }),
+              }}
             >
               {automated[key].label}
-              <div className="text-xs text-gray-400">{automated[key].source}</div>
-            </button>
+              <Box sx={{ fontSize: "0.75rem", color: "gray.400" }}>{automated[key].source}</Box>
+            </ButtonBase>
           ))}
-        </div>
+        </Box>
 
-        <div className="lg:col-span-3 border border-gray-200 rounded p-4">
+        <Box sx={{ gridColumn: { lg: "span 3" }, ...panelSx, p: 2 }}>
           {selectedKey && chartData.length > 0 ? (
             <>
-              <h3 className="text-sm font-medium text-gray-700 mb-3">
+              <Typography variant="h3" sx={{ fontSize: "0.875rem", fontWeight: 500, color: "gray.700", mb: 1.5 }}>
                 {automated[selectedKey].label}
-              </h3>
+              </Typography>
               <ResponsiveContainer width="100%" height={320}>
                 <LineChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                  <XAxis dataKey="date" tick={{ fontSize: 13 }} />
                   <YAxis />
                   <Tooltip />
                   <Line type="monotone" dataKey="value" stroke="#2563eb" dot={false} strokeWidth={2} />
@@ -238,38 +253,38 @@ export default function MacroIndicatorsDashboard() {
               </ResponsiveContainer>
             </>
           ) : (
-            <div className="text-sm text-gray-500">Select an indicator.</div>
+            <Box sx={{ fontSize: "0.875rem", color: "gray.500" }}>Select an indicator.</Box>
           )}
-        </div>
-      </div>
+        </Box>
+      </Box>
 
       {automated.credit_conditions_sloos && (
-        <div className="mt-4 border border-gray-200 rounded p-4">
-          <h3 className="text-sm font-medium text-gray-700 mb-2">
+        <Box sx={{ mt: 2, ...panelSx, p: 2 }}>
+          <Typography variant="h3" sx={{ fontSize: "0.875rem", fontWeight: 500, color: "gray.700", mb: 1 }}>
             {automated.credit_conditions_sloos.label}
-          </h3>
-          <p className="text-sm text-gray-600 mb-2">
+          </Typography>
+          <Typography variant="body2" sx={{ color: "gray.600", mb: 1 }}>
             Keyword mentions — tightened: {automated.credit_conditions_sloos.keyword_counts.tightened_mentions},
             {" "}eased: {automated.credit_conditions_sloos.keyword_counts.eased_mentions}
-          </p>
-          <p className="text-xs text-gray-400">{automated.credit_conditions_sloos.note}</p>
-        </div>
+          </Typography>
+          <Typography variant="caption" component="p" sx={{ color: "gray.400" }}>{automated.credit_conditions_sloos.note}</Typography>
+        </Box>
       )}
 
-      <div className="mt-6">
-        <h3 className="text-sm font-semibold mb-2">Requires manual import (no free API)</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <Box sx={{ mt: 3 }}>
+        <Typography variant="h3" sx={{ fontSize: "0.875rem", fontWeight: 600, mb: 1 }}>Requires manual import (no free API)</Typography>
+        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "repeat(2, minmax(0, 1fr))" }, gap: 1.5 }}>
           {Object.entries(manualRequired).map(([key, info]) => (
-            <div key={key} className="border border-dashed border-gray-300 rounded p-3">
-              <div className="font-medium text-sm">{info.label}</div>
-              <div className="text-xs text-gray-500 mt-1">{info.reason}</div>
-              <div className="text-xs text-blue-600 mt-1">
+            <Box key={key} sx={{ ...dashedSx, p: 1.5 }}>
+              <Box sx={{ fontWeight: 500, fontSize: "0.875rem" }}>{info.label}</Box>
+              <Box sx={{ fontSize: "0.75rem", color: "gray.500", mt: 0.5 }}>{info.reason}</Box>
+              <Box sx={{ fontSize: "0.75rem", color: "blue.600", mt: 0.5 }}>
                 Free proxy already tracked: {info.free_substitute_keys.join(", ")}
-              </div>
-            </div>
+              </Box>
+            </Box>
           ))}
-        </div>
-      </div>
-    </div>
+        </Box>
+      </Box>
+    </Box>
   );
 }
