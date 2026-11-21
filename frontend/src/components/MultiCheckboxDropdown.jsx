@@ -1,4 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
+import Box from '@mui/material/Box';
+import ButtonBase from '@mui/material/ButtonBase';
+import Checkbox from '@mui/material/Checkbox';
+import Paper from '@mui/material/Paper';
+import Typography from '@mui/material/Typography';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 
 const MultiCheckboxDropdown = ({ label, options, selected, onToggle, onSelectAll, placeholder, emptyMessage }) => {
     const [open, setOpen] = useState(false);
@@ -23,68 +29,53 @@ const MultiCheckboxDropdown = ({ label, options, selected, onToggle, onSelectAll
                 ? selected[0]
                 : `${selected.length} selected`;
 
-    return (
-        <div className="flex flex-col w-48 relative" ref={containerRef}>
-            <label className="text-sm text-gray-700 mb-1">{label}</label>
+    const optionSx = { display: "flex", alignItems: "center", gap: 1, py: 0.5, px: 0.5, borderRadius: 1, cursor: "pointer", fontSize: "0.875rem", "&:hover": { bgcolor: "gray.50" } };
+    const checkboxSx = { p: 0, flexShrink: 0, color: "gray.400", "&.Mui-checked, &.MuiCheckbox-indeterminate": { color: "blue.500" }, "& .MuiSvgIcon-root": { fontSize: 18 } };
 
-            <button
-                type="button"
+    return (
+        <Box sx={{ display: "flex", flexDirection: "column", width: 192, position: "relative" }} ref={containerRef}>
+            <Typography component="label" variant="body2" sx={{ color: "gray.700", mb: 0.5 }}>{label}</Typography>
+
+            <ButtonBase
                 onClick={() => setOpen((o) => !o)}
-                className="w-full flex items-center justify-between px-3 py-2 border border-gray-300 rounded text-sm bg-white text-left"
+                sx={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", px: 1.5, py: 1, border: 1, borderColor: "gray.300", borderRadius: 1, fontSize: "0.875rem", bgcolor: "common.white", textAlign: "left" }}
             >
-                <span className={`truncate ${selected.length === 0 ? "text-gray-400" : "text-gray-800"}`} title={summary}>
+                <Typography noWrap component="span" variant="body2" sx={{ color: selected.length === 0 ? "gray.400" : "gray.800" }} title={summary}>
                     {summary}
-                </span>
-                <svg
-                    className={`h-4 w-4 shrink-0 ml-2 text-gray-500 transition-transform ${open ? "rotate-180" : ""}`}
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                >
-                    <path
-                        fillRule="evenodd"
-                        d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
-                        clipRule="evenodd"
-                    />
-                </svg>
-            </button>
+                </Typography>
+                <KeyboardArrowDownIcon sx={{ fontSize: 16, flexShrink: 0, ml: 1, color: "gray.500", transition: "transform 150ms", transform: open ? "rotate(180deg)" : "none" }} />
+            </ButtonBase>
 
             {open && (
-                <div className="absolute z-10 top-full left-0 mt-1 w-full bg-white border border-gray-300 rounded shadow-lg max-h-48 overflow-y-auto p-2">
+                <Paper sx={{ position: "absolute", zIndex: 10, top: "100%", left: 0, mt: 0.5, width: "100%", border: 1, borderColor: "gray.300", borderRadius: 1, boxShadow: 6, maxHeight: 192, overflowY: "auto", p: 1 }}>
                     {options.length === 0 ? (
-                        <p className="text-xs text-gray-400 px-1 py-1">{emptyMessage}</p>
+                        <Typography variant="caption" component="p" sx={{ color: "gray.400", p: 0.5 }}>{emptyMessage}</Typography>
                     ) : (
                         <>
-                            <label className="flex items-center gap-2 py-1 px-1 rounded hover:bg-gray-50 cursor-pointer border-b border-gray-200 mb-1 pb-2 font-medium text-gray-700">
-                                <input
-                                    type="checkbox"
+                            <Box component="label" sx={{ ...optionSx, borderBottom: 1, borderColor: "gray.200", mb: 0.5, pb: 1, fontWeight: 500, color: "gray.700" }}>
+                                <Checkbox
                                     checked={allSelected}
-                                    ref={(el) => {
-                                        if (el) el.indeterminate = someSelected;
-                                    }}
+                                    indeterminate={someSelected}
                                     onChange={() => onSelectAll(allSelected)}
-                                    className="h-4 w-4 accent-blue-500 shrink-0"
+                                    sx={checkboxSx}
                                 />
                                 <span>Select All</span>
-                            </label>
+                            </Box>
                             {options.map((col) => (
-                            <label
-                                key={col}
-                                className="flex items-center gap-2 py-1 px-1 rounded hover:bg-gray-50 cursor-pointer"
-                            >
-                                <input
-                                    type="checkbox"
-                                    checked={selected.includes(col)}
-                                    onChange={() => onToggle(col)}
-                                    className="h-4 w-4 accent-blue-500 shrink-0"
-                                />
-                                    <span className="truncate" title={col}>{col}</span>
-                                </label>
+                                <Box component="label" key={col} sx={optionSx}>
+                                    <Checkbox
+                                        checked={selected.includes(col)}
+                                        onChange={() => onToggle(col)}
+                                        sx={checkboxSx}
+                                    />
+                                    <Typography noWrap component="span" variant="body2" title={col}>{col}</Typography>
+                                </Box>
                             ))}
                         </>
                     )}
-                </div>
+                </Paper>
             )}
-        </div>
+        </Box>
     );
 };
 

@@ -1,11 +1,15 @@
 import React from 'react';
-import { HomeIcon } from "@heroicons/react/24/solid";
 import { Link } from 'react-router-dom';
+import Box from '@mui/material/Box';
+import IconButton from '@mui/material/IconButton';
+import Typography from '@mui/material/Typography';
+import HomeIcon from '@mui/icons-material/Home';
 import { useUser } from '../hooks/useUser';
+import { BRAND } from '../theme';
 
 /** EconWebCast mark: rising bars with a trend line, drawn white-on-blue for the blue navbar. */
 const LogoIcon = () => (
-    <svg viewBox="0 0 32 32" className="w-8 h-8 shrink-0" aria-hidden="true">
+    <svg viewBox="0 0 32 32" width="32" height="32" style={{ flexShrink: 0 }} aria-hidden="true">
         <rect width="32" height="32" rx="8" fill="#FFFFFF" />
         <rect x="7" y="17" width="4" height="8" rx="1" fill="#0071CE" fillOpacity="0.55" />
         <rect x="14" y="13" width="4" height="12" rx="1" fill="#0071CE" fillOpacity="0.75" />
@@ -14,30 +18,37 @@ const LogoIcon = () => (
     </svg>
 );
 
+const focusRing = { outline: "none", "&:focus-visible": { boxShadow: "0 0 0 2px #fff" } };
+
 const Navbar = () => {
     const { user } = useUser();
 
     return (
-        <nav className="w-full bg-[#0071CE] border-b border-sky-700 px-4 py-3 text-white flex items-center justify-between">
+        <Box
+            component="nav"
+            sx={{ width: "100%", bgcolor: BRAND, borderBottom: 1, borderColor: "sky.700", px: 2, py: 1.5, color: "common.white", display: "flex", alignItems: "center", justifyContent: "space-between" }}
+        >
             {/* Logo and name, left-aligned; leads to the dashboard when signed in, else the sign-in page */}
-            <Link
+            <Box
+                component={Link}
                 to={user ? "/dashboard" : "/"}
-                className="flex items-center gap-2.5 rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                sx={{ display: "flex", alignItems: "center", gap: 1.25, borderRadius: 1, color: "inherit", textDecoration: "none", ...focusRing }}
             >
                 <LogoIcon />
-                <span className="text-xl font-bold tracking-tight">EconWebCast</span>
-            </Link>
+                <Typography component="span" sx={{ fontSize: "1.25rem", fontWeight: 700, letterSpacing: "-0.025em" }}>EconWebCast</Typography>
+            </Box>
 
             {!!user && (
-                <Link
+                <IconButton
+                    component={Link}
                     to="/dashboard"
-                    className="text-white hover:text-sky-100 rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
                     aria-label="Home"
+                    sx={{ color: "common.white", p: 0.5, "&:hover": { color: "sky.100" }, ...focusRing }}
                 >
-                    <HomeIcon className="h-6 w-6" />
-                </Link>
+                    <HomeIcon />
+                </IconButton>
             )}
-        </nav>
+        </Box>
     );
 };
 

@@ -1,6 +1,7 @@
 import React from 'react';
 import pptxgen from 'pptxgenjs';
-import { ArrowDownTrayIcon } from "@heroicons/react/24/solid";
+import Button from "@mui/material/Button";
+import FileDownloadIcon from "@mui/icons-material/FileDownload";
 
 const TREE_MODELS = [
     "RANDOM_FOREST", "GRADIENT_BOOSTING", "BAGGING",
@@ -483,22 +484,21 @@ const DownloadPptxButton = ({
     title = "Data Analysis",
     filenamePrefix = "model",
     variables = {},
-    className = "",
+    sx,
     label = "Download as PowerPoint",
 }) => {
     if (!result) return null;
 
     return (
-        <button
+        <Button
+            variant="contained"
+            color="success"
             onClick={() => buildResultPptx(result, { title, variables, filenamePrefix })}
-            className={
-                className ||
-                "flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm rounded hover:bg-emerald-700"
-            }
+            startIcon={<FileDownloadIcon fontSize="small" />}
+            sx={[{ fontSize: "0.875rem", fontWeight: 400, px: 2, py: 1, borderRadius: 1 }, ...(Array.isArray(sx) ? sx : [sx])]}
         >
-            <ArrowDownTrayIcon className="h-4 w-4" />
             {label}
-        </button>
+        </Button>
     );
 };
 

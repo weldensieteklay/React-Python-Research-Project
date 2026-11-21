@@ -1,15 +1,17 @@
 import React from "react";
+import IconButton from "@mui/material/IconButton";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 
-/** Top-left "←" back button used on every full-screen page. */
+/** Top-left back button used on every full-screen page. */
 export default function BackButton({ onClick, label = "Back" }) {
   return (
-    <button
+    <IconButton
       onClick={onClick}
       aria-label={label}
       title={label}
-      className="shrink-0 inline-flex items-center justify-center w-10 h-10 -ml-2 rounded-full text-2xl leading-none text-gray-700 hover:bg-gray-200 hover:text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+      sx={{ flexShrink: 0, ml: -1, color: "gray.700", "&:hover": { bgcolor: "gray.200", color: "gray.900" } }}
     >
-      ←
-    </button>
+      <ArrowBackIcon />
+    </IconButton>
   );
 }

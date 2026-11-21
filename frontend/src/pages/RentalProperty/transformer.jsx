@@ -15,7 +15,7 @@ const RATE_COLUMNS = [
 // ===========================================================================
 export function buildZoriGridProps({ rows, forecastMonths = new Set() }) {
     const pinnedCols = [
-        { headerName: "ZIP Code", field: "zip_code", pinned: "left", width: 110, cellClass: "font-mono font-medium", filter: "agTextColumnFilter" },
+        { headerName: "ZIP Code", field: "zip_code", pinned: "left", width: 110, cellStyle: { fontFamily: "monospace", fontWeight: 500 }, filter: "agTextColumnFilter" },
         { headerName: "City", field: "City", pinned: "left", width: 150, filter: "agTextColumnFilter" },
         { headerName: "County", field: "county", pinned: "left", width: 150, filter: "agTextColumnFilter" },
         {
@@ -24,7 +24,8 @@ export function buildZoriGridProps({ rows, forecastMonths = new Set() }) {
             pinned: "left",
             width: 110,
             sort: "desc",
-            cellClass: (params) => forecastMonths.has(params.value) ? "zori-cell-forecast font-medium" : "font-medium"
+            cellStyle: { fontWeight: 500 },
+            cellClass: (params) => (forecastMonths.has(params.value) ? "zori-cell-forecast" : undefined),
         },
     ];
 
@@ -35,7 +36,9 @@ export function buildZoriGridProps({ rows, forecastMonths = new Set() }) {
             width: 210,
             type: "leftAligned",
             valueFormatter: currencyFormatter,
-            cellClass: (params) => params.data?.is_forecast ? "zori-cell-forecast font-semibold text-base text-emerald-700" : "font-semibold text-base",
+            // Forecast cells also get the zori-cell-forecast colour (emerald) from ZORI_GRID_STYLES
+            cellStyle: { fontWeight: 600, fontSize: "1rem" },
+            cellClass: (params) => (params.data?.is_forecast ? "zori-cell-forecast" : undefined),
         },
         {
             headerName: "Real GDP ($B)",

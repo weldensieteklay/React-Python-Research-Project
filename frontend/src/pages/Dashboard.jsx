@@ -1,10 +1,19 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useState } from "react";
 import { dashboardRoute } from "../constants/constants";
 import { useNavigate } from "react-router-dom";
 import { useUser } from "../hooks/useUser";
 import GuidePanel from "../guideMe/GuidePanel";
 import { guideContent } from "../guideMe/Guidecontent";
 import ProductPreview from "./ProductPreview";
+import Avatar from "@mui/material/Avatar";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import Menu from "@mui/material/Menu";
+import MenuItem from "@mui/material/MenuItem";
+import Paper from "@mui/material/Paper";
+import Typography from "@mui/material/Typography";
+import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
+import { BRAND, BRAND_DARK } from "../theme";
 
 // Emails allowed to see the Real Estate Dashboard card.
 // Keep this in sync with the allowlist in AppRoutes.jsx.
@@ -19,62 +28,48 @@ const DESCRIPTIONS = {
     realEstateData: "Macroeconomic indicators and the real estate cycle score.",
 };
 
-function UserMenu({ user, onLogout }) {
-    const [open, setOpen] = useState(false);
-    const ref = useRef(null);
+// Fixed width shared by the button and the dropdown so they line up
+const MENU_WIDTH = 224;
 
-    // Close when clicking outside the menu or pressing Escape
-    useEffect(() => {
-        if (!open) return undefined;
-        const onClick = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-        const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
-        document.addEventListener("mousedown", onClick);
-        document.addEventListener("keydown", onKey);
-        return () => {
-            document.removeEventListener("mousedown", onClick);
-            document.removeEventListener("keydown", onKey);
-        };
-    }, [open]);
+function UserMenu({ user, onLogout }) {
+    const [anchorEl, setAnchorEl] = useState(null);
+    const open = Boolean(anchorEl);
 
     const name = user?.given_name || user?.name || "there";
     const initial = name.charAt(0).toUpperCase();
 
-    // Fixed width (w-56) shared by the button and the dropdown so they line up
     return (
-        <div ref={ref} className="relative w-56">
-            <button
-                type="button"
-                onClick={() => setOpen((o) => !o)}
+        <Box sx={{ position: "relative", width: MENU_WIDTH }}>
+            <Button
+                onClick={(e) => setAnchorEl(open ? null : e.currentTarget)}
                 aria-haspopup="menu"
                 aria-expanded={open}
-                className="w-full flex items-center gap-3 bg-white rounded-lg shadow-md pl-2 pr-3 py-2 hover:shadow-lg transition-shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0071CE]"
+                fullWidth
+                sx={{ justifyContent: "flex-start", gap: 1.5, bgcolor: "common.white", color: "inherit", borderRadius: 2, boxShadow: 3, pl: 1, pr: 1.5, py: 1, transition: "box-shadow 150ms", "&:hover": { bgcolor: "common.white", boxShadow: 6 } }}
             >
-                <span className="shrink-0 w-9 h-9 rounded-full bg-gray-200 text-gray-700 flex items-center justify-center font-semibold" aria-hidden="true">
+                <Avatar sx={{ width: 36, height: 36, bgcolor: "gray.200", color: "gray.700", fontWeight: 600, fontSize: "1rem" }} aria-hidden="true">
                     {initial}
-                </span>
-                <span className="flex-1 min-w-0 text-left leading-tight">
-                    <span className="block text-sm font-semibold text-gray-800 truncate">{name}</span>
-                </span>
-                <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"
-                    className={`shrink-0 w-5 h-5 text-gray-500 transition-transform ${open ? "rotate-180" : ""}`}>
-                    <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.06l3.71-3.83a.75.75 0 1 1 1.08 1.04l-4.25 4.39a.75.75 0 0 1-1.08 0L5.21 8.27a.75.75 0 0 1 .02-1.06z" clipRule="evenodd" />
-                </svg>
-            </button>
+                </Avatar>
+                <Typography noWrap sx={{ flex: 1, minWidth: 0, textAlign: "left", fontSize: "0.875rem", fontWeight: 600, color: "gray.800" }}>{name}</Typography>
+                <KeyboardArrowDownIcon sx={{ flexShrink: 0, color: "gray.500", transition: "transform 150ms", transform: open ? "rotate(180deg)" : "none" }} />
+            </Button>
 
-            {open && (
-                <div role="menu" className="absolute left-0 right-0 mt-2 bg-white rounded-lg shadow-lg border border-gray-100 py-2">
-                    <p className="px-4 pb-2 text-xs text-gray-500 truncate border-b border-gray-100" title={user?.email}>{user?.email}</p>
-                    <button
-                        type="button"
-                        role="menuitem"
-                        onClick={onLogout}
-                        className="w-full text-left px-4 py-2 mt-1 text-sm font-medium text-red-600 hover:bg-red-50"
-                    >
-                        Log out
-                    </button>
-                </div>
-            )}
-        </div>
+            <Menu
+                anchorEl={anchorEl}
+                open={open}
+                onClose={() => setAnchorEl(null)}
+                anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+                transformOrigin={{ vertical: "top", horizontal: "left" }}
+                slotProps={{ paper: { sx: { width: MENU_WIDTH, mt: 1, borderRadius: 2, border: 1, borderColor: "gray.100" } } }}
+            >
+                <Typography noWrap variant="caption" component="p" title={user?.email} sx={{ px: 2, pb: 1, color: "gray.500", borderBottom: 1, borderColor: "gray.100" }}>
+                    {user?.email}
+                </Typography>
+                <MenuItem onClick={onLogout} sx={{ mt: 0.5, fontSize: "0.875rem", fontWeight: 500, color: "red.600", "&:hover": { bgcolor: "red.50" } }}>
+                    Log out
+                </MenuItem>
+            </Menu>
+        </Box>
     );
 }
 
@@ -97,10 +92,12 @@ const Dashboard = () => {
     const featured = visibleRoutes.find((r) => r.key === FEATURED_KEY);
     const others = visibleRoutes.filter((r) => r.key !== FEATURED_KEY);
 
+    const cardSx = { bgcolor: "common.white", borderRadius: 3, boxShadow: 3, border: 1, borderColor: "gray.100" };
+
     return (
-        <div className="min-h-screen bg-[#E8EEF5]">
+        <Box sx={{ minHeight: "100vh", bgcolor: "#E8EEF5" }}>
             {/* Top right: user menu */}
-            <div className="absolute top-13 right-6 flex flex-col items-end gap-3 z-10">
+            <Box sx={{ position: "absolute", right: 24, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1.5, zIndex: 10 }}>
                 <UserMenu user={user} onLogout={onLogoutClick} />
                 {/* Guide panel — renders inline below the controls, no overlay */}
                 <GuidePanel
@@ -108,77 +105,80 @@ const Dashboard = () => {
                     onClose={() => setShowGuide(false)}
                     content={guideContent.dashboard}
                 />
-            </div>
+            </Box>
 
-            <main className="flex flex-col items-center pt-[88px] pb-28 px-4">
+            <Box component="main" sx={{ display: "flex", flexDirection: "column", alignItems: "center", pt: "88px", pb: 14, px: 2 }}>
                 {/* Welcome */}
-                <div className="text-center mb-10">
-                    <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">
+                <Box sx={{ textAlign: "center", mb: 5 }}>
+                    <Typography variant="h1" sx={{ fontSize: { xs: "1.875rem", sm: "2.25rem" }, fontWeight: 700, color: "gray.900" }}>
                         Welcome to your dashboard
-                    </h1>
-                    <p className="mt-3 text-lg text-gray-600">
+                    </Typography>
+                    <Typography sx={{ mt: 1.5, fontSize: "1.125rem", color: "gray.600" }}>
                         Analyze the latest rental market insights.
-                    </p>
-                </div>
+                    </Typography>
+                </Box>
 
-                {/* Changed max-w-5xl to max-w-7xl (or max-w-full) */}
-                <div className="w-full max-w-7xl space-y-6">
+                <Box sx={{ width: "100%", maxWidth: 1280, display: "flex", flexDirection: "column", gap: 3 }}>
                     {featured && (
-                        <section
-                            className="bg-white rounded-xl shadow-md border border-gray-100 p-6 sm:p-8"
+                        <Paper
+                            component="section"
+                            elevation={0}
+                            sx={{ ...cardSx, p: { xs: 3, sm: 4 } }}
                             aria-labelledby="featured-title"
                         >
-                            <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+                            <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 2, mb: 3 }}>
                                 <div>
-                                    <h2 id="featured-title" className="text-2xl font-bold text-gray-900">
+                                    <Typography variant="h2" id="featured-title" sx={{ fontSize: "1.5rem", fontWeight: 700, color: "gray.900" }}>
                                         {featured.title}
-                                    </h2>
-                                    <p className="mt-1 text-base text-gray-600">
+                                    </Typography>
+                                    <Typography sx={{ mt: 0.5, color: "gray.600" }}>
                                         {DESCRIPTIONS[featured.key]}
-                                    </p>
+                                    </Typography>
                                 </div>
-                                <button
-                                    type="button"
+                                <Button
+                                    variant="contained"
                                     onClick={() => navigate(featured.route)}
-                                    className="px-5 py-2.5 rounded-lg bg-[#0071CE] text-white text-base font-semibold hover:bg-[#005fae] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#0071CE]"
+                                    sx={{ px: 2.5, py: 1.25, borderRadius: 2, bgcolor: BRAND, fontSize: "1rem", fontWeight: 600, "&:hover": { bgcolor: BRAND_DARK } }}
                                 >
                                     Open dashboard
-                                </button>
-                            </div>
+                                </Button>
+                            </Box>
                             <ProductPreview />
-                        </section>
+                        </Paper>
                     )}
 
                     {others.length > 0 && (
-                        <div className={`grid gap-6 ${others.length > 1 ? "md:grid-cols-2" : ""}`}>
+                        <Box sx={{ display: "grid", gap: 3, gridTemplateColumns: others.length > 1 ? { md: "repeat(2, minmax(0, 1fr))" } : undefined }}>
                             {others.map(({ key, title, route }) => (
-                                <section
+                                <Paper
                                     key={key}
-                                    className="bg-white rounded-xl shadow-md border border-gray-100 p-6 flex flex-wrap items-center justify-between gap-4"
+                                    component="section"
+                                    elevation={0}
+                                    sx={{ ...cardSx, p: 3, display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 2 }}
                                 >
                                     <div>
-                                        <h2 className="text-xl font-bold text-gray-900">{title}</h2>
+                                        <Typography variant="h2" sx={{ fontSize: "1.25rem", fontWeight: 700, color: "gray.900" }}>{title}</Typography>
                                         {DESCRIPTIONS[key] && (
-                                            <p className="mt-1 text-base text-gray-600">
+                                            <Typography sx={{ mt: 0.5, color: "gray.600" }}>
                                                 {DESCRIPTIONS[key]}
-                                            </p>
+                                            </Typography>
                                         )}
                                     </div>
-                                    <button
-                                        type="button"
+                                    <Button
+                                        variant="outlined"
                                         onClick={() => navigate(route)}
-                                        className="px-5 py-2.5 rounded-lg border-2 border-[#0071CE] text-[#0071CE] text-base font-semibold hover:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0071CE]"
+                                        sx={{ px: 2.5, py: 1.25, borderRadius: 2, borderWidth: 2, borderColor: BRAND, color: BRAND, fontSize: "1rem", fontWeight: 600, "&:hover": { borderWidth: 2, bgcolor: "blue.50" } }}
                                     >
                                         Open dashboard
-                                    </button>
-                                </section>
+                                    </Button>
+                                </Paper>
                             ))}
-                        </div>
+                        </Box>
                     )}
-                </div>
-            </main>
+                </Box>
+            </Box>
 
-        </div>
+        </Box>
     );
 };
 

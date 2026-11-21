@@ -23,6 +23,19 @@ import RentMap from "./RentMap";
 import BackButton from "./BackButton";
 import { useRentMetro, DFW_METRO } from "./useRentMetro";
 import { RENTAL_DATA_ALLOWED_EMAILS } from '../../constants/constants';
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import ButtonBase from "@mui/material/ButtonBase";
+import Link from "@mui/material/Link";
+import Paper from "@mui/material/Paper";
+import Tab from "@mui/material/Tab";
+import Tabs from "@mui/material/Tabs";
+import Typography from "@mui/material/Typography";
+import { pulse } from "../../theme";
+
+const eyebrowSx = { fontSize: "0.875rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "blue.700" };
+const cardSx = { mb: 3, borderColor: "gray.200", borderRadius: 2 };
+const focusRing = { outline: "none", "&.Mui-focusVisible": { boxShadow: (t) => `0 0 0 2px ${t.palette.blue[500]}` } };
 
 // Where the ← on the rental dashboard goes: the main dashboard (same as the Home icon)
 const MAIN_DASHBOARD_ROUTE = "/dashboard";
@@ -45,66 +58,79 @@ const VIEWS = [
 function ViewPicker({ onOpen }) {
   return (
     // Same card style as the Market research summary above it
-    <section aria-labelledby="explore-title" className="mb-6 bg-white border border-gray-200 rounded-lg px-6 py-5">
-      <div className="text-sm font-semibold uppercase tracking-wider text-blue-700">Data views</div>
-      <h2 id="explore-title" className="text-xl font-bold text-gray-900 mt-1">Explore the rent data</h2>
-      <p className="text-base text-gray-600 mt-1 mb-4">Choose how you'd like to see it.</p>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <Paper component="section" variant="outlined" aria-labelledby="explore-title" sx={{ ...cardSx, px: 3, py: 2.5 }}>
+      <Typography variant="h2" id="explore-title" sx={{ fontSize: "1.25rem", fontWeight: 700, color: "gray.900", mt: 0.5, mb: 2 }}>Explore the rent data</Typography>
+      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, minmax(0, 1fr))" }, gap: 2 }}>
         {VIEWS.map((v) => (
-          <button key={v.id} onClick={() => onOpen(v.id)}
-                  className="flex flex-col text-left rounded-lg border-2 border-gray-200 bg-gray-50 px-4 py-3 transition-colors hover:border-blue-300 hover:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
-            <div className="flex items-center gap-2">
-              <span className="text-2xl" aria-hidden="true">{v.icon}</span>
-              <span className="text-lg font-bold text-gray-900">{v.title}</span>
-            </div>
-            <p className="text-sm text-gray-600 mt-1">{v.text}</p>
-            <p className="text-sm font-semibold mt-auto pt-2 text-blue-700">Open →</p>
-          </button>
+          <ButtonBase key={v.id} onClick={() => onOpen(v.id)}
+                      sx={{ display: "flex", flexDirection: "column", alignItems: "stretch", textAlign: "left", borderRadius: 2, border: 2, borderColor: "gray.200", bgcolor: "gray.50", px: 2, py: 1.5, transition: "border-color 150ms, background-color 150ms", "&:hover": { borderColor: "blue.300", bgcolor: "blue.50" }, ...focusRing }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <Box component="span" sx={{ fontSize: "1.5rem" }} aria-hidden="true">{v.icon}</Box>
+              <Box component="span" sx={{ fontSize: "1.125rem", fontWeight: 700, color: "gray.900" }}>{v.title}</Box>
+            </Box>
+            <Typography variant="body2" sx={{ color: "gray.600", mt: 0.5 }}>{v.text}</Typography>
+            <Typography variant="body2" sx={{ fontWeight: 600, mt: "auto", pt: 1, color: "blue.700" }}>Open →</Typography>
+          </ButtonBase>
         ))}
-      </div>
-    </section>
+      </Box>
+    </Paper>
   );
 }
 
 /** Dashboard card that opens the "What drives rents?" page */
 function DriversCard({ areaName, onOpen }) {
   return (
-    <section aria-labelledby="drivers-card-title" className="mb-6 bg-white border border-gray-200 rounded-lg">
-      <button onClick={onOpen}
-              className="w-full flex flex-col md:flex-row md:items-center justify-between gap-3 text-left px-6 py-4 rounded-lg transition-colors hover:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
-        <div className="min-w-0">
-          <div className="text-sm font-semibold uppercase tracking-wider text-blue-700">Rent drivers</div>
-          <h2 id="drivers-card-title" className="text-xl font-bold text-gray-900 mt-1">What drives rents in {areaName}?</h2>
-          <p className="text-sm text-gray-600 mt-1">
+    <Paper component="section" variant="outlined" aria-labelledby="drivers-card-title" sx={cardSx}>
+      <ButtonBase onClick={onOpen}
+                  sx={{ width: "100%", display: "flex", flexDirection: { xs: "column", md: "row" }, alignItems: { xs: "stretch", md: "center" }, justifyContent: "space-between", gap: 1.5, textAlign: "left", px: 3, py: 2, borderRadius: 2, transition: "background-color 150ms", "&:hover": { bgcolor: "blue.50" }, ...focusRing }}>
+        <Box sx={{ minWidth: 0 }}>
+          <Typography variant="h2" id="drivers-card-title" sx={{ fontSize: "1.25rem", fontWeight: 700, color: "gray.900", mt: 0.5 }}>What drives rents in {areaName}?</Typography>
+          <Typography variant="body2" sx={{ color: "gray.600", mt: 0.5 }}>
             Compare any county with the metro on income, new housing, rental growth, distance to downtown, density and
             mortgage rates, with the research behind each, plus a sample local market report.
-          </p>
-        </div>
-        <span className="shrink-0 text-sm font-semibold text-blue-700">Open →</span>
-      </button>
-    </section>
+          </Typography>
+        </Box>
+        <Box component="span" sx={{ flexShrink: 0, fontSize: "0.875rem", fontWeight: 600, color: "blue.700" }}>Open →</Box>
+      </ButtonBase>
+    </Paper>
   );
 }
 
 /** Full-screen page: ← at the top left, title, optional controls on the right. */
 function DataPage({ title, subtitle, onBack, actions, children }) {
   return (
-    // pb-28: room at the bottom so the last section scrolls clear of the fixed footer
-    <div className="p-6 pb-28 bg-gray-50 min-h-screen">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-4 mb-4 border-b border-gray-200">
-        <div className="flex items-start gap-2">
+    // pb: room at the bottom so the last section scrolls clear of the fixed footer
+    <PageShell>
+      <PageHead>
+        <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1 }}>
           <BackButton onClick={onBack} />
-          <div className="pt-1">
-            <h1 className="text-xl font-bold text-gray-900 tracking-tight">{title}</h1>
-            {subtitle && <p className="text-sm text-gray-500 mt-0.5">{subtitle}</p>}
-          </div>
-        </div>
-        {actions && <div className="flex flex-wrap items-center gap-2 md:justify-end">{actions}</div>}
-      </div>
+          <Box sx={{ pt: 0.5 }}>
+            <PageTitle>{title}</PageTitle>
+            {subtitle && <Typography variant="body2" sx={{ color: "gray.500", mt: 0.25 }}>{subtitle}</Typography>}
+          </Box>
+        </Box>
+        {actions && <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 1, justifyContent: { md: "flex-end" } }}>{actions}</Box>}
+      </PageHead>
       {children}
-    </div>
+    </PageShell>
   );
 }
+
+/** Grey full-height page with room at the bottom to scroll clear of the fixed footer. */
+const PageShell = ({ children }) => (
+  <Box sx={{ p: 3, pb: 14, bgcolor: "gray.50", minHeight: "100vh" }}>{children}</Box>
+);
+
+/** Header row of a page, ruled off from the content below. */
+const PageHead = ({ children }) => (
+  <Box sx={{ display: "flex", flexDirection: { xs: "column", md: "row" }, alignItems: { md: "center" }, justifyContent: "space-between", gap: 1.5, pb: 2, mb: 2, borderBottom: 1, borderColor: "gray.200" }}>
+    {children}
+  </Box>
+);
+
+const PageTitle = ({ children }) => (
+  <Typography variant="h1" sx={{ fontSize: "1.25rem", fontWeight: 700, color: "gray.900", letterSpacing: "-0.025em" }}>{children}</Typography>
+);
 
 const CHART_LEVELS = [
   ["county", "By county"],
@@ -130,13 +156,13 @@ function MetroSelect({ metro, metros, onChoose }) {
   }, [metros, metro]);
   const selected = options.find((o) => o.value === metro) ?? null;
   return (
-    <div className="flex items-center gap-2 w-full md:w-auto">
-      <label htmlFor="metro-select" className="shrink-0 text-sm font-semibold text-gray-600">
+    <Box sx={{ display: "flex", alignItems: "center", gap: 1, width: { xs: "100%", md: "auto" } }}>
+      <Typography component="label" htmlFor="metro-select" variant="body2" sx={{ flexShrink: 0, fontWeight: 600, color: "gray.600" }}>
         <span aria-hidden="true">📍 </span>Metro
-      </label>
+      </Typography>
+      <Box sx={{ width: { xs: "100%", md: 320 }, fontSize: "0.875rem" }}>
       <Select
         inputId="metro-select"
-        className="w-full md:w-80 text-sm"
         classNamePrefix="react-select"
         options={options}
         value={selected}
@@ -148,13 +174,14 @@ function MetroSelect({ metro, metros, onChoose }) {
         formatOptionLabel={(o, { context }) => (
           <span>
             {o.label}
-            {context === "menu" && o.zips ? <span className="text-gray-400"> · {o.zips} ZIPs</span> : null}
+            {context === "menu" && o.zips ? <Box component="span" sx={{ color: "gray.400" }}> · {o.zips} ZIPs</Box> : null}
           </span>
         )}
         menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-        styles={{ menuPortal: (base) => ({ ...base, zIndex: 50 }) }}
+        styles={{ menuPortal: (base) => ({ ...base, zIndex: 1500 }) }}
       />
-    </div>
+      </Box>
+    </Box>
   );
 }
 
@@ -162,30 +189,33 @@ function MetroSelect({ metro, metros, onChoose }) {
 function LocationNote({ match, note, locating }) {
   const near = match?.city ? `${match.city} (${match.zip_code})` : match?.zip_code;
   return (
-    <div aria-live="polite" className="text-sm">
-      {locating && <p className="text-gray-500">Finding your area… allow location access when your browser asks.</p>}
+    <Box aria-live="polite" sx={{ fontSize: "0.875rem" }}>
+      {locating && <Box component="p" sx={{ color: "gray.500" }}>Finding your area… allow location access when your browser asks.</Box>}
       {!locating && match && (
-        <p className="text-gray-500">
+        <Box component="p" sx={{ color: "gray.500" }}>
           Matched to your location{near ? ` near ${near}` : ""}
           {match.metro_zip_count ? ` · ${match.metro_zip_count} ZIP codes` : ""}
-        </p>
+        </Box>
       )}
-      {!locating && note && <p className="text-amber-700">{note}</p>}
-    </div>
+      {!locating && note && <Box component="p" sx={{ color: "amber.700" }}>{note}</Box>}
+    </Box>
   );
 }
 
 function Toggle({ options, value, onChange, size = "md", label }) {
-  const pad = size === "sm" ? "px-3 py-1 text-xs" : "px-4 py-1.5 text-sm";
+  const pad = size === "sm" ? { px: 1.5, py: 0.5, fontSize: "0.75rem" } : { px: 2, py: 0.75, fontSize: "0.875rem" };
   return (
-    <div role="tablist" aria-label={label} className="inline-flex rounded-md border border-gray-300 overflow-hidden bg-white">
+    <Tabs value={value} onChange={(_, v) => onChange(v)} aria-label={label}
+          slotProps={{ indicator: { sx: { display: "none" } } }}
+          sx={{ minHeight: 0, display: "inline-flex", border: 1, borderColor: "gray.300", borderRadius: 1.5, bgcolor: "common.white" }}>
       {options.map(([v, text]) => (
-        <button key={v} role="tab" aria-selected={value === v} onClick={() => onChange(v)}
-                className={`${pad} font-semibold transition-colors border-r last:border-r-0 border-gray-300 ${value === v ? "bg-gray-800 text-white" : "text-gray-700 hover:bg-gray-50"}`}>
-          {text}
-        </button>
+        <Tab key={v} value={v} label={text} disableRipple
+             sx={{ ...pad, minHeight: 0, minWidth: 0, lineHeight: 1.43, fontWeight: 600, textTransform: "none", color: "gray.700", transition: "background-color 150ms",
+                   "&:not(:last-of-type)": { borderRight: 1, borderColor: "gray.300" },
+                   "&:hover": { bgcolor: "gray.50" },
+                   "&.Mui-selected": { bgcolor: "gray.800", color: "common.white" } }} />
       ))}
-    </div>
+    </Tabs>
   );
 }
 
@@ -286,11 +316,12 @@ export default function RentalDashboard() {
   if (page === "research") {
     return <RentDivergenceReport metro={metro} areaName={metroShort(metro)} onBack={back} onTrainForecast={() => go("forecast")} />;
   }
-  if (loading || (!dataIsCurrent && !error)) return <div className="p-8 text-center text-gray-500 font-medium animate-pulse">Loading {metroTitle(metro)} rent data…</div>;
-  if (error) return <div className="p-6 m-4 bg-red-50 border border-red-200 rounded-lg text-red-700">Error: {error}<button onClick={() => handleFetch("data/dfw-zori", { metro })} className="ml-4 font-semibold underline text-red-900">Retry</button>{!isDfw && <button onClick={() => chooseMetro(DFW_METRO)} className="ml-4 font-semibold underline text-red-900">Show Dallas-Fort Worth instead</button>}</div>;
+  const errorLinkSx = { ml: 2, fontSize: "inherit", fontWeight: 600, color: "red.900", verticalAlign: "baseline" };
+  if (loading || (!dataIsCurrent && !error)) return <Box sx={{ p: 4, textAlign: "center", color: "gray.500", fontWeight: 500, ...pulse }}>Loading {metroTitle(metro)} rent data…</Box>;
+  if (error) return <Box sx={{ p: 3, m: 2, bgcolor: "red.50", border: 1, borderColor: "red.200", borderRadius: 2, color: "red.700" }}>Error: {error}<Link component="button" underline="always" onClick={() => handleFetch("data/dfw-zori", { metro })} sx={errorLinkSx}>Retry</Link>{!isDfw && <Link component="button" underline="always" onClick={() => chooseMetro(DFW_METRO)} sx={errorLinkSx}>Show Dallas-Fort Worth instead</Link>}</Box>;
   // ← returns to the screen they came from (the Boom Divergence report); "View forecast" starts over at the dashboard
   if (page === "forecast") return <PanelData initialData={actualRows} onBack={back} onViewForecast={home} />;
-  if (!gridRows.length) return <div className="p-8 text-center text-gray-400">No rent data available yet.</div>;
+  if (!gridRows.length) return <Box sx={{ p: 4, textAlign: "center", color: "gray.400" }}>No rent data available yet.</Box>;
 
   if (page === "map") {
     return (
@@ -340,31 +371,30 @@ export default function RentalDashboard() {
       <DataPage title="Rent data grid" subtitle="Every ZIP code and month. Sort and filter with the column headers."
                 onBack={back}
                 actions={isAllowed && (
-                  <button onClick={handleDownloadCsv} className="px-4 py-1.5 text-sm font-semibold rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-colors">📥 Download CSV</button>
+                  <Button variant="outlined" onClick={handleDownloadCsv} sx={{ px: 2, py: 0.75, fontSize: "0.875rem", fontWeight: 600, borderColor: "gray.300", bgcolor: "common.white", color: "gray.700", "&:hover": { borderColor: "gray.300", bgcolor: "gray.50" } }}>📥 Download CSV</Button>
                 )}>
         {modelReport}
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <Paper variant="outlined" sx={{ borderRadius: 2, borderColor: "gray.200", overflow: "hidden" }}>
           <DataGrid {...zoriGridProps} height={Math.max(500, (typeof window !== "undefined" ? window.innerHeight : 800) - 200)} />
-        </div>
+        </Paper>
       </DataPage>
     );
   }
 
   return (
-    // pb-28: room below Data views so it scrolls clear of the fixed footer
-    <div className="p-6 pb-28 bg-gray-50 min-h-screen">
+    <PageShell>
       {/* Header: ← and the metro on the left, the metro picker on the right */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-4 mb-4 border-b border-gray-200">
-        <div className="flex items-start gap-2 min-w-0">
+      <PageHead>
+        <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1, minWidth: 0 }}>
           <BackButton onClick={() => navigate(MAIN_DASHBOARD_ROUTE)} label="Back to dashboard" />
-          <div className="pt-1 min-w-0">
-            <h1 className="text-xl font-bold text-gray-900 tracking-tight">{metroTitle(metro)} Rental Property Portal</h1>
-            <p className="text-sm text-gray-500 mt-0.5">Zillow Observed Rent Index (ZORI) and macroeconomic indicators</p>
+          <Box sx={{ pt: 0.5, minWidth: 0 }}>
+            <PageTitle>{metroTitle(metro)} Rental Property Portal</PageTitle>
+            <Typography variant="body2" sx={{ color: "gray.500", mt: 0.25 }}>Zillow Observed Rent Index (ZORI) and macroeconomic indicators</Typography>
             <LocationNote match={match} note={note} locating={locating} />
-          </div>
-        </div>
+          </Box>
+        </Box>
         <MetroSelect metro={metro} metros={metroList.data?.metros} onChoose={chooseMetro} />
-      </div>
+      </PageHead>
 
       {/* Boom-divergence research for the metro shown (its own counties and main city) */}
       <BoomDivergenceSummary metro={metro} areaName={metroShort(metro)} onOpenReport={() => go("research")} />
@@ -375,6 +405,6 @@ export default function RentalDashboard() {
       {modelReport}
 
       <ViewPicker onOpen={(id) => { if (id === "map") setMapCounty(null); go(id); }} />
-    </div>
+    </PageShell>
   );
 }

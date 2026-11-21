@@ -2,6 +2,13 @@ import React, { useEffect, useMemo } from "react";
 import { useFetchData } from "../../hooks/useFetchData";
 import { interpretDivergence, coverageText } from "./interpretDivergence";
 import { DFW_METRO } from "./useRentMetro";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import CircularProgress from "@mui/material/CircularProgress";
+import Link from "@mui/material/Link";
+import Paper from "@mui/material/Paper";
+import Skeleton from "@mui/material/Skeleton";
+import Typography from "@mui/material/Typography";
 
 // ===========================================================================
 // Short, plain-language version of the Boom Divergence report for the dashboard.
@@ -25,9 +32,9 @@ const shortMonth = (ym) => {
 
 function MoreLink({ onClick, children = "Want more details? See the full report →" }) {
   return (
-    <button onClick={onClick} className="text-base font-semibold text-blue-700 hover:text-blue-900 hover:underline">
+    <Link component="button" onClick={onClick} underline="hover" sx={{ fontSize: "1rem", fontWeight: 600, color: "blue.700", "&:hover": { color: "blue.900" } }}>
       {children}
-    </button>
+    </Link>
   );
 }
 
@@ -49,70 +56,67 @@ export default function BoomDivergenceSummary({ metro = DFW_METRO, areaName = "D
   );
 
   return (
-    <section className="mb-6 bg-white border border-gray-200 rounded-lg px-6 py-5" aria-labelledby="boom-summary-title">
-      <h2 id="boom-summary-title" className="text-xl font-bold text-gray-900 mt-1">
+    <Paper component="section" variant="outlined" sx={{ mb: 3, borderColor: "gray.200", borderRadius: 2, px: 3, py: 2.5 }} aria-labelledby="boom-summary-title">
+      <Typography variant="h2" id="boom-summary-title" sx={{ fontSize: "1.25rem", fontWeight: 700, color: "gray.900", mt: 0.5 }}>
         Did the 2021–22 rent boom end the same way everywhere in {areaName}?
-      </h2>
+      </Typography>
 
       {(loading || (!data && !error)) && (
-        <div className="mt-3" role="status" aria-live="polite">
-          <div className="flex items-center gap-2 text-sm font-medium text-blue-700">
-            <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-            </svg>
+        <Box sx={{ mt: 1.5 }} role="status" aria-live="polite">
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1, fontSize: "0.875rem", fontWeight: 500, color: "blue.700" }}>
+            <CircularProgress size={16} color="inherit" aria-hidden="true" />
             Loading the summary…
-          </div>
-          <div className="mt-3 space-y-2 animate-pulse" aria-hidden="true">
-            <div className="h-4 bg-gray-200 rounded w-3/4" />
-            <div className="h-3 bg-gray-200 rounded w-full" />
-            <div className="h-3 bg-gray-200 rounded w-5/6" />
-          </div>
-        </div>
+          </Box>
+          <Box sx={{ mt: 1.5, display: "flex", flexDirection: "column", gap: 1 }} aria-hidden="true">
+            <Skeleton variant="rounded" height={16} width="75%" />
+            <Skeleton variant="rounded" height={12} width="100%" />
+            <Skeleton variant="rounded" height={12} width="83%" />
+          </Box>
+        </Box>
       )}
 
       {!loading && unavailable && (
-        <p className="mt-2 text-base text-gray-600">
+        <Typography sx={{ mt: 1, color: "gray.600" }}>
           {data.reason} The map, charts and data grid below still cover every ZIP code in this metro.
-        </p>
+        </Typography>
       )}
 
       {!loading && !unavailable && (error || (data && !report)) && (
-        <div className="mt-2 text-base text-gray-500">
+        <Box sx={{ mt: 1, color: "gray.500" }}>
           The summary isn't available right now.{" "}
-          <button onClick={() => handleFetch(path)} className="font-semibold underline text-gray-700">Try again</button>
-          <span className="mx-2 text-gray-300">|</span>
+          <Button variant="text" disableRipple onClick={() => handleFetch(path)} sx={{ p: 0, minWidth: 0, fontSize: "inherit", fontWeight: 600, textDecoration: "underline", color: "gray.700", verticalAlign: "baseline", "&:hover": { bgcolor: "transparent", textDecoration: "underline" } }}>Try again</Button>
+          <Box component="span" sx={{ mx: 1, color: "gray.300" }}>|</Box>
           <MoreLink onClick={onOpenReport}>Open the full report →</MoreLink>
-        </div>
+        </Box>
       )}
 
       {!loading && !error && report && (
         <>
           {tierLabel && (
-            <p className="mt-2">
-              <span className="inline-block px-2 py-0.5 rounded bg-amber-50 text-amber-800 text-sm font-medium">
+            <Box component="p" sx={{ mt: 1, mb: 0 }}>
+              <Box component="span" sx={{ display: "inline-block", px: 1, py: 0.25, borderRadius: 1, bgcolor: "amber.50", color: "amber.800", fontSize: "0.875rem", fontWeight: 500 }}>
                 {tierLabel} · {data.n_zips} ZIP codes
-              </span>
-            </p>
+              </Box>
+            </Box>
           )}
-          <p className="mt-3 text-lg leading-relaxed text-gray-900 font-medium">{report.verdict?.text}</p>
+          <Typography sx={{ mt: 1.5, fontSize: "1.125rem", lineHeight: 1.625, color: "gray.900", fontWeight: 500 }}>{report.verdict?.text}</Typography>
           {findings.length > 0 && (
-            <ul className="mt-3 space-y-2 list-disc pl-5 marker:text-gray-300">
-              {findings.map((f) => <li key={f} className="text-base text-gray-700 leading-relaxed">{f}</li>)}
-            </ul>
+            <Box component="ul" sx={{ mt: 1.5, mb: 0, listStyle: "disc", pl: 2.5, "& > li + li": { mt: 1 }, "& li::marker": { color: "gray.300" } }}>
+              {findings.map((f) => <Box component="li" key={f} sx={{ color: "gray.700", lineHeight: 1.625 }}>{f}</Box>)}
+            </Box>
           )}
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+          <Box sx={{ mt: 2, display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
             <MoreLink onClick={onOpenReport} />
             {data?.n_zips && (
-              <span className="text-sm text-gray-500 max-w-xl">
+              <Typography component="span" variant="body2" sx={{ color: "gray.500", maxWidth: 576 }}>
                 {coverageText(data) ?? `Based on monthly Zillow rents for ${data.n_zips} ZIP codes.`}
                 {data.panel?.window?.[1] ? ` Rents through ${shortMonth(data.panel.window[1])}` : ""}
                 {data.tier === "full" || !data.tier ? ", plus U.S. Census data." : "."}
-              </span>
+              </Typography>
             )}
-          </div>
+          </Box>
         </>
       )}
-    </section>
+    </Paper>
   );
 }

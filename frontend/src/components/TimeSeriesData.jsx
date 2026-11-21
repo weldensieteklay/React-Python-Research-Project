@@ -5,14 +5,15 @@ import Select from 'react-select';
 import { usePrediction } from '../hooks/usePrediction';
 import PredictionTable from './PredictionTable';
 import LineGraph from './LineGraph';
-import { Link } from 'react-router-dom';
-import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import LoadingOverlay from './LoadingOverlay';
 import DownloadPptxButton from './dowload/DownloadPptxButton';
 import GuidePanel from "../guideMe/GuidePanel";
 import { guideContent } from "../guideMe/Guidecontent";
 import DownloadSummaryStatsPptxButton from './dowload/SummaryStatisticsPptxDowload';
 import UserGuideButton from "../guideMe/UserGuideButton";
+import Box from '@mui/material/Box';
+import Typography from '@mui/material/Typography';
+import { ActionButton, ButtonRow, ControlsCard, EndRow, ErrorNote, Field, FileInput, HeaderButton, PageHeader, Section } from './ui';
 
 const TimeSeriesData = () => {
     const [parsedData, setParsedData] = useState([]);
@@ -186,41 +187,30 @@ const TimeSeriesData = () => {
     return (
 
         <>
-            <div className="w-full px-4 my-6">
-                <div className="relative bg-blue-100 py-3 rounded shadow-sm flex items-center justify-center">
-                    <Link
-                        to="/dashboard"
-                        className="absolute left-4 text-gray-700 hover:text-gray-900"
-                    >
-                        <ArrowLeftIcon className="h-6 w-6" />
-                    </Link>
-                    <h2 className="text-2xl font-semibold text-gray-800">Data Analysis and Prediction</h2>
-                    <div className="absolute right-4 flex items-center gap-2">
-                        <UserGuideButton className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-black text-sm rounded-lg shadow-sm hover:bg-gray-100 transition-colors" />
-                        <button
-                            onClick={() => setShowGuide((o) => !o)}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-white text-black text-sm rounded-lg shadow-sm hover:bg-gray-100 transition-colors"
-                        >
-                            <span className="font-medium">Guide Me</span>
-                        </button>
-                    </div>
-                    {/* Guide panel — inline, no overlay */}
-                    <div className="flex justify-center mt-3">
-                        <GuidePanel
-                            open={showGuide}
-                            onClose={() => setShowGuide(false)}
-                            content={guideContent.timeSeries}
-                        />
-                    </div>
-                </div>
-            </div>
-            <div className="w-full px-4 my-6">
-                <div className="flex justify-center">
-                    <div className="flex flex-wrap justify-center gap-6 p-6 border-2 border-solid border-gray-300 rounded-lg w-full bg-white shadow-sm">
+            <Section>
+                <PageHeader
+                    title="Data Analysis and Prediction"
+                    backTo="/dashboard"
+                    actions={
+                        <>
+                            <UserGuideButton />
+                            <HeaderButton onClick={() => setShowGuide((o) => !o)}>Guide Me</HeaderButton>
+                        </>
+                    }
+                />
+                <Box sx={{ display: "flex", justifyContent: "center", mt: 1.5 }}>
+                    <GuidePanel
+                        open={showGuide}
+                        onClose={() => setShowGuide(false)}
+                        content={guideContent.timeSeries}
+                    />
+                </Box>
+            </Section>
+            <Section>
+                <ControlsCard>
 
-                        <div className="flex flex-col w-48">
-                            <label className="text-sm text-gray-700 mb-1">Upload File</label>
-                            <input type="file" className="px-2 py-[5px] border border-gray-300 rounded bg-white text-sm text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 hover:border-gray-400"
+                        <Field label="Upload File">
+                            <FileInput
                                 accept=".csv"
                                 ref={fileInputRef}
                                 onChange={(e) => {
@@ -230,71 +220,65 @@ const TimeSeriesData = () => {
                                         parseCsvFile(file, onDataParsed);
                                     }
                                 }} />
-                        </div>
+                        </Field>
 
-                        <div className="flex flex-col w-48">
-                            <label className="text-sm text-gray-700 mb-1">Methods</label>
+                        <Field label="Methods">
                             <Select
                                 options={methodOptions}
                                 value={method ? methodOptions.find(opt => opt.value === method) : null}
                                 onChange={(selected) => setMethod(selected.value)}
                                 classNamePrefix="react-select"
-                                className="text-sm"
+                                styles={selectStyles}
                             />
-                        </div>
+                        </Field>
 
-                        <div className="flex flex-col w-48">
-                            <label className="text-sm text-gray-700 mb-1">Date Variable</label>
+                        <Field label="Date Variable">
                             <Select
                                 options={columnOptions}
                                 value={selectedDateColumn ? columnOptions.find(opt => opt.value === selectedDateColumn) : null}
                                 onChange={handleDateColumnChange}
                                 classNamePrefix="react-select"
-                                className="text-sm"
+                                styles={selectStyles}
                             />
                             {isValidDateColumn !== null && (
-                                <p className={`text-xs mt-1 ${isValidDateColumn ? "text-green-600" : "text-red-500"}`}>
+                                <Typography variant="caption" component="p" sx={{ mt: 0.5, color: isValidDateColumn ? "green.600" : "red.500" }}>
                                     {!isValidDateColumn && "Selected column does not contain valid date values."}
-                                </p>
+                                </Typography>
                             )}
-                        </div>
+                        </Field>
 
-                        <div className="flex flex-col w-48">
-                            <label className="text-sm text-gray-700 mb-1">Start Date</label>
+                        <Field label="Start Date">
                             <Select
                                 options={dateOptions}
                                 value={startDate ? dateOptions.find(opt => opt.value === startDate) : null}
                                 onChange={(selected) => setStartDate(selected?.value || "")}
                                 classNamePrefix="react-select"
-                                className="text-sm"
+                                styles={selectStyles}
                             />
-                        </div>
+                        </Field>
 
-                        <div className="flex flex-col w-48">
-                            <label className="text-sm text-gray-700 mb-1">End Date</label>
+                        <Field label="End Date">
                             <Select
                                 options={dateOptions}
                                 value={endDate ? dateOptions.find(opt => opt.value === endDate) : null}
                                 onChange={(selected) => setEndDate(selected?.value || "")}
                                 classNamePrefix="react-select"
-                                className="text-sm"
+                                styles={selectStyles}
                             />
-                        </div>
+                        </Field>
 
 
-                        <div className="flex flex-col w-48">
-                            <label className="text-sm text-gray-700 mb-1">Endogenous Variable</label>
+                        <Field label="Endogenous Variable">
                             <Select
                                 options={columnOptions}
                                 value={selectedEndogenousVar ? columnOptions.find(opt => opt.value === selectedEndogenousVar) : null}
                                 onChange={(selected) => setSelectedEndogenousVar(selected?.value || "")}
                                 classNamePrefix="react-select"
-                                className="text-sm"
+                                styles={selectStyles}
                             />
-                        </div>
+                        </Field>
 
-                        <div className="flex flex-col w-48">
-                            <label className="text-sm text-gray-700 mb-1">Exogenouse Variables</label>
+                        <Field label="Exogenouse Variables">
                             <Select
                                 options={columnOptions}
                                 isMulti
@@ -307,67 +291,53 @@ const TimeSeriesData = () => {
                                     )
                                 }
                                 classNamePrefix="react-select"
-                                className="text-sm"
+                                styles={selectStyles}
                             />
-                        </div>
+                        </Field>
 
-                        <div className="w-full flex flex-wrap justify-center gap-4 mt-6">
-
-
-                            <button
-                                className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                                onClick={() => { handleSummaryStatistics(); setActiveView('summary'); }}
-                            >
+                        <ButtonRow>
+                            <ActionButton onClick={() => { handleSummaryStatistics(); setActiveView('summary'); }}>
                                 Summary Statistics
-                            </button>
-                            <button
-                                className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                                onClick={() => setActiveView('graph')}
-                            >
+                            </ActionButton>
+                            <ActionButton onClick={() => setActiveView('graph')}>
                                 Line Graph
-                            </button>
-                            <button
+                            </ActionButton>
+                            <ActionButton
                                 onClick={() => { onClickPredict(); setActiveView('prediction'); }}
-                                className={`w-40 px-4 py-2 rounded ${isPredictDisabled
-                                    ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                                    : "bg-blue-500 text-white hover:bg-blue-600"
-                                    }`}
                                 disabled={isPredictDisabled}
                             >
                                 Predict
-                            </button>
-                            <button className="w-40 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600" onClick={handleClear}>
+                            </ActionButton>
+                            <ActionButton onClick={handleClear}>
                                 Clear
-                            </button>
-                        </div>
+                            </ActionButton>
+                        </ButtonRow>
 
                         {loading && <LoadingOverlay />}
 
                         {error && activeView != "summary" && (
-                            <div className="w-full text-center text-red-600 bg-red-50 p-2 rounded mt-4">
-                                Something went wrong. Try agin!!
-                            </div>
+                            <ErrorNote>Something went wrong. Try agin!!</ErrorNote>
                         )}
                         {/* Results: Summary Statistics view, now with PPT download */}
                         {activeView === 'summary' && summaryStats.length > 0 && !loading && !error && (
                             <>
-                                <div className="w-full flex justify-end">
+                                <EndRow>
                                     <DownloadSummaryStatsPptxButton
                                         stats={summaryStats}
                                         title="Summary Statistics"
                                         filenamePrefix="summary_statistics"
                                         showExtended={false}
                                     />
-                                </div>
+                                </EndRow>
                                 <SummaryStatisticsTable stats={summaryStats} showExtended={false} />
                             </>
                         )}
 
                         {activeView === "prediction" && result && (
                             <>
-                                <div className="w-full flex justify-end mb-4">
+                                <EndRow sx={{ mb: 2 }}>
                                     <DownloadPptxButton result={result} />
-                                </div>
+                                </EndRow>
 
                                 <PredictionTable result={result} />
                             </>
@@ -380,11 +350,12 @@ const TimeSeriesData = () => {
                                 endogenousColumn={selectedEndogenousVar}
                             />
                         )}
-                    </div>
-                </div>
-            </div>
+                </ControlsCard>
+            </Section>
         </>
     );
 }
 
+
 export default TimeSeriesData;
+const selectStyles = { container: (base) => ({ ...base, fontSize: "0.875rem" }) };

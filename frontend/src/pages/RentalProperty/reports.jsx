@@ -3,6 +3,15 @@ import { METHOD_LABELS, FORECAST_MODE_TEXT, joinList, monthLabel, factorLabel, r
 import AnalysisModal from "./AnalysisModal";
 import { reportToText } from "./interpretDivergence";
 import { interpretModel } from "../../components/interpretModel";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import ButtonBase from "@mui/material/ButtonBase";
+import Paper from "@mui/material/Paper";
+import Typography from "@mui/material/Typography";
+import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
+
+const outlineButtonSx = { px: 2, py: 1, fontSize: "0.875rem", fontWeight: 600, borderRadius: 1.5, borderColor: "gray.300", bgcolor: "common.white", color: "gray.700", "&:hover": { borderColor: "gray.300", bgcolor: "gray.50" }, "&.Mui-disabled": { opacity: 0.5, borderColor: "gray.300", color: "gray.700" } };
+const focusRing = { outline: "none", "&.Mui-focusVisible": { boxShadow: (t) => `0 0 0 2px ${t.palette.emerald[500]}` } };
 
 const TREND_TEXT = {
   log: "Each ZIP's own growth rate is extrapolated (log trend).",
@@ -63,49 +72,45 @@ export function ModelReport({ best, forecastRowCount, reason, onReset, defaultOp
     : null;
 
   return (
-    <section aria-labelledby="model-report-title" className="mb-6 bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+    <Paper component="section" variant="outlined" aria-labelledby="model-report-title" sx={{ mb: 3, borderColor: "gray.200", borderRadius: 2, boxShadow: 1, overflow: "hidden" }}>
       {/* Header: always visible. Clicking the title or the button expands/collapses the details. */}
-      <div className={`flex items-center justify-between gap-3 flex-wrap px-5 py-4 border-l-4 border-l-emerald-500 ${open ? "border-b border-gray-100" : ""}`}>
-        <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls={bodyId}
-                className="text-left min-w-0 flex-1 rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
-          <span className="block text-sm font-semibold uppercase tracking-wider text-emerald-700">Your forecast</span>
-          <span id="model-report-title" className="block text-xl font-bold text-gray-900 mt-0.5">
-            {methodLabel} <span className="font-semibold text-gray-500">({fitText})</span>
-          </span>
+      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1.5, flexWrap: "wrap", px: 2.5, py: 2, borderLeft: 4, borderLeftColor: "emerald.500", ...(open && { borderBottom: 1, borderBottomColor: "gray.100" }) }}>
+        <ButtonBase onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls={bodyId}
+                    sx={{ display: "block", textAlign: "left", minWidth: 0, flex: 1, borderRadius: 1.5, ...focusRing }}>
+          <Box component="span" sx={{ display: "block", fontSize: "0.875rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "emerald.700" }}>Your forecast</Box>
+          <Box component="span" id="model-report-title" sx={{ display: "block", fontSize: "1.25rem", fontWeight: 700, color: "gray.900", mt: 0.25 }}>
+            {methodLabel} <Box component="span" sx={{ fontWeight: 600, color: "gray.500" }}>({fitText})</Box>
+          </Box>
           {!open && (
-            <span className={`block text-sm mt-0.5 truncate ${forecastRowCount > 0 ? "text-gray-600" : "text-amber-800"}`}>
+            <Typography noWrap component="span" variant="body2" sx={{ display: "block", mt: 0.25, color: forecastRowCount > 0 ? "gray.600" : "amber.800" }}>
               {forecastRowCount > 0
                 ? <>Forecast for {info?.periods?.length ? joinList(info.periods.map(monthLabel)) : "the coming months"} · {forecastRowCount.toLocaleString()} ZIP-month forecasts{hasChecks ? " · some things to check" : ""}</>
                 : <>{reason} Showing actual rents only.</>}
-            </span>
+            </Typography>
           )}
-        </button>
-        <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls={bodyId}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-emerald-600 bg-emerald-50 text-emerald-800 text-base font-semibold hover:bg-emerald-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 shrink-0">
+        </ButtonBase>
+        <Button onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls={bodyId}
+                variant="outlined"
+                endIcon={<KeyboardArrowDownIcon sx={{ "&&": { fontSize: 24 }, transition: "transform 150ms", transform: open ? "rotate(180deg)" : "none" }} />}
+                sx={{ flexShrink: 0, px: 2, py: 1, borderRadius: 2, border: 2, borderColor: "emerald.600", bgcolor: "emerald.50", color: "emerald.800", fontSize: "1rem", fontWeight: 600, "&:hover": { border: 2, borderColor: "emerald.600", bgcolor: "emerald.100" } }}>
           {open ? "Hide details" : "Show details"}
-          <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"
-               className={`w-6 h-6 transition-transform ${open ? "rotate-180" : ""}`}>
-            <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.06l3.71-3.83a.75.75 0 1 1 1.08 1.04l-4.25 4.39a.75.75 0 0 1-1.08 0L5.21 8.27a.75.75 0 0 1 .02-1.06z" clipRule="evenodd" />
-          </svg>
-        </button>
-      </div>
+        </Button>
+      </Box>
 
       {/* Details (collapsed by default) */}
       {open && (
-      <div id={bodyId} className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="lg:col-span-2 flex flex-wrap justify-end gap-2">
-          <button type="button" onClick={() => setExplainOpen(true)} disabled={!best?.result}
-                  className="px-4 py-2 text-sm font-semibold rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+      <Box id={bodyId} sx={{ p: 3, display: "grid", gridTemplateColumns: { xs: "1fr", lg: "repeat(2, minmax(0, 1fr))" }, gap: 2 }}>
+        <Box sx={{ gridColumn: { lg: "span 2" }, display: "flex", flexWrap: "wrap", justifyContent: "flex-end", gap: 1 }}>
+          <Button variant="outlined" onClick={() => setExplainOpen(true)} disabled={!best?.result} sx={outlineButtonSx}>
             📝 Explain these results
-          </button>
-          <button type="button" onClick={onReset}
-                  className="px-4 py-2 text-sm font-semibold rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50">
+          </Button>
+          <Button variant="outlined" onClick={onReset} sx={outlineButtonSx}>
             Remove forecast
-          </button>
-        </div>
+          </Button>
+        </Box>
         <ReportSection title="How accurate is it?">
           <p>{basisText}</p>
-          {trend && TREND_TEXT[trend] && <p className="mt-1 text-gray-600">{TREND_TEXT[trend]}</p>}
+          {trend && TREND_TEXT[trend] && <Box component="p" sx={{ mt: 0.5, color: "gray.600" }}>{TREND_TEXT[trend]}</Box>}
         </ReportSection>
 
         <ReportSection title="What's on the dashboard" tone={forecastRowCount > 0 ? "neutral" : "warning"}>
@@ -118,52 +123,52 @@ export function ModelReport({ best, forecastRowCount, reason, onReset, defaultOp
                 {best.config?.rowsUsed ? `, trained on ${best.config.rowsUsed.toLocaleString()} rows` : ""}
                 {filtered ? " (filtered data)" : ""}.
               </p>
-              {info?.mode && FORECAST_MODE_TEXT[info.mode] && <p className="mt-1 text-gray-600">{FORECAST_MODE_TEXT[info.mode]}</p>}
+              {info?.mode && FORECAST_MODE_TEXT[info.mode] && <Box component="p" sx={{ mt: 0.5, color: "gray.600" }}>{FORECAST_MODE_TEXT[info.mode]}</Box>}
             </>
           ) : (
-            <p className="font-medium">{reason} Showing actual ZORI values only.</p>
+            <Box component="p" sx={{ fontWeight: 500 }}>{reason} Showing actual ZORI values only.</Box>
           )}
         </ReportSection>
 
         {top.length > 0 && (
-          <ReportSection title="What the model relied on most" className="lg:col-span-2" note={coefNote}>
-            <ul className="space-y-2 max-w-2xl">
+          <ReportSection title="What the model relied on most" sx={{ gridColumn: { lg: "span 2" } }} note={coefNote}>
+            <Box component="ul" sx={{ display: "flex", flexDirection: "column", gap: 1, maxWidth: 672 }}>
               {top.map((f) => (
-                <li key={f.variable} className="flex items-center gap-4">
-                  <span className="w-60 shrink-0 truncate text-gray-800" title={factorLabel(f.variable)}>{factorLabel(f.variable)}</span>
+                <Box component="li" key={f.variable} sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+                  <Typography noWrap component="span" sx={{ width: 240, flexShrink: 0, fontSize: "inherit", color: "gray.800" }} title={factorLabel(f.variable)}>{factorLabel(f.variable)}</Typography>
                   {isImportance ? (
                     <>
-                      <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-                        <div className="h-2 bg-emerald-600 rounded-full" style={{ width: `${totalImportance ? (Math.abs(f.importance) / totalImportance) * 100 : 0}%` }} />
-                      </div>
-                      <span className="w-12 text-right tabular-nums font-bold text-gray-900">
+                      <Box sx={{ flex: 1, height: 8, bgcolor: "gray.100", borderRadius: 999, overflow: "hidden" }}>
+                        <Box sx={{ height: 8, bgcolor: "emerald.600", borderRadius: 999 }} style={{ width: `${totalImportance ? (Math.abs(f.importance) / totalImportance) * 100 : 0}%` }} />
+                      </Box>
+                      <Box component="span" sx={{ width: 48, textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "gray.900" }}>
                         {totalImportance ? `${((Math.abs(f.importance) / totalImportance) * 100).toFixed(0)}%` : "—"}
-                      </span>
+                      </Box>
                     </>
                   ) : (
-                    <span className="tabular-nums font-mono text-xs text-gray-700">
+                    <Box component="span" sx={{ fontVariantNumeric: "tabular-nums", fontFamily: "monospace", fontSize: "0.75rem", color: "gray.700" }}>
                       β: {Number(f.coefficient).toFixed(3)} · p: {f.pValue != null ? Number(f.pValue).toFixed(4) : "—"}
-                    </span>
+                    </Box>
                   )}
-                </li>
+                </Box>
               ))}
-            </ul>
+            </Box>
           </ReportSection>
         )}
 
         {hasChecks && (
-          <ReportSection title="Things to check" tone="warning" className="lg:col-span-2">
-            <ul className="list-disc pl-5 space-y-1">
+          <ReportSection title="Things to check" tone="warning" sx={{ gridColumn: { lg: "span 2" } }}>
+            <Box component="ul" sx={{ listStyle: "disc", pl: 2.5, "& > li + li": { mt: 0.5 } }}>
               {run.forecastError && <li>Forecast failed: {run.forecastError}</li>}
               {dataWarning && <li>{dataWarning}</li>}
               {warnings.map((w, i) => <li key={i}>{w}</li>)}
               {run.dropped?.length > 0 && (
                 <li>Not estimated (constant within each ZIP, absorbed by the ZIP effect): {run.dropped.map(factorLabel).join(", ")}.</li>
               )}
-            </ul>
+            </Box>
           </ReportSection>
         )}
-      </div>
+      </Box>
       )}
 
       <AnalysisModal
@@ -172,7 +177,7 @@ export function ModelReport({ best, forecastRowCount, reason, onReset, defaultOp
         report={explainReport}
         copyText={explainText}
       />
-    </section>
+    </Paper>
   );
 }
 
@@ -182,16 +187,16 @@ export function ModelReport({ best, forecastRowCount, reason, onReset, defaultOp
 //   <ReportSection title="Things to check" tone="warning" note="Small print">...</ReportSection>
 // ===========================================================================
 const SECTION_TONES = {
-  neutral: "bg-gray-50 border-gray-200 text-gray-800",
-  warning: "bg-amber-50 border-amber-200 text-amber-900",
+  neutral: { bgcolor: "gray.50", borderColor: "gray.200", color: "gray.800" },
+  warning: { bgcolor: "amber.50", borderColor: "amber.200", color: "amber.900" },
 };
 
-export function ReportSection({ title, tone = "neutral", note = null, className = "", children }) {
+export function ReportSection({ title, tone = "neutral", note = null, sx, children }) {
   return (
-    <div className={`rounded-lg border px-4 py-3 text-sm leading-relaxed ${SECTION_TONES[tone] ?? SECTION_TONES.neutral} ${className}`}>
-      <h3 className="text-sm font-bold text-gray-900 mb-1.5">{title}</h3>
+    <Box sx={[{ borderRadius: 2, border: 1, px: 2, py: 1.5, fontSize: "0.875rem", lineHeight: 1.625, ...(SECTION_TONES[tone] ?? SECTION_TONES.neutral) }, ...(Array.isArray(sx) ? sx : [sx])]}>
+      <Typography variant="h3" sx={{ fontSize: "0.875rem", fontWeight: 700, color: "gray.900", mb: 0.75 }}>{title}</Typography>
       {children}
-      {note && <p className="text-xs text-gray-500 mt-2">{note}</p>}
-    </div>
+      {note && <Typography variant="caption" component="p" sx={{ color: "gray.500", mt: 1 }}>{note}</Typography>}
+    </Box>
   );
 }

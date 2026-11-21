@@ -1,6 +1,17 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import Box from "@mui/material/Box";
+import ButtonBase from "@mui/material/ButtonBase";
+import Link from "@mui/material/Link";
+import NativeSelect from "@mui/material/NativeSelect";
+import OutlinedInput from "@mui/material/OutlinedInput";
+import Paper from "@mui/material/Paper";
+import Typography from "@mui/material/Typography";
+import { pulse } from "../../theme";
+
+const cardSx = { borderColor: "gray.200", borderRadius: 2, p: 3 };
+const eyebrowSx = { fontSize: "0.75rem", fontWeight: 600, color: "gray.500", textTransform: "uppercase", letterSpacing: "0.05em" };
 import {
   buildMapData, priceBands, bandFor, radiusFor, monthInfo, monthName, usd, shortCounty, yoyText,
 } from "./rentMapData";
@@ -41,15 +52,15 @@ const TILE_ATTRIBUTION = import.meta.env?.VITE_MAP_ATTRIBUTION
 const DFW_CENTER = [32.85, -97.0];   // first view only; the map then fits the metro's counties
 
 const SIZES = { county: [16, 32], zip: [6, 16], neighbour: [12, 20] };
-const LABEL_FONT = { county: "700 13px system-ui, sans-serif", zip: "600 12px system-ui, sans-serif" };
+const LABEL_FONT = { county: "700 15px system-ui, sans-serif", zip: "600 14px system-ui, sans-serif" };
 
 const MAP_CSS = `
   .rent-map .leaflet-tile-pane { filter: grayscale(1) brightness(1.06) contrast(0.88); }
   .rent-map .leaflet-container { background: #f3f4f6; font: inherit; }
-  .rent-map .leaflet-control-attribution { font-size: 10px; background: rgba(255,255,255,.75); color: #6b7280; }
+  .rent-map .leaflet-control-attribution { font-size: 12px; background: rgba(255,255,255,.75); color: #6b7280; }
   .rent-map .leaflet-control-attribution a { color: #6b7280; }
   .rent-map .leaflet-control-zoom a { width: 36px; height: 36px; line-height: 36px; font-size: 20px; }
-  .rent-map-tip { font-size: 13px; line-height: 1.45; padding: 8px 10px; border-radius: 8px;
+  .rent-map-tip { font-size: 15px; line-height: 1.45; padding: 8px 10px; border-radius: 8px;
     border: 1px solid #e5e7eb; box-shadow: 0 4px 12px rgba(0,0,0,.12); color: #374151; }
   .rent-map-tip b { color: #111827; }
   .rent-map-tip .muted { color: #6b7280; }
@@ -102,24 +113,24 @@ function Legend({ bands, mode }) {
   if (!bands.length) return null;
   return (
     <div>
-      <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Typical rent per month</div>
-      <ul className="space-y-1.5">
+      <Box sx={{ ...eyebrowSx, mb: 1 }}>Typical rent per month</Box>
+      <Box component="ul" sx={{ display: "flex", flexDirection: "column", gap: 0.75 }}>
         {[...bands].reverse().map((b, i, arr) => {
           const r = radiusFor(arr.length - 1 - i, 0, arr.length - 1, 4, 10);
           return (
-            <li key={b.label} className="flex items-center gap-2 text-sm text-gray-700">
-              <span className="inline-flex justify-center w-6 shrink-0">
-                <span className="rounded-full border-2 border-white shadow-sm" style={{ width: r * 2, height: r * 2, background: b.color }} />
-              </span>
-              <span className="tabular-nums">{b.label}</span>
-            </li>
+            <Box component="li" key={b.label} sx={{ display: "flex", alignItems: "center", gap: 1, fontSize: "0.875rem", color: "gray.700" }}>
+              <Box component="span" sx={{ display: "inline-flex", justifyContent: "center", width: 24, flexShrink: 0 }}>
+                <Box component="span" sx={{ borderRadius: 999, border: 2, borderColor: "common.white", boxShadow: 1 }} style={{ width: r * 2, height: r * 2, background: b.color }} />
+              </Box>
+              <Box component="span" sx={{ fontVariantNumeric: "tabular-nums" }}>{b.label}</Box>
+            </Box>
           );
         })}
-      </ul>
-      <p className="text-xs text-gray-500 mt-2">
+      </Box>
+      <Typography variant="caption" component="p" sx={{ color: "gray.500", mt: 1 }}>
         Bigger, darker circle = higher rent.
         {mode === "focus" ? " Circles with a county name are county averages." : ""}
-      </p>
+      </Typography>
     </div>
   );
 }
@@ -388,126 +399,128 @@ export default function RentMap({
   const name = (x) => (listIsCounties ? shortCounty(x.county) : `${x.zip}${x.city ? ` (${x.city})` : ""}`);
 
   if (!rows?.length) {
-    return <div className="border border-gray-200 bg-white rounded-lg p-6 text-sm text-gray-400">No rent data to map.</div>;
+    return <Paper variant="outlined" sx={{ ...cardSx, fontSize: "0.875rem", color: "gray.400" }}>No rent data to map.</Paper>;
   }
 
   const title = mode === "focus" ? `Rent by ZIP code in ${county}` : mode === "zip" ? "Rent by ZIP code" : `Where is rent highest in ${areaName}?`;
 
   return (
-    <div className="rent-map border border-gray-200 bg-white rounded-lg p-6">
+    <Paper variant="outlined" className="rent-map" sx={cardSx}>
       <style>{MAP_CSS}</style>
 
       {/* Title, breadcrumb and month */}
-      <div className="flex flex-col md:flex-row md:items-start justify-between gap-3 mb-4">
+      <Box sx={{ display: "flex", flexDirection: { xs: "column", md: "row" }, alignItems: { md: "flex-start" }, justifyContent: "space-between", gap: 1.5, mb: 2 }}>
         <div>
-          <nav className="text-sm mb-1" aria-label="Map level">
+          <Box component="nav" sx={{ fontSize: "0.875rem", mb: 0.5 }} aria-label="Map level">
             {mode === "county" ? (
-              <span className="font-semibold text-gray-700">All counties</span>
+              <Box component="span" sx={{ fontWeight: 600, color: "gray.700" }}>All counties</Box>
             ) : (
               <>
-                <button onClick={() => { if (county) setCounty(null); else if (countyBounds && baseZoom != null) mapRef.current?.flyTo(countyBounds.getCenter(), baseZoom, { duration: 0.6 }); }}
-                        className="font-semibold text-blue-700 hover:underline">All counties</button>
-                <span className="text-gray-400 mx-1.5">/</span>
-                <span className="font-semibold text-gray-700">{county ?? "ZIP codes"}</span>
+                <Link component="button" underline="hover"
+                      onClick={() => { if (county) setCounty(null); else if (countyBounds && baseZoom != null) mapRef.current?.flyTo(countyBounds.getCenter(), baseZoom, { duration: 0.6 }); }}
+                      sx={{ fontSize: "inherit", fontWeight: 600, color: "blue.700", verticalAlign: "baseline" }}>All counties</Link>
+                <Box component="span" sx={{ color: "gray.400", mx: 0.75 }}>/</Box>
+                <Box component="span" sx={{ fontWeight: 600, color: "gray.700" }}>{county ?? "ZIP codes"}</Box>
               </>
             )}
-          </nav>
-          <h3 className="text-lg font-bold text-gray-900">{title}</h3>
-          <p className="text-sm text-gray-500 mt-0.5">
+          </Box>
+          <Typography variant="h3" sx={{ fontSize: "1.125rem", fontWeight: 700, color: "gray.900" }}>{title}</Typography>
+          <Typography variant="body2" sx={{ color: "gray.500", mt: 0.25 }}>
             Typical monthly rent in {monthName(month)}{monthIsForecast ? " (forecast)" : ""}, from Zillow. Hover a circle for details.
-          </p>
+          </Typography>
         </div>
-        <label className="flex items-center gap-1.5 shrink-0">
-          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Month:</span>
-          <select value={month} onChange={(e) => setMonth(e.target.value)}
-                  className="border border-gray-300 bg-white rounded-md px-3 py-1.5 text-sm font-medium focus:outline-none">
+        <Box component="label" sx={{ display: "flex", alignItems: "center", gap: 0.75, flexShrink: 0 }}>
+          <Box component="span" sx={eyebrowSx}>Month:</Box>
+          <NativeSelect value={month} onChange={(e) => setMonth(e.target.value)}
+                        input={<OutlinedInput size="small" />}
+                        sx={{ bgcolor: "common.white", fontSize: "0.875rem", fontWeight: 500, "& .MuiNativeSelect-select": { py: 0.75, pl: 1.5 } }}>
             {[...months].reverse().map((m) => (
               <option key={m} value={m}>{monthName(m)}{forecastMonths.has(m) ? " (forecast)" : ""}</option>
             ))}
-          </select>
-        </label>
-      </div>
+          </NativeSelect>
+        </Box>
+      </Box>
 
-      <div className={compact ? "grid grid-cols-1 gap-5" : "grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-5"}>
+      <Box sx={{ display: "grid", gap: 2.5, gridTemplateColumns: compact ? "1fr" : { xs: "1fr", lg: "1fr 300px" } }}>
         {/* Map */}
-        {/* isolate: Leaflet's own layers (z-index 400-1000) stay inside the map instead of
+        {/* isolation: Leaflet's own layers (z-index 400-1000) stay inside the map instead of
             covering the fixed header/footer */}
-        <div className="relative isolate rounded-lg overflow-hidden border border-gray-200" style={{ height }}>
-          <div ref={mapEl} className="absolute inset-0"
+        <Box sx={{ position: "relative", isolation: "isolate", borderRadius: 2, overflow: "hidden", border: 1, borderColor: "gray.200" }} style={{ height }}>
+          <Box ref={mapEl} sx={{ position: "absolute", inset: 0 }}
                role="img"
                aria-label={top ? `Map of typical rent by ${listIsCounties ? "county" : "ZIP code"}. Highest: ${name(top)} at ${usd(top.rent)}. Lowest: ${name(bottom)} at ${usd(bottom.rent)}.${compact ? "" : " The list beside the map has every value."}` : "Rent map"} />
           {/* What you're looking at, and how to change it */}
           {!loading && !error && !noCoords && (
-            <div ref={hintRef} className="absolute top-3 left-1/2 -translate-x-1/2 z-[450] pointer-events-none max-w-[80%]">
-              <div className="px-3 py-1.5 rounded-full bg-white/95 shadow text-sm font-medium text-gray-800 text-center" aria-live="polite">
+            <Box ref={hintRef} sx={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", zIndex: 450, pointerEvents: "none", maxWidth: "80%" }}>
+              <Box sx={{ px: 1.5, py: 0.75, borderRadius: 999, bgcolor: "rgba(255,255,255,0.95)", boxShadow: 2, fontSize: "0.875rem", fontWeight: 500, color: "gray.800", textAlign: "center" }} aria-live="polite">
                 {hintText(mode, county)}
-              </div>
-            </div>
+              </Box>
+            </Box>
           )}
           {(loading || error || noCoords) && (
-            <div className="absolute inset-0 z-[500] flex items-center justify-center bg-white/80 p-6 text-center">
+            <Box sx={{ position: "absolute", inset: 0, zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", bgcolor: "rgba(255,255,255,0.8)", p: 3, textAlign: "center" }}>
               {loading ? (
-                <span className="text-sm text-gray-500 animate-pulse">Loading map locations…</span>
+                <Box component="span" sx={{ fontSize: "0.875rem", color: "gray.500", ...pulse }}>Loading map locations…</Box>
               ) : (
-                <div className="text-sm text-gray-600 max-w-sm">
+                <Box sx={{ fontSize: "0.875rem", color: "gray.600", maxWidth: 384 }}>
                   <p>We couldn't load the map locations right now, so the map can't be drawn. The list on the right still has every rent.</p>
-                  {onRetry && <button onClick={onRetry} className="mt-2 font-semibold text-blue-700 underline">Try again</button>}
-                </div>
+                  {onRetry && <Link component="button" onClick={onRetry} underline="always" sx={{ mt: 1, fontSize: "inherit", fontWeight: 600, color: "blue.700" }}>Try again</Link>}
+                </Box>
               )}
-            </div>
+            </Box>
           )}
-        </div>
+        </Box>
 
         {/* Side panel: legend, quick facts and the list (the non-visual version of the map).
             Left out in compact mode. */}
         {!compact && (
-        <aside className="space-y-5">
+        <Box component="aside" sx={{ display: "flex", flexDirection: "column", gap: 2.5 }}>
           <Legend bands={bands} mode={mode} />
 
           {top && bottom && top !== bottom && (
-            <div className="bg-gray-50 rounded-lg px-4 py-3 text-sm text-gray-700 space-y-1">
+            <Box sx={{ bgcolor: "gray.50", borderRadius: 2, px: 2, py: 1.5, fontSize: "0.875rem", color: "gray.700", display: "flex", flexDirection: "column", gap: 0.5 }}>
               {mode === "focus" && selected && (
                 <div>Across its {selected.zips} ZIP codes, {shortCounty(county)} County averages <b>{usd(selected.rent)}</b>.</div>
               )}
               {mode === "zip" && <div>{listItems.length} ZIP codes in view.</div>}
               <div>Highest: <b>{name(top)}</b>, {usd(top.rent)}</div>
               <div>Lowest: <b>{name(bottom)}</b>, {usd(bottom.rent)}</div>
-              <div className="text-gray-500">A difference of {usd(top.rent - bottom.rent)} a month.</div>
-            </div>
+              <Box sx={{ color: "gray.500" }}>A difference of {usd(top.rent - bottom.rent)} a month.</Box>
+            </Box>
           )}
 
           <div>
-            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+            <Box sx={{ ...eyebrowSx, mb: 0.75 }}>
               {mode === "county" ? "All counties, highest rent first" : mode === "zip" ? "ZIP codes in view, highest rent first" : "ZIP codes, highest rent first"}
-            </div>
-            <ul className="max-h-72 overflow-y-auto divide-y divide-gray-100 border border-gray-100 rounded-md">
+            </Box>
+            <Box component="ul" sx={{ maxHeight: 288, overflowY: "auto", border: 1, borderColor: "gray.100", borderRadius: 1.5, "& > li + li": { borderTop: 1, borderColor: "gray.100" } }}>
               {listItems.map((x) => (
                 <li key={listIsCounties ? x.county : x.zip}>
-                  <button onClick={() => focusItem(x)}
+                  <ButtonBase onClick={() => focusItem(x)}
                           title={listIsCounties ? `See ZIP codes in ${x.county}` : placed(x) ? "Show on map" : "No map location for this ZIP"}
-                          className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-blue-50 focus:bg-blue-50 focus:outline-none">
-                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: bandFor(x.rent, bands)?.color }} />
-                    <span className="flex-1 truncate text-gray-800">{name(x)}</span>
-                    <span className="tabular-nums font-semibold text-gray-900">{usd(x.rent)}</span>
-                    {listIsCounties && <span className="text-gray-400" aria-hidden="true">›</span>}
-                  </button>
+                          sx={{ width: "100%", display: "flex", alignItems: "center", gap: 1, px: 1.5, py: 0.75, fontSize: "0.875rem", textAlign: "left", "&:hover, &.Mui-focusVisible": { bgcolor: "blue.50" } }}>
+                    <Box component="span" sx={{ width: 10, height: 10, borderRadius: 999, flexShrink: 0 }} style={{ background: bandFor(x.rent, bands)?.color }} />
+                    <Typography noWrap component="span" sx={{ flex: 1, fontSize: "inherit", color: "gray.800" }}>{name(x)}</Typography>
+                    <Box component="span" sx={{ fontVariantNumeric: "tabular-nums", fontWeight: 600, color: "gray.900" }}>{usd(x.rent)}</Box>
+                    {listIsCounties && <Box component="span" sx={{ color: "gray.400" }} aria-hidden="true">›</Box>}
+                  </ButtonBase>
                 </li>
               ))}
-              {!listItems.length && <li className="px-3 py-2 text-sm text-gray-400">No ZIP codes in view. Zoom out (−) or drag the map.</li>}
-            </ul>
+              {!listItems.length && <Box component="li" sx={{ px: 1.5, py: 1, fontSize: "0.875rem", color: "gray.400" }}>No ZIP codes in view. Zoom out (−) or drag the map.</Box>}
+            </Box>
             {mode === "focus" && listItems.some((x) => !placed(x)) && (
-              <p className="text-xs text-gray-400 mt-1">Some ZIP codes have no map location and appear only in this list.</p>
+              <Typography variant="caption" component="p" sx={{ color: "gray.400", mt: 0.5 }}>Some ZIP codes have no map location and appear only in this list.</Typography>
             )}
           </div>
-        </aside>
+        </Box>
         )}
-      </div>
+      </Box>
 
-      {!compact && <p className="text-xs text-gray-400 mt-4">
+      {!compact && <Typography variant="caption" component="p" sx={{ color: "gray.400", mt: 2 }}>
         "Typical rent" is Zillow's Observed Rent Index (ZORI) for that ZIP code. A county's rent is the average of its ZIP codes.
         Colours and sizes compare the places on screen; the legend always shows the dollar ranges.
         {monthIsForecast ? " Forecast months show faded, dashed circles." : ""}
-      </p>}
-    </div>
+      </Typography>}
+    </Paper>
   );
 }

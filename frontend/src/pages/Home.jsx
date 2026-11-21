@@ -4,6 +4,15 @@ import { GoogleLogin } from "@react-oauth/google";
 import { jwtDecode } from "jwt-decode";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useUser } from "../hooks/useUser";
+import Alert from "@mui/material/Alert";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import Checkbox from "@mui/material/Checkbox";
+import Link from "@mui/material/Link";
+import Paper from "@mui/material/Paper";
+import Stack from "@mui/material/Stack";
+import Typography from "@mui/material/Typography";
+import { pulse } from "../theme";
 import LegalModal from "../components/LegalModal";
 
 const API = import.meta.env.VITE_API_URL;
@@ -18,17 +27,17 @@ const SCREENS = {
     pending: {
         icon: "⏳",
         title: "Your access is pending approval",
-        tone: "bg-amber-50 border-amber-200 text-amber-900",
+        tone: { bgcolor: "amber.50", borderColor: "amber.200", color: "amber.900" },
     },
     expired: {
         icon: "⌛",
         title: "Your free pilot has ended",
-        tone: "bg-gray-50 border-gray-200 text-gray-900",
+        tone: { bgcolor: "gray.50", borderColor: "gray.200", color: "gray.900" },
     },
     paused: {
         icon: "⏸",
         title: "Your access is paused",
-        tone: "bg-gray-50 border-gray-200 text-gray-900",
+        tone: { bgcolor: "gray.50", borderColor: "gray.200", color: "gray.900" },
     },
 };
 
@@ -140,120 +149,112 @@ const Home = () => {
     // ------------------------------------------------------------------
     if (blocked) {
         const screen = SCREENS[blocked.access] || SCREENS.pending;
+        const mailLink = <Link href={`mailto:${SUPPORT_EMAIL}`} color="inherit" underline="always" sx={{ fontWeight: 500 }}>{SUPPORT_EMAIL}</Link>;
         return (
-            <div className="flex flex-col items-center justify-center min-h-[60vh] px-4">
-                <div className={`w-full max-w-lg border rounded-xl px-6 py-6 text-left ${screen.tone}`} role="status">
-                    <div className="text-3xl mb-2" aria-hidden="true">{screen.icon}</div>
-                    <h2 className="text-xl font-bold">{screen.title}</h2>
-                    <p className="mt-2 text-sm leading-relaxed">{blocked.message}</p>
+            <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "60vh", px: 2 }}>
+                <Paper variant="outlined" role="status" sx={{ width: "100%", maxWidth: 512, borderRadius: 3, p: 3, textAlign: "left", ...screen.tone }}>
+                    <Box sx={{ fontSize: "1.875rem", mb: 1 }} aria-hidden="true">{screen.icon}</Box>
+                    <Typography variant="h2" sx={{ fontSize: "1.25rem", fontWeight: 700 }}>{screen.title}</Typography>
+                    <Typography variant="body2" sx={{ mt: 1, lineHeight: 1.625 }}>{blocked.message}</Typography>
 
                     {blocked.access === "pending" && (
-                        <ul className="mt-4 text-sm space-y-1.5 list-disc pl-5">
+                        <Box component="ul" sx={{ mt: 2, mb: 0, fontSize: "0.875rem", pl: 2.5, listStyle: "disc", "& > li + li": { mt: 0.75 } }}>
                             <li>You're signed up as <b>{blocked.email}</b>. There's nothing else you need to do.</li>
                             <li>Approved accounts get a free one-month pilot, starting the first time you sign in after approval.</li>
                             <li>Come back and sign in with the same Google account once you're approved.</li>
-                        </ul>
+                        </Box>
                     )}
                     {blocked.access === "expired" && blocked.trial_ends_at && (
-                        <p className="mt-2 text-sm">Your pilot ended on <b>{fmtDate(blocked.trial_ends_at)}</b>.</p>
+                        <Typography variant="body2" sx={{ mt: 1 }}>Your pilot ended on <b>{fmtDate(blocked.trial_ends_at)}</b>.</Typography>
                     )}
                     {SUPPORT_EMAIL && blocked.access !== "pending" && (
-                        <p className="mt-2 text-sm">
-                            Contact <a className="underline font-medium" href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>.
-                        </p>
+                        <Typography variant="body2" sx={{ mt: 1 }}>Contact {mailLink}.</Typography>
                     )}
                     {SUPPORT_EMAIL && blocked.access === "pending" && (
-                        <p className="mt-3 text-sm">
-                            Questions? Email <a className="underline font-medium" href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>.
-                        </p>
+                        <Typography variant="body2" sx={{ mt: 1.5 }}>Questions? Email {mailLink}.</Typography>
                     )}
 
-                    <div className="mt-5 flex flex-wrap gap-2">
-                        <button
+                    <Stack direction="row" useFlexGap sx={{ mt: 2.5, flexWrap: "wrap", gap: 1 }}>
+                        <Button
                             onClick={checkAgain}
                             disabled={checking}
-                            className="px-4 py-2 text-sm font-semibold rounded-md bg-gray-800 text-white hover:bg-gray-700 disabled:opacity-60"
+                            variant="contained"
+                            sx={{ fontWeight: 600, bgcolor: "gray.800", "&:hover": { bgcolor: "gray.700" }, "&.Mui-disabled": { bgcolor: "gray.800", color: "common.white", opacity: 0.6 } }}
                         >
                             {checking ? "Checking…" : "Check again"}
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                             onClick={() => { setBlocked(null); setCheckedNote(""); setError(""); }}
-                            className="px-4 py-2 text-sm font-semibold rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                            variant="outlined"
+                            sx={{ fontWeight: 600, borderColor: "gray.300", bgcolor: "common.white", color: "gray.700", "&:hover": { bgcolor: "gray.50", borderColor: "gray.300" } }}
                         >
                             Use a different account
-                        </button>
-                    </div>
-                    {checkedNote && <p className="mt-3 text-xs opacity-80">{checkedNote}</p>}
-                    {error && <p className="mt-3 text-sm text-red-700">{error}</p>}
-                </div>
-            </div>
+                        </Button>
+                    </Stack>
+                    {checkedNote && <Typography variant="caption" component="p" sx={{ mt: 1.5, opacity: 0.8 }}>{checkedNote}</Typography>}
+                    {error && <Typography variant="body2" sx={{ mt: 1.5, color: "red.700" }}>{error}</Typography>}
+                </Paper>
+            </Box>
         );
     }
 
     // ------------------------------------------------------------------
     // Sign-in
     // ------------------------------------------------------------------
+    const legalLinkSx = { verticalAlign: "baseline", color: "gray.700", "&:hover": { color: "gray.900" } };
     return (
-        <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-6 text-center">
+        <Stack spacing={3} sx={{ alignItems: "center", justifyContent: "center", minHeight: "60vh", textAlign: "center" }}>
             {sessionExpired && !error && (
-                <p role="status" className="max-w-md text-sm bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-4 py-3">
+                <Alert role="status" severity="warning" icon={false} sx={{ maxWidth: 448, bgcolor: "amber.50", border: 1, borderColor: "amber.200", color: "amber.900", borderRadius: 2 }}>
                     Your session has expired. Please sign in again to continue.
-                </p>
+                </Alert>
             )}
-            <h2 className="text-3xl font-bold text-gray-800">Welcome</h2>
-            <p className="text-base text-gray-600">Sign in with your Google Account</p>
-            <p className="text-sm text-gray-500 max-w-md">
+            <Typography variant="h2" sx={{ fontSize: "1.875rem", fontWeight: 700, color: "gray.800" }}>Welcome</Typography>
+            <Typography sx={{ color: "gray.600" }}>Sign in with your Google Account</Typography>
+            <Typography variant="body2" sx={{ color: "gray.500", maxWidth: 448 }}>
                 We're in a free pilot.
-            </p>
+            </Typography>
 
-            <label className="flex items-start gap-2 max-w-md text-sm text-gray-600 text-left">
-                <input
-                    type="checkbox"
+            <Box component="label" sx={{ display: "flex", alignItems: "flex-start", gap: 1, maxWidth: 448, fontSize: "0.875rem", color: "gray.600", textAlign: "left" }}>
+                <Checkbox
                     checked={agreed}
                     onChange={(e) => setAgreed(e.target.checked)}
-                    className="mt-1"
+                    size="small"
+                    sx={{ p: 0, mt: 0.25 }}
                 />
                 <span>
                     I confirm the data I upload does not contain sensitive or
                     confidential information I'm not authorized to share, and I
                     agree to the{" "}
-                    <button
-                        type="button"
-                        onClick={() => openModal("terms")}
-                        className="underline text-gray-700 hover:text-gray-900"
-                    >
+                    <Link component="button" type="button" onClick={() => openModal("terms")} underline="always" sx={legalLinkSx}>
                         Terms of Service
-                    </button>{" "}
+                    </Link>{" "}
                     and{" "}
-                    <button
-                        type="button"
-                        onClick={() => openModal("privacy")}
-                        className="underline text-gray-700 hover:text-gray-900"
-                    >
+                    <Link component="button" type="button" onClick={() => openModal("privacy")} underline="always" sx={legalLinkSx}>
                         Privacy Policy
-                    </button>
+                    </Link>
                     .
                 </span>
-            </label>
+            </Box>
 
             {signingIn ? (
-                <h1 className="text-sm text-gray-500 animate-pulse">Signing you in…</h1>
+                <Typography variant="body2" sx={{ color: "gray.500", ...pulse }}>Signing you in…</Typography>
             ) : agreed ? (
                 <GoogleLogin onSuccess={handleLoginSuccess} onError={handleLoginError} />
             ) : (
-                <div className="opacity-50 text-sm text-gray-400 border rounded px-4 py-2">
+                <Box sx={{ opacity: 0.5, fontSize: "0.875rem", color: "gray.400", border: 1, borderColor: "gray.200", borderRadius: 1, px: 2, py: 1 }}>
                     Please agree to the terms above to continue
-                </div>
+                </Box>
             )}
 
-            {error && <p className="text-sm text-red-600 max-w-md">{error}</p>}
+            {error && <Typography variant="body2" sx={{ color: "red.600", maxWidth: 448 }}>{error}</Typography>}
 
             <LegalModal
                 isOpen={modalOpen}
                 onClose={() => setModalOpen(false)}
                 initialTab={modalTab}
             />
-        </div>
+        </Stack>
     );
 };
 

@@ -67,7 +67,7 @@ export function RentPreviewZipMap({ metro }) {
 
     if (!shape) return null;
     return (
-        <svg viewBox={`0 0 ${MAP_W} ${MAP_H}`} className="w-full h-auto" role="img"
+        <svg viewBox={`0 0 ${MAP_W} ${MAP_H}`} style={{ width: "100%", height: "auto", display: "block" }} role="img"
              aria-label="Map of typical rent by ZIP code: darker, bigger dots have higher rent">
             {shape.dots.map((d, i) => (
                 <circle key={i} cx={d.x.toFixed(1)} cy={d.y.toFixed(1)} r={d.r.toFixed(2)} fill={d.fill} fillOpacity="0.85" />
@@ -109,7 +109,7 @@ export function RentPreviewCountyChart({ metro }) {
 
     if (!shape) return null;
     return (
-        <svg viewBox={`0 0 ${shape.W} ${shape.H}`} className="w-full h-auto" role="img"
+        <svg viewBox={`0 0 ${shape.W} ${shape.H}`} style={{ width: "100%", height: "auto", display: "block" }} role="img"
              aria-label="Line chart of average monthly rent since 2020 in four counties">
             {shape.grid.map((gy) => (
                 <line key={gy} x1={shape.left} x2={shape.right} y1={gy} y2={gy} stroke="#E5E7EB" />

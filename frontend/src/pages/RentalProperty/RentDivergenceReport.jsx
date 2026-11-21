@@ -6,6 +6,19 @@ import BackButton from "./BackButton";
 import { traitLabel, parseTerm } from "./utils";
 import { coverageText, evidence, interpretDivergence, reportToText } from "./interpretDivergence";
 import { DFW_METRO } from "./useRentMetro";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import ButtonBase from "@mui/material/ButtonBase";
+import Checkbox from "@mui/material/Checkbox";
+import Link from "@mui/material/Link";
+import Paper from "@mui/material/Paper";
+import Typography from "@mui/material/Typography";
+import { pulse } from "../../theme";
+
+const cardSx = { borderColor: "gray.200", borderRadius: 2 };
+const cardTitleSx = { fontWeight: 700, color: "gray.800" };
+const howToReadSx = { color: "gray.500", mt: 0.25, mb: 2 };
+const noteBoxSx = { fontSize: "0.875rem", bgcolor: "amber.50", border: 1, borderColor: "amber.200", borderRadius: 2, px: 2, py: 1.5, color: "amber.900" };
 
 // Research question: did the 2021-22 rent boom end differently across a metro's ZIPs, and why?
 // Reads GET data/dfw-rent-divergence?metro=... (two-way fixed-effects model). Works for any
@@ -18,23 +31,23 @@ const fmtPct = (v, digits = 1) => (Number.isFinite(v) ? `${v > 0 ? "+" : ""}${v.
 const fmtP = (p) => (p < 0.001 ? "<0.001" : p.toFixed(3));
 
 // Same cut-offs as the written interpretation (interpretDivergence.evidence)
-const EVIDENCE_CLASSES = {
-  strong: "bg-emerald-100 text-emerald-800",
-  moderate: "bg-emerald-50 text-emerald-700",
-  weak: "bg-amber-50 text-amber-700",
-  none: "bg-gray-100 text-gray-600",
+const EVIDENCE_TONES = {
+  strong: { bgcolor: "emerald.100", color: "emerald.800" },
+  moderate: { bgcolor: "emerald.50", color: "emerald.700" },
+  weak: { bgcolor: "amber.50", color: "amber.700" },
+  none: { bgcolor: "gray.100", color: "gray.600" },
 };
 function significance(p) {
   const ev = evidence(p);
-  return { label: ev.label, cls: EVIDENCE_CLASSES[ev.key] };
+  return { label: ev.label, tone: EVIDENCE_TONES[ev.key] };
 }
 
 function ExplainButton({ onClick, disabled }) {
   return (
-    <button onClick={onClick} disabled={disabled}
-            className="px-3 py-1.5 text-sm font-semibold rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap">
+    <Button variant="outlined" onClick={onClick} disabled={disabled}
+            sx={{ px: 1.5, py: 0.75, fontSize: "0.875rem", fontWeight: 600, whiteSpace: "nowrap", borderColor: "gray.300", bgcolor: "common.white", color: "gray.700", "&:hover": { borderColor: "gray.300", bgcolor: "gray.50" }, "&.Mui-disabled": { opacity: 0.5, borderColor: "gray.300", color: "gray.700" } }}>
       📝 Explain these results
-    </button>
+    </Button>
   );
 }
 
@@ -42,14 +55,14 @@ function ExplainButton({ onClick, disabled }) {
 function IntervalBar({ low, high, est, scale }) {
   const pos = (v) => `${((v + scale) / (2 * scale)) * 100}%`;
   const clamp = (v) => Math.max(-scale, Math.min(scale, v));
-  const color = low > 0 ? "bg-emerald-600" : high < 0 ? "bg-red-500" : "bg-gray-400";
+  const color = low > 0 ? "emerald.600" : high < 0 ? "red.500" : "gray.400";
   return (
-    <div className="relative h-4 w-full min-w-[140px]">
-      <div className="absolute inset-y-0 w-px bg-gray-300" style={{ left: "50%" }} />
-      <div className={`absolute top-1.5 h-1 rounded ${color}`}
+    <Box sx={{ position: "relative", height: 16, width: "100%", minWidth: 140 }}>
+      <Box sx={{ position: "absolute", top: 0, bottom: 0, width: "1px", bgcolor: "gray.300" }} style={{ left: "50%" }} />
+      <Box sx={{ position: "absolute", top: 6, height: 4, borderRadius: 0.5, bgcolor: color }}
            style={{ left: pos(clamp(low)), width: `calc(${pos(clamp(high))} - ${pos(clamp(low))})` }} />
-      <div className={`absolute top-0.5 h-3 w-1 rounded ${color}`} style={{ left: pos(clamp(est)) }} />
-    </div>
+      <Box sx={{ position: "absolute", top: 2, height: 12, width: 4, borderRadius: 0.5, bgcolor: color }} style={{ left: pos(clamp(est)) }} />
+    </Box>
   );
 }
 
@@ -58,6 +71,16 @@ function factorName(trait, data) {
   const county = data?.county_terms?.[trait];
   return county ? `${county} (vs ${data.reference_county})` : traitLabel(trait);
 }
+
+// Report tables: small-caps header row, light rules between rows; `.num` cells are right-aligned figures
+const tableSx = {
+  width: "100%", fontSize: "0.875rem", borderCollapse: "collapse",
+  "& th, & td": { py: 1, pr: 2, textAlign: "left" },
+  "& thead tr": { fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "gray.500", borderBottom: 1, borderColor: "gray.200" },
+  "& th": { fontWeight: 600 },
+  "& tbody tr": { borderBottom: 1, borderColor: "gray.100" },
+  "& .num": { textAlign: "right", fontVariantNumeric: "tabular-nums" },
+};
 
 function CoefficientTable({ coefficients, data }) {
   const rows = coefficients.map((c) => ({
@@ -69,36 +92,36 @@ function CoefficientTable({ coefficients, data }) {
   const scale = Math.max(2, ...rows.map((r) => Math.max(Math.abs(r.pctLow), Math.abs(r.pctHigh)))) * 1.05;
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+    <Box sx={{ overflowX: "auto" }}>
+      <Box component="table" sx={tableSx}>
         <thead>
-          <tr className="text-left text-xs uppercase tracking-wider text-gray-500 border-b border-gray-200">
-            <th className="py-2 pr-4 font-semibold">Factor</th>
-            <th className="py-2 pr-4 font-semibold text-right">Effect on rent</th>
-            <th className="py-2 pr-4 font-semibold">95% interval</th>
-            <th className="py-2 pr-4 font-semibold text-right">p-value</th>
-            <th className="py-2 font-semibold">Reading</th>
+          <tr>
+            <th>Factor</th>
+            <th className="num">Effect on rent</th>
+            <th>95% interval</th>
+            <th className="num">p-value</th>
+            <Box component="th" sx={{ "&&": { pr: 0 } }}>Reading</Box>
           </tr>
         </thead>
         <tbody>
           {rows.map((r) => {
             const sig = significance(r.p_value);
             return (
-              <tr key={r.term} className="border-b border-gray-100">
-                <td className="py-2 pr-4 text-gray-900">{factorName(r.trait, data)}</td>
-                <td className="py-2 pr-4 text-right tabular-nums font-semibold">{fmtPct(r.pct_effect, 2)}</td>
-                <td className="py-2 pr-4">
+              <tr key={r.term}>
+                <Box component="td" sx={{ color: "gray.900" }}>{factorName(r.trait, data)}</Box>
+                <Box component="td" className="num" sx={{ fontWeight: 600 }}>{fmtPct(r.pct_effect, 2)}</Box>
+                <td>
                   <IntervalBar low={r.pctLow} high={r.pctHigh} est={r.pct_effect} scale={scale} />
-                  <div className="text-[11px] text-gray-400 tabular-nums">{fmtPct(r.pctLow)} to {fmtPct(r.pctHigh)}</div>
+                  <Box sx={{ fontSize: "13px", color: "gray.400", fontVariantNumeric: "tabular-nums" }}>{fmtPct(r.pctLow)} to {fmtPct(r.pctHigh)}</Box>
                 </td>
-                <td className="py-2 pr-4 text-right tabular-nums font-mono text-gray-700">{fmtP(r.p_value)}</td>
-                <td className="py-2"><span className={`px-2 py-0.5 rounded text-xs font-medium ${sig.cls}`}>{sig.label}</span></td>
+                <Box component="td" className="num" sx={{ fontFamily: "monospace", color: "gray.700" }}>{fmtP(r.p_value)}</Box>
+                <Box component="td" sx={{ "&&": { pr: 0 } }}><Box component="span" sx={{ px: 1, py: 0.25, borderRadius: 1, fontSize: "0.75rem", fontWeight: 500, ...sig.tone }}>{sig.label}</Box></Box>
               </tr>
             );
           })}
         </tbody>
-      </table>
-    </div>
+      </Box>
+    </Box>
   );
 }
 
@@ -121,20 +144,21 @@ function EventStudyChart({ coefficients }) {
 
   return (
     <div>
-      <div className="flex flex-wrap gap-2 mb-3">
+      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, mb: 1.5 }}>
         {traits.map((t, i) => (
-          <button key={t} onClick={() => toggle(t)}
-                  className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${shown.has(t) ? "text-white border-transparent" : "bg-white text-gray-600 border-gray-300"}`}
+          <ButtonBase key={t} onClick={() => toggle(t)}
+                  sx={{ px: 1.25, py: 0.5, borderRadius: 999, fontSize: "0.75rem", fontWeight: 500, border: 1, transition: "background-color 150ms, color 150ms",
+                        ...(shown.has(t) ? { color: "common.white", borderColor: "transparent" } : { bgcolor: "common.white", color: "gray.600", borderColor: "gray.300" }) }}
                   style={shown.has(t) ? { backgroundColor: SERIES_COLORS[i % SERIES_COLORS.length] } : undefined}>
             {traitLabel(t)}
-          </button>
+          </ButtonBase>
         ))}
-      </div>
+      </Box>
       <ResponsiveContainer width="100%" height={320}>
         <LineChart data={data} margin={{ top: 10, right: 30, bottom: 10, left: 10 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-          <XAxis dataKey="year" stroke="#6b7280" tick={{ fontSize: 11 }} />
-          <YAxis tickFormatter={(v) => `${v}%`} stroke="#6b7280" tick={{ fontSize: 11 }} />
+          <XAxis dataKey="year" stroke="#6b7280" tick={{ fontSize: 13 }} />
+          <YAxis tickFormatter={(v) => `${v}%`} stroke="#6b7280" tick={{ fontSize: 13 }} />
           <ReferenceLine y={0} stroke="#9ca3af" />
           <Tooltip formatter={(v, name) => [fmtPct(v, 2), traitLabel(name)]} />
           <Legend formatter={(name) => traitLabel(name)} />
@@ -144,7 +168,7 @@ function EventStudyChart({ coefficients }) {
           ))}
         </LineChart>
       </ResponsiveContainer>
-      <p className="text-xs text-gray-400 mt-1">Effect per 1 SD of each trait, by post-peak year. A line moving away from 0 means the gap is widening.</p>
+      <Typography variant="caption" component="p" sx={{ color: "gray.400", mt: 0.5 }}>Effect per 1 SD of each trait, by post-peak year. A line moving away from 0 means the gap is widening.</Typography>
     </div>
   );
 }
@@ -153,59 +177,56 @@ const usd = (v) => (Number.isFinite(v) ? `$${Math.round(v).toLocaleString("en-US
 
 /** Too few ZIP codes for a model: rent at the peak vs the latest month, by county and by ZIP. */
 function DescriptiveTables({ d }) {
-  const head = "text-left text-xs uppercase tracking-wider text-gray-500 border-b border-gray-200";
-  const cell = "py-2 pr-4";
-  const num = `${cell} text-right tabular-nums`;
   return (
-    <div className="space-y-6">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead><tr className={head}>
-            <th className={`${cell} font-semibold`}>County</th>
-            <th className={`${num} font-semibold`}>ZIP codes</th>
-            <th className={`${num} font-semibold`}>Rent at peak</th>
-            <th className={`${num} font-semibold`}>Rent now</th>
-            <th className={`${num} font-semibold`}>Change since peak</th>
-            <th className={`${num} font-semibold`}>Rise during boom</th>
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
+      <Box sx={{ overflowX: "auto" }}>
+        <Box component="table" sx={tableSx}>
+          <thead><tr>
+            <th>County</th>
+            <th className="num">ZIP codes</th>
+            <th className="num">Rent at peak</th>
+            <th className="num">Rent now</th>
+            <th className="num">Change since peak</th>
+            <th className="num">Rise during boom</th>
           </tr></thead>
           <tbody>
             {d.by_county.map((c) => (
-              <tr key={c.county} className="border-b border-gray-100">
-                <td className={`${cell} text-gray-900`}>{c.county}</td>
-                <td className={num}>{c.zips}</td>
-                <td className={num}>{usd(c.peak_rent)}</td>
-                <td className={num}>{usd(c.latest_rent)}</td>
-                <td className={`${num} font-semibold`}>{fmtPct(c.change_pct)}</td>
-                <td className={num}>{fmtPct(c.boom_pct)}</td>
+              <tr key={c.county}>
+                <Box component="td" sx={{ color: "gray.900" }}>{c.county}</Box>
+                <td className="num">{c.zips}</td>
+                <td className="num">{usd(c.peak_rent)}</td>
+                <td className="num">{usd(c.latest_rent)}</td>
+                <Box component="td" className="num" sx={{ fontWeight: 600 }}>{fmtPct(c.change_pct)}</Box>
+                <td className="num">{fmtPct(c.boom_pct)}</td>
               </tr>
             ))}
           </tbody>
-        </table>
-      </div>
-      <div className="overflow-x-auto">
-        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Each ZIP code, best held up first</div>
-        <table className="w-full text-sm">
-          <thead><tr className={head}>
-            <th className={`${cell} font-semibold`}>ZIP code</th>
-            <th className={`${cell} font-semibold`}>County</th>
-            <th className={`${num} font-semibold`}>Rent at peak</th>
-            <th className={`${num} font-semibold`}>Rent now</th>
-            <th className={`${num} font-semibold`}>Change since peak</th>
+        </Box>
+      </Box>
+      <Box sx={{ overflowX: "auto" }}>
+        <Box sx={{ fontSize: "0.75rem", fontWeight: 600, color: "gray.500", textTransform: "uppercase", letterSpacing: "0.05em", mb: 0.5 }}>Each ZIP code, best held up first</Box>
+        <Box component="table" sx={tableSx}>
+          <thead><tr>
+            <th>ZIP code</th>
+            <th>County</th>
+            <th className="num">Rent at peak</th>
+            <th className="num">Rent now</th>
+            <th className="num">Change since peak</th>
           </tr></thead>
           <tbody>
             {d.by_zip.map((z) => (
-              <tr key={z.zip_code} className="border-b border-gray-100">
-                <td className={`${cell} font-mono text-gray-900`}>{z.zip_code}</td>
-                <td className={`${cell} text-gray-700`}>{z.county ?? "—"}</td>
-                <td className={num}>{usd(z.peak_rent)}</td>
-                <td className={num}>{usd(z.latest_rent)}</td>
-                <td className={`${num} font-semibold`}>{fmtPct(z.change_pct)}</td>
+              <tr key={z.zip_code}>
+                <Box component="td" sx={{ fontFamily: "monospace", color: "gray.900" }}>{z.zip_code}</Box>
+                <Box component="td" sx={{ color: "gray.700" }}>{z.county ?? "—"}</Box>
+                <td className="num">{usd(z.peak_rent)}</td>
+                <td className="num">{usd(z.latest_rent)}</td>
+                <Box component="td" className="num" sx={{ fontWeight: 600 }}>{fmtPct(z.change_pct)}</Box>
               </tr>
             ))}
           </tbody>
-        </table>
-      </div>
-    </div>
+        </Box>
+      </Box>
+    </Box>
   );
 }
 
@@ -257,56 +278,56 @@ export default function RentDivergenceReport({ metro = DFW_METRO, areaName = "DF
   const reportText = useMemo(() => (report ? reportToText(report) : ""), [report]);
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
-      <div className="flex flex-col md:flex-row md:items-center justify-between pb-4 mb-4 border-b border-gray-200 gap-4">
-        <div className="flex items-start gap-2">
+    <Box sx={{ p: 3, bgcolor: "gray.50", minHeight: "100vh" }}>
+      <Box sx={{ display: "flex", flexDirection: { xs: "column", md: "row" }, alignItems: { md: "center" }, justifyContent: "space-between", pb: 2, mb: 2, borderBottom: 1, borderColor: "gray.200", gap: 2 }}>
+        <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1 }}>
           {onBack && <BackButton onClick={onBack} />}
-          <div className="pt-1">
-            <h1 className="text-xl font-bold text-gray-900 tracking-tight">Did the 2021–22 rent boom end differently across {areaName} ZIPs?</h1>
-            <p className="text-sm text-gray-500 mt-1">{TIER_SUBTITLE[tier] ?? TIER_SUBTITLE.full}</p>
-          </div>
-        </div>
-      {data && !unavailable && !loading && !error && <div className="flex flex-wrap md:flex-nowrap items-center gap-2 self-start md:self-auto whitespace-nowrap">
+          <Box sx={{ pt: 0.5 }}>
+            <Typography variant="h1" sx={{ fontSize: "1.25rem", fontWeight: 700, color: "gray.900", letterSpacing: "-0.025em" }}>Did the 2021–22 rent boom end differently across {areaName} ZIPs?</Typography>
+            <Typography variant="body2" sx={{ color: "gray.500", mt: 0.5 }}>{TIER_SUBTITLE[tier] ?? TIER_SUBTITLE.full}</Typography>
+          </Box>
+        </Box>
+      {data && !unavailable && !loading && !error && <Box sx={{ display: "flex", flexWrap: { xs: "wrap", md: "nowrap" }, alignItems: "center", gap: 1, alignSelf: { xs: "flex-start", md: "auto" }, whiteSpace: "nowrap" }}>
         {isFull && <>
-        <div className="flex rounded-md border border-gray-300 overflow-hidden text-sm font-semibold">
+        <Box sx={{ display: "flex", borderRadius: 1.5, border: 1, borderColor: "gray.300", overflow: "hidden" }}>
           {[["base", "Rent & county only"], ["full", "With Census factors"]].map(([v, label]) => (
-            <button key={v} onClick={() => setSpec(v)}
-                    className={`px-3 py-1.5 ${spec === v ? "bg-gray-800 text-white" : "bg-white text-gray-700 hover:bg-gray-50"}`}>
+            <ButtonBase key={v} onClick={() => setSpec(v)}
+                    sx={{ px: 1.5, py: 0.75, fontSize: "0.875rem", fontWeight: 600, ...(spec === v ? { bgcolor: "gray.800", color: "common.white" } : { bgcolor: "common.white", color: "gray.700", "&:hover": { bgcolor: "gray.50" } }) }}>
               {label}
-            </button>
+            </ButtonBase>
           ))}
-        </div>
-        <label className="flex items-center gap-1.5 text-sm text-gray-700 px-2">
-          <input type="checkbox" checked={eventStudy} onChange={(e) => setEventStudy(e.target.checked)} />
+        </Box>
+        <Box component="label" sx={{ display: "flex", alignItems: "center", gap: 0.75, fontSize: "0.875rem", color: "gray.700", px: 1 }}>
+          <Checkbox size="small" sx={{ p: 0 }} checked={eventStudy} onChange={(e) => setEventStudy(e.target.checked)} />
           By year
-        </label>
+        </Box>
         </>}
         {onTrainForecast && (
-          <button onClick={onTrainForecast} className="px-4 py-1.5 text-sm font-semibold rounded-md bg-emerald-600 hover:bg-emerald-700 text-white transition-colors">
+          <Button variant="contained" color="success" onClick={onTrainForecast} sx={{ px: 2, py: 0.75, fontSize: "0.875rem", fontWeight: 600 }}>
             ⚡ Build your own forecast
-          </button>
+          </Button>
         )}
-      </div>}
-      </div>
+      </Box>}
+      </Box>
 
-      {(loading || (!data && !error)) && <div className="p-8 text-center text-gray-500 font-medium animate-pulse">Fitting the panel model…</div>}
+      {(loading || (!data && !error)) && <Box sx={{ p: 4, textAlign: "center", color: "gray.500", fontWeight: 500, ...pulse }}>Fitting the panel model…</Box>}
       {unavailable && !loading && (
-        <div className="p-5 bg-white border border-gray-200 rounded-lg text-base text-gray-700">
-          <p className="font-semibold text-gray-900">This analysis isn't available for {areaName}.</p>
-          <p className="mt-1">{data.reason}</p>
-          <p className="mt-1 text-gray-500">The rent map, charts and data grid on the dashboard still cover every ZIP code in this metro.</p>
-        </div>
+        <Paper variant="outlined" sx={{ ...cardSx, p: 2.5, color: "gray.700" }}>
+          <Box component="p" sx={{ fontWeight: 600, color: "gray.900" }}>This analysis isn't available for {areaName}.</Box>
+          <Box component="p" sx={{ mt: 0.5 }}>{data.reason}</Box>
+          <Box component="p" sx={{ mt: 0.5, color: "gray.500" }}>The rent map, charts and data grid on the dashboard still cover every ZIP code in this metro.</Box>
+        </Paper>
       )}
       {error && (
-        <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+        <Box sx={{ p: 2, bgcolor: "red.50", border: 1, borderColor: "red.200", borderRadius: 2, color: "red.700" }}>
           Error: {error}
-          <button onClick={() => handleFetch(path)} className="ml-4 font-semibold underline text-red-900">Retry</button>
-        </div>
+          <Link component="button" underline="always" onClick={() => handleFetch(path)} sx={{ ml: 2, fontSize: "inherit", fontWeight: 600, color: "red.900", verticalAlign: "baseline" }}>Retry</Link>
+        </Box>
       )}
 
       {data && !unavailable && !loading && !error && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "repeat(2, minmax(0, 1fr))", md: "repeat(4, minmax(0, 1fr))" }, gap: 1.5 }}>
             {(tier === "descriptive" ? [
               ["ZIP codes", data.n_zips],
               ["Peak months", data.panel?.peak_months?.join(", ")],
@@ -318,77 +339,77 @@ export default function RentDivergenceReport({ metro = DFW_METRO, areaName = "DF
               ["Peak comparison", data.panel?.pre_period?.join(" → ")],
               ["Within R²", data.r2_within?.toFixed(3)],
             ]).map(([label, value]) => (
-              <div key={label} className="bg-white border border-gray-200 rounded-lg px-4 py-3">
-                <div className="text-xs uppercase tracking-wider text-gray-500 font-semibold">{label}</div>
-                <div className="text-lg font-bold text-gray-900 tabular-nums mt-0.5">{value ?? "—"}</div>
-              </div>
+              <Paper key={label} variant="outlined" sx={{ ...cardSx, px: 2, py: 1.5 }}>
+                <Box sx={{ fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "gray.500", fontWeight: 600 }}>{label}</Box>
+                <Box sx={{ fontSize: "1.125rem", fontWeight: 700, color: "gray.900", fontVariantNumeric: "tabular-nums", mt: 0.25 }}>{value ?? "—"}</Box>
+              </Paper>
             ))}
-          </div>
+          </Box>
 
           {!isFull && data.tier_reason && (
-            <div className="text-sm bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-amber-900">
+            <Box sx={noteBoxSx}>
               {data.tier_reason}
-            </div>
+            </Box>
           )}
-          {coverageText(data) && <p className="text-sm text-gray-500">{coverageText(data)}</p>}
+          {coverageText(data) && <Typography variant="body2" sx={{ color: "gray.500" }}>{coverageText(data)}</Typography>}
 
           {(failures.length > 0 || data.traits_unavailable?.length > 0) && (
-            <div className="text-sm bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-amber-900">
+            <Box sx={noteBoxSx}>
               {data.traits_unavailable?.length > 0 && (
                 <div>Not included (no data): {data.traits_unavailable.map(traitLabel).join(", ")}.</div>
               )}
-              {failures.length > 0 && <div className="mt-1">Data sources that failed to load: {failures.join(", ")}.</div>}
-            </div>
+              {failures.length > 0 && <Box sx={{ mt: 0.5 }}>Data sources that failed to load: {failures.join(", ")}.</Box>}
+            </Box>
           )}
 
           {tier === "descriptive" ? (
-            <div className="bg-white border border-gray-200 rounded-lg p-6">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <h3 className="text-md font-bold text-gray-800">Rent at the peak vs now</h3>
+            <Paper variant="outlined" sx={{ ...cardSx, p: 3 }}>
+              <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", justifyContent: "space-between", gap: 1.5 }}>
+                <Typography variant="h3" sx={cardTitleSx}>Rent at the peak vs now</Typography>
                 <ExplainButton onClick={() => setExplainFocus("pooled")} disabled={!current} />
-              </div>
-              <p className="text-xs text-gray-500 mt-0.5 mb-4">{data.how_to_read}</p>
+              </Box>
+              <Typography variant="caption" component="p" sx={howToReadSx}>{data.how_to_read}</Typography>
               <DescriptiveTables d={data.descriptive} />
-            </div>
+            </Paper>
           ) : (
-          <div className="bg-white border border-gray-200 rounded-lg p-6">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <h3 className="text-md font-bold text-gray-800">{eventStudy ? "Effects that don't vary by year" : "What explains post-peak rents"}</h3>
+          <Paper variant="outlined" sx={{ ...cardSx, p: 3 }}>
+            <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", justifyContent: "space-between", gap: 1.5 }}>
+              <Typography variant="h3" sx={cardTitleSx}>{eventStudy ? "Effects that don't vary by year" : "What explains post-peak rents"}</Typography>
               <ExplainButton onClick={() => setExplainFocus("pooled")} disabled={!current || pooled.length === 0} />
-            </div>
-            <p className="text-xs text-gray-500 mt-0.5 mb-4">{data.how_to_read}</p>
+            </Box>
+            <Typography variant="caption" component="p" sx={howToReadSx}>{data.how_to_read}</Typography>
             <CoefficientTable coefficients={pooled} data={data} />
-          </div>
+          </Paper>
           )}
 
           {isFull && eventStudy && (
-            <div className="bg-white border border-gray-200 rounded-lg p-6">
-              <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
-                <h3 className="text-md font-bold text-gray-800">How each effect evolved after the peak</h3>
+            <Paper variant="outlined" sx={{ ...cardSx, p: 3 }}>
+              <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", justifyContent: "space-between", gap: 1.5, mb: 1.5 }}>
+                <Typography variant="h3" sx={cardTitleSx}>How each effect evolved after the peak</Typography>
                 <ExplainButton onClick={() => setExplainFocus("byYear")} disabled={!current} />
-              </div>
+              </Box>
               <EventStudyChart coefficients={data.coefficients} />
-            </div>
+            </Paper>
           )}
 
-          <div className="text-xs text-gray-500 bg-white border border-gray-200 rounded-lg px-4 py-3 space-y-1">
+          <Paper variant="outlined" sx={{ ...cardSx, fontSize: "0.75rem", color: "gray.500", px: 2, py: 1.5 }}>
            
-          </div>
+          </Paper>
 {/* 
           {onTrainForecast && (
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-emerald-50 border border-emerald-200 rounded-lg px-5 py-4">
+            <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, alignItems: { sm: "center" }, justifyContent: "space-between", gap: 1.5, bgcolor: "emerald.50", border: 1, borderColor: "emerald.200", borderRadius: 2, px: 2.5, py: 2 }}>
               <div>
-                <div className="text-sm font-bold text-emerald-950">Want to try it yourself?</div>
-                <p className="text-sm text-emerald-900 mt-0.5">
+                <Box sx={{ fontSize: "0.875rem", fontWeight: 700, color: "emerald.950" }}>Want to try it yourself?</Box>
+                <Typography variant="body2" sx={{ color: "emerald.900", mt: 0.25 }}>
                   Train your own forecast on the same rent data: pick the factors, choose how many months ahead, and see the predicted rents on the dashboard.
-                </p>
+                </Typography>
               </div>
-              <button onClick={onTrainForecast} className="shrink-0 px-4 py-2 text-sm font-semibold rounded-md bg-emerald-600 hover:bg-emerald-700 text-white transition-colors">
+              <Button variant="contained" color="success" onClick={onTrainForecast} sx={{ flexShrink: 0, px: 2, py: 1, fontSize: "0.875rem", fontWeight: 600 }}>
                 ⚡ Train Forecast Engine
-              </button>
-            </div>
+              </Button>
+            </Box>
           )} */}
-        </div>
+        </Box>
       )}
 
       <AnalysisModal
@@ -397,6 +418,6 @@ export default function RentDivergenceReport({ metro = DFW_METRO, areaName = "DF
         report={report}
         copyText={reportText}
       />
-    </div>
+    </Box>
   );
 }

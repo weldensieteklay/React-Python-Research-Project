@@ -1,6 +1,15 @@
 import React, { useState, useEffect } from "react";
-import { XMarkIcon, ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/24/solid";
-import { guideContent } from "./Guidecontent";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import Dialog from "@mui/material/Dialog";
+import DialogActions from "@mui/material/DialogActions";
+import DialogContent from "@mui/material/DialogContent";
+import DialogTitle from "@mui/material/DialogTitle";
+import IconButton from "@mui/material/IconButton";
+import Typography from "@mui/material/Typography";
+import CloseIcon from "@mui/icons-material/Close";
+import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 /**
  * Generic "Guide Me" modal. Pass in page-specific `content` and it renders
  * a step-by-step walkthrough with Back/Next navigation, as a modal overlay.
@@ -33,83 +42,77 @@ const GuidePanel = ({ open, onClose, content }) => {
     const isFirst = stepIndex === 0;
     const isLast = stepIndex === steps.length - 1;
 
+    const primarySx = { px: 2, py: 0.75, fontSize: "0.875rem", bgcolor: "blue.600", "&:hover": { bgcolor: "blue.700" } };
+
     return (
-        <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
-            onClick={onClose}
+        <Dialog
+            open
+            onClose={onClose}
+            fullWidth
+            maxWidth={false}
+            slotProps={{
+                backdrop: { sx: { bgcolor: "rgba(0,0,0,0.4)" } },
+                paper: { sx: { maxWidth: 512, maxHeight: "85vh", m: 2, borderRadius: 3, boxShadow: 12 } },
+            }}
         >
-            <div
-                className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden"
-                onClick={(e) => e.stopPropagation()}
-            >
-                {/* Header (fixed) */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
-                    <h3 className="text-lg font-semibold text-gray-800">{title}</h3>
-                    <button
-                        onClick={onClose}
-                        className="text-gray-400 hover:text-gray-600"
-                        aria-label="Close guide"
+            {/* Header (fixed) */}
+            <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", px: 3, py: 2, borderBottom: 1, borderColor: "gray.100" }}>
+                <Typography component="span" sx={{ fontSize: "1.125rem", fontWeight: 600, color: "gray.800" }}>{title}</Typography>
+                <IconButton onClick={onClose} aria-label="Close guide" size="small" sx={{ color: "gray.400", "&:hover": { color: "gray.600" } }}>
+                    <CloseIcon fontSize="small" />
+                </IconButton>
+            </DialogTitle>
+
+            {/* Body (scrollable) */}
+            <DialogContent sx={{ px: 3, py: 3, minHeight: 160 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600, color: "blue.600", mb: 1 }}>
+                    {step.heading}
+                </Typography>
+                <Typography variant="body2" sx={{ color: "gray.600", lineHeight: 1.625, whiteSpace: "pre-line" }}>
+                    {step.description}
+                </Typography>
+            </DialogContent>
+
+            {/* Footer (fixed) */}
+            <DialogActions sx={{ justifyContent: "space-between", px: 3, py: 2, borderTop: 1, borderColor: "gray.100", bgcolor: "gray.50" }}>
+                {/* Progress dots */}
+                <Box sx={{ display: "flex", gap: 0.75 }}>
+                    {steps.map((_, i) => (
+                        <Box
+                            component="span"
+                            key={i}
+                            sx={{ height: 6, borderRadius: 999, transition: "all 150ms", width: i === stepIndex ? 24 : 6, bgcolor: i === stepIndex ? "blue.600" : "gray.300" }}
+                        />
+                    ))}
+                </Box>
+
+                <Box sx={{ display: "flex", gap: 1 }}>
+                    <Button
+                        onClick={() => setStepIndex((i) => Math.max(0, i - 1))}
+                        disabled={isFirst}
+                        startIcon={<ChevronLeftIcon fontSize="small" />}
+                        sx={{ px: 1.5, py: 0.75, fontSize: "0.875rem", fontWeight: 400, color: "gray.600", "&:hover": { bgcolor: "gray.200" }, "&.Mui-disabled": { color: "gray.300" } }}
                     >
-                        <XMarkIcon className="h-5 w-5" />
-                    </button>
-                </div>
+                        Back
+                    </Button>
 
-                {/* Body (scrollable) */}
-                <div className="px-6 py-6 overflow-y-auto grow min-h-[160px]">
-                    <p className="text-sm font-semibold text-blue-600 mb-2">
-                        {step.heading}
-                    </p>
-                    <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">
-                        {step.description}
-                    </p>
-                </div>
-
-                {/* Footer (fixed) */}
-                <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 bg-gray-50 shrink-0">
-                    {/* Progress dots */}
-                    <div className="flex gap-1.5">
-                        {steps.map((_, i) => (
-                            <span
-                                key={i}
-                                className={`h-1.5 rounded-full transition-all ${i === stepIndex ? "w-6 bg-blue-600" : "w-1.5 bg-gray-300"
-                                    }`}
-                            />
-                        ))}
-                    </div>
-
-                    <div className="flex gap-2">
-                        <button
-                            onClick={() => setStepIndex((i) => Math.max(0, i - 1))}
-                            disabled={isFirst}
-                            className={`flex items-center gap-1 px-3 py-1.5 text-sm rounded-md ${isFirst
-                                    ? "text-gray-300 cursor-not-allowed"
-                                    : "text-gray-600 hover:bg-gray-200"
-                                }`}
+                    {isLast ? (
+                        <Button variant="contained" onClick={onClose} sx={primarySx}>
+                            Got it
+                        </Button>
+                    ) : (
+                        <Button
+                            variant="contained"
+                            onClick={() => setStepIndex((i) => Math.min(steps.length - 1, i + 1))}
+                            endIcon={<ChevronRightIcon fontSize="small" />}
+                            sx={primarySx}
                         >
-                            <ChevronLeftIcon className="h-4 w-4" />
-                            Back
-                        </button>
-
-                        {isLast ? (
-                            <button
-                                onClick={onClose}
-                                className="px-4 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
-                            >
-                                Got it
-                            </button>
-                        ) : (
-                            <button
-                                onClick={() => setStepIndex((i) => Math.min(steps.length - 1, i + 1))}
-                                className="flex items-center gap-1 px-4 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
-                            >
-                                Next
-                                <ChevronRightIcon className="h-4 w-4" />
-                            </button>
-                        )}
-                    </div>
-                </div>
-            </div>
-        </div>
+                            Next
+                        </Button>
+                    )}
+                </Box>
+            </DialogActions>
+        </Dialog>
     );
 };
 

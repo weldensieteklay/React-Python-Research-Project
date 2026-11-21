@@ -1,6 +1,33 @@
 import React, { useEffect, useId, useMemo, useState } from "react";
 import { useFetchData } from "../../hooks/useFetchData";
 import { DFW_METRO } from "./useRentMetro";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import IconButton from "@mui/material/IconButton";
+import Link from "@mui/material/Link";
+import NativeSelect from "@mui/material/NativeSelect";
+import OutlinedInput from "@mui/material/OutlinedInput";
+import Paper from "@mui/material/Paper";
+import Tooltip from "@mui/material/Tooltip";
+import Typography from "@mui/material/Typography";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
+import InfoIcon from "@mui/icons-material/Info";
+import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
+import { pulse } from "../../theme";
+
+const blueLinkSx = { fontWeight: 600, color: "blue.700", "&:hover": { color: "blue.900" } };
+const focusRing = { outline: "none", "&:focus-visible, &.Mui-focusVisible": { boxShadow: (t) => `0 0 0 2px ${t.palette.blue[500]}` } };
+const chipSx = { px: 1, py: 0.25, borderRadius: 1, fontSize: "0.75rem", fontWeight: 500 };
+const smallHeadSx = { fontSize: "0.875rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.025em", color: "gray.600" };
+const bulletListSx = { mt: 0.75, listStyle: "disc", pl: 2.5, fontSize: "0.875rem", color: "gray.700", "& > li + li": { mt: 0.5 } };
+const cardSx = { border: 1, borderColor: "gray.200", borderRadius: 2, bgcolor: "gray.50" };
+const smallPrintSx = { color: "gray.500", lineHeight: 1.625 };
+const driverTitleSx = { fontSize: "1rem", fontWeight: 600, color: "gray.900" };
+const driverFigureSx = { mt: 0.5, color: "gray.700", fontVariantNumeric: "tabular-nums" };
+const driverResearchSx = { mt: 1, color: "gray.600", lineHeight: 1.625 };
+/** Chevron that turns when the <details> around its <summary> opens */
+const summaryChevronSx = { fontSize: 16, transition: "transform 150ms", "details[open] > summary > &": { transform: "rotate(90deg)" } };
 
 // ===========================================================================
 // "What drives rents here?" for the rental dashboard.
@@ -91,11 +118,12 @@ function compare(area, metro) {
 
 function SourceLink({ source }) {
     return (
-        <a href={source.url} target="_blank" rel="noopener noreferrer" title={source.label}
+        <Link href={source.url} target="_blank" rel="noopener noreferrer" title={source.label}
             aria-label={`See more details: ${source.label} (opens in a new tab)`}
-            className="inline-block mt-2 text-sm font-semibold text-blue-700 hover:text-blue-900 hover:underline">
+            underline="hover"
+            sx={{ display: "inline-block", mt: 1, fontSize: "0.875rem", ...blueLinkSx }}>
             See more details ↗
-        </a>
+        </Link>
     );
 }
 
@@ -103,54 +131,34 @@ function SourceLink({ source }) {
 const UPDATE_NOTE = "Neighborhood values update with each new Census and Zillow release. Automated local market reports for every county are currently in development.";
 
 
-/** An (i) icon that shows `text` on hover or keyboard focus, and toggles it on tap (phones). */
-function InfoTip({ text, className = "text-blue-700 hover:text-blue-900" }) {
-    const [shown, setShown] = useState(false);
-    const tipId = useId();
+/** An (i) icon that shows `text` on hover or keyboard focus, and on tap (phones). */
+function InfoTip({ text }) {
     return (
-        <span className="relative inline-flex group">
-            <button
-                type="button"
-                aria-label="About these drivers"
-                aria-describedby={tipId}
-                onClick={() => setShown((v) => !v)}
-                onBlur={() => setShown(false)}
-                onKeyDown={(e) => { if (e.key === "Escape") setShown(false); }}
-                className={`${className} rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500`}
-            >
-                <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="w-5 h-5">
-                    <path fillRule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-7-4a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM9 9a.75.75 0 0 0 0 1.5h.25v3.25a.75.75 0 0 0 1.5 0V9.75A.75.75 0 0 0 10 9H9Z" clipRule="evenodd" />
-                </svg>
-            </button>
-            <span
-                id={tipId}
-                role="tooltip"
-                className={`absolute left-1/2 -translate-x-1/2 top-full mt-2 z-20 w-max max-w-[16rem] rounded-md bg-gray-900 px-3 py-2 text-sm font-normal text-white shadow-lg
-                    ${shown ? "block" : "hidden"} group-hover:block group-focus-within:block`}
-            >
-                {text}
-            </span>
-        </span>
+        <Tooltip title={text} arrow describeChild enterTouchDelay={0} leaveTouchDelay={5000}
+                 slotProps={{ tooltip: { sx: { maxWidth: 256, bgcolor: "gray.900", px: 1.5, py: 1, fontSize: "0.875rem", fontWeight: 400, boxShadow: 6 } }, arrow: { sx: { color: "gray.900" } } }}>
+            <IconButton aria-label="About these drivers" size="small"
+                        sx={{ p: 0, color: "blue.700", "&:hover": { color: "blue.900", bgcolor: "transparent" }, ...focusRing }}>
+                <InfoIcon sx={{ fontSize: 20 }} />
+            </IconButton>
+        </Tooltip>
     );
 }
 
 /** A short "how we use AI" note under a section heading: sparkle icon, soft violet callout. */
 function AiNote({ children }) {
     return (
-        <p className="mt-2 flex items-start gap-2 rounded-md border-l-4 border-violet-400 bg-violet-50 px-3 py-2 text-sm text-violet-900 leading-relaxed">
-            <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-violet-600">
-                <path d="M10 1.5l1.6 4.4 4.4 1.6-4.4 1.6L10 13.5l-1.6-4.4L4 7.5l4.4-1.6L10 1.5Zm5.5 10l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2Z" />
-            </svg>
+        <Box component="p" sx={{ mt: 1, display: "flex", alignItems: "flex-start", gap: 1, borderRadius: 1.5, borderLeft: 4, borderColor: "violet.400", bgcolor: "violet.50", px: 1.5, py: 1, fontSize: "0.875rem", color: "violet.900", lineHeight: 1.625 }}>
+            <AutoAwesomeIcon aria-hidden="true" sx={{ mt: 0.25, fontSize: 16, flexShrink: 0, color: "violet.600" }} />
             <span>{children}</span>
-        </p>
+        </Box>
     );
 }
 
 // Direction chips used by the local market report
 const DIRECTION = {
-    up: { text: "Pushing rents up", cls: "bg-red-50 text-red-800" },
-    down: { text: "Pushing rents down", cls: "bg-green-50 text-green-800" },
-    mixed: { text: "Mixed effect", cls: "bg-gray-200 text-gray-700" },
+    up: { text: "Pushing rents up", tone: { bgcolor: "red.50", color: "red.800" } },
+    down: { text: "Pushing rents down", tone: { bgcolor: "green.50", color: "green.800" } },
+    mixed: { text: "Mixed effect", tone: { bgcolor: "gray.200", color: "gray.700" } },
 };
 const shortDate = (d) => {
     if (!d) return "";
@@ -484,84 +492,84 @@ const DIRECTION_GROUPS = [
 function Cites({ refs, prefix }) {
     if (!refs?.length) return null;
     return (
-        <span className="whitespace-nowrap">
+        <Box component="span" sx={{ whiteSpace: "nowrap" }}>
             {refs.map((n) => (
-                <a key={n} href={`#${prefix}-ref-${n}`} aria-label={`Reference ${n}`}
-                    className="ml-0.5 align-super text-[0.7rem] font-semibold text-blue-700 hover:text-blue-900 hover:underline">
+                <Link key={n} href={`#${prefix}-ref-${n}`} aria-label={`Reference ${n}`} underline="hover"
+                    sx={{ ml: 0.25, verticalAlign: "super", fontSize: "0.7rem", ...blueLinkSx }}>
                     [{n}]
-                </a>
+                </Link>
             ))}
-        </span>
+        </Box>
     );
 }
 
 function SampleReport({ report, heading }) {
     const prefix = useId().replace(/[^a-zA-Z0-9_-]/g, "");
     return (
-        <article className="mt-3 rounded-lg border border-gray-200 bg-white p-4 md:p-5">
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h4 className="text-base font-bold text-gray-900">{heading ?? `Sample report: ${report.place}`}</h4>
-                <span className="text-xs text-gray-500">Researched {shortDate(report.as_of)} · {report.references.length} sources</span>
-            </div>
-            <p className="mt-2 text-sm text-gray-800 leading-relaxed"><b>Summary.</b> {report.overall}</p>
+        <Paper component="article" variant="outlined" sx={{ mt: 1.5, borderRadius: 2, borderColor: "gray.200", p: { xs: 2, md: 2.5 } }}>
+            <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", justifyContent: "space-between", gap: 1 }}>
+                <Typography variant="h4" sx={{ fontSize: "1rem", fontWeight: 700, color: "gray.900" }}>{heading ?? `Sample report: ${report.place}`}</Typography>
+                <Typography variant="caption" sx={{ color: "gray.500" }}>Researched {shortDate(report.as_of)} · {report.references.length} sources</Typography>
+            </Box>
+            <Typography variant="body2" sx={{ mt: 1, color: "gray.800", lineHeight: 1.625 }}><b>Summary.</b> {report.overall}</Typography>
 
             {DIRECTION_GROUPS.map(([dir, heading]) => {
                 const items = report.drivers.filter((d) => d.direction === dir);
                 if (!items.length) return null;
                 return (
-                    <div key={dir} className="mt-4">
-                        <h5 className="text-sm font-semibold uppercase tracking-wide text-gray-600">{heading}</h5>
-                        <ul className="mt-2 grid gap-3 md:grid-cols-2">
+                    <Box key={dir} sx={{ mt: 2 }}>
+                        <Typography variant="h5" sx={smallHeadSx}>{heading}</Typography>
+                        <Box component="ul" sx={{ mt: 1, display: "grid", gap: 1.5, gridTemplateColumns: { md: "repeat(2, minmax(0, 1fr))" } }}>
                             {items.map((d) => (
-                                <li key={d.id} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-                                    <div className="flex flex-wrap items-baseline justify-between gap-2">
-                                        <span className="text-sm font-semibold text-gray-900">{d.name}</span>
-                                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${DIRECTION[d.direction].cls}`}>
+                                <Box component="li" key={d.id} sx={{ ...cardSx, p: 1.5 }}>
+                                    <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", justifyContent: "space-between", gap: 1 }}>
+                                        <Box component="span" sx={{ fontSize: "0.875rem", fontWeight: 600, color: "gray.900" }}>{d.name}</Box>
+                                        <Box component="span" sx={{ ...chipSx, ...DIRECTION[d.direction].tone }}>
                                             {DIRECTION[d.direction].text}
-                                        </span>
-                                    </div>
-                                    {d.strength && <div className="text-xs font-medium text-gray-500">{d.strength}</div>}
-                                    <ul className="mt-1.5 list-disc space-y-1 pl-5 text-sm text-gray-700 leading-relaxed">
+                                        </Box>
+                                    </Box>
+                                    {d.strength && <Box sx={{ fontSize: "0.75rem", fontWeight: 500, color: "gray.500" }}>{d.strength}</Box>}
+                                    <Box component="ul" sx={{ ...bulletListSx, lineHeight: 1.625 }}>
                                         {d.points.map((p, i) => <li key={i}>{p.text}<Cites refs={p.refs} prefix={prefix} /></li>)}
-                                    </ul>
-                                </li>
+                                    </Box>
+                                </Box>
                             ))}
-                        </ul>
-                    </div>
+                        </Box>
+                    </Box>
                 );
             })}
 
             {report.rents?.length > 0 && (
-                <div className="mt-4">
-                    <h5 className="text-sm font-semibold uppercase tracking-wide text-gray-600">Current rents for reference</h5>
-                    <ul className="mt-1.5 list-disc space-y-1 pl-5 text-sm text-gray-700">
+                <Box sx={{ mt: 2 }}>
+                    <Typography variant="h5" sx={smallHeadSx}>Current rents for reference</Typography>
+                    <Box component="ul" sx={bulletListSx}>
                         {report.rents.map((p, i) => <li key={i}>{p.text}<Cites refs={p.refs} prefix={prefix} /></li>)}
-                    </ul>
-                </div>
+                    </Box>
+                </Box>
             )}
 
-            <div className="mt-5 border-t border-gray-100 pt-3">
-                <h5 className="text-sm font-semibold uppercase tracking-wide text-gray-600">References</h5>
-                <ol className="mt-2 space-y-2 text-sm">
+            <Box sx={{ mt: 2.5, borderTop: 1, borderColor: "gray.100", pt: 1.5 }}>
+                <Typography variant="h5" sx={smallHeadSx}>References</Typography>
+                <Box component="ol" sx={{ mt: 1, display: "flex", flexDirection: "column", gap: 1, fontSize: "0.875rem" }}>
                     {report.references.map((r) => (
-                        <li key={r.id} id={`${prefix}-ref-${r.id}`} className="flex gap-2 scroll-mt-24">
-                            <span className="w-7 shrink-0 text-right font-semibold text-gray-500">{r.id}.</span>
-                            <div className="min-w-0">
-                                <a href={r.url} target="_blank" rel="noopener noreferrer"
-                                    className="font-semibold text-blue-700 hover:text-blue-900 hover:underline break-words">
+                        <Box component="li" key={r.id} id={`${prefix}-ref-${r.id}`} sx={{ display: "flex", gap: 1, scrollMarginTop: "96px" }}>
+                            <Box component="span" sx={{ width: 28, flexShrink: 0, textAlign: "right", fontWeight: 600, color: "gray.500" }}>{r.id}.</Box>
+                            <Box sx={{ minWidth: 0 }}>
+                                <Link href={r.url} target="_blank" rel="noopener noreferrer" underline="hover"
+                                    sx={{ ...blueLinkSx, overflowWrap: "break-word" }}>
                                     {r.title} ↗
-                                </a>
-                                <div className="text-xs text-gray-500">
+                                </Link>
+                                <Box sx={{ fontSize: "0.75rem", color: "gray.500" }}>
                                     {[r.publisher, r.type, r.published, r.covers && `Covers: ${r.covers}`].filter(Boolean).join(" · ")}
-                                </div>
-                                {r.note && <div className="text-xs text-gray-500 italic">{r.note}</div>}
-                            </div>
-                        </li>
+                                </Box>
+                                {r.note && <Box sx={{ fontSize: "0.75rem", color: "gray.500", fontStyle: "italic" }}>{r.note}</Box>}
+                            </Box>
+                        </Box>
                     ))}
-                </ol>
-            </div>
-        </article>
-    );
+                </Box>
+            </Box>
+        </Paper>
+  );
 }
 
 const SAMPLE_NOTE =
@@ -573,17 +581,16 @@ const SAMPLE_NOTE =
 /** One collapsible sample report (closed until the viewer opens it) */
 function SampleDetails({ report, isCurrent }) {
     return (
-        <details className="group/sample">
-            <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-md text-sm font-semibold text-blue-700 hover:text-blue-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 [&::-webkit-details-marker]:hidden">
-                <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="w-4 h-4 transition-transform group-open/sample:rotate-90">
-                    <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 0 1 .02-1.06L11.17 10 7.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 0 1-1.06-.02Z" clipRule="evenodd" />
-                </svg>
+        <details>
+            <Box component="summary"
+                 sx={{ display: "inline-flex", cursor: "pointer", listStyle: "none", alignItems: "center", gap: 0.5, borderRadius: 1.5, fontSize: "0.875rem", ...blueLinkSx, ...focusRing, "&::-webkit-details-marker": { display: "none" } }}>
+                <ChevronRightIcon aria-hidden="true" sx={summaryChevronSx} />
                 More details: see a sample report for {report.place}
-                {isCurrent && <span className="ml-1 px-1.5 py-0.5 rounded bg-blue-50 text-xs font-medium text-blue-800">this county</span>}
-            </summary>
+                {isCurrent && <Box component="span" sx={{ ml: 0.5, px: 0.75, py: 0.25, borderRadius: 1, bgcolor: "blue.50", fontSize: "0.75rem", fontWeight: 500, color: "blue.800" }}>this county</Box>}
+            </Box>
             <SampleReport report={report} />
         </details>
-    );
+  );
 }
 
 /** The pending notice plus every sample, the viewer's own county first when it has one */
@@ -592,20 +599,20 @@ function PendingWithSamples({ metro, county }) {
     const samples = [...SAMPLE_REPORTS].sort((a, b) => Number(isCurrent(b)) - Number(isCurrent(a)));
     return (
         <>
-            <p className="mt-1 text-sm text-gray-700 leading-relaxed">
+            <Typography variant="body2" sx={{ mt: 0.5, color: "gray.700", lineHeight: 1.625 }}>
                 <b>Live reports are currently in development.</b> Each report reads recent local news, apartment market reports and
                 public announcements, and explains what is pushing rents up or down in a county: new construction, vacancies and
                 move-in deals, jobs and population growth, schools, hospitals, transit, home buying costs and local policy. Every
                 point links to its source.
-            </p>
-            <p className="mt-1 text-sm text-gray-600">
+            </Typography>
+            <Typography variant="body2" sx={{ mt: 0.5, color: "gray.600" }}>
                 Full coverage for every county across all metros is rolling out soon—explore the sample reports below in the meantime.
-            </p>
+            </Typography>
 
-            <div className="mt-3 space-y-2">
+            <Box sx={{ mt: 1.5, display: "flex", flexDirection: "column", gap: 1 }}>
                 {samples.map((r) => <SampleDetails key={r.id} report={r} isCurrent={isCurrent(r)} />)}
-            </div>
-            <p className="mt-3 text-xs text-gray-500 leading-relaxed">{SAMPLE_NOTE}</p>
+            </Box>
+            <Typography variant="caption" component="p" sx={{ mt: 1.5, ...smallPrintSx }}>{SAMPLE_NOTE}</Typography>
         </>
     );
 }
@@ -630,39 +637,39 @@ function LiveMarketReport({ metro, county }) {
     if (!data || ["disabled", "unavailable", "failed", "needs_review"].includes(status)) {
         return (
             <>
-                {req.loading && !data && <p className="mt-2 text-sm text-blue-700 animate-pulse" role="status">Loading…</p>}
-                {data?.message && <p className="mt-2 text-sm text-gray-600">{data.message}</p>}
+                {req.loading && !data && <Typography variant="body2" sx={{ mt: 1, color: "blue.700", ...pulse }} role="status">Loading…</Typography>}
+                {data?.message && <Typography variant="body2" sx={{ mt: 1, color: "gray.600" }}>{data.message}</Typography>}
                 <PendingWithSamples metro={metro} county={county} />
             </>
         );
     }
     if (status === "running") {
-        return <p className="mt-2 text-sm text-blue-700" role="status">Researching {county}. This can take a minute or two; this page checks again on its own.</p>;
+        return <Typography variant="body2" sx={{ mt: 1, color: "blue.700" }} role="status">Researching {county}. This can take a minute or two; this page checks again on its own.</Typography>;
     }
     return (
         <>
-            <p className="mt-2 text-xs text-gray-500">
+            <Typography variant="caption" component="p" sx={{ mt: 1, color: "gray.500" }}>
                 {data.reviewed ? "Researched with AI and reviewed by a person." : "Researched with AI, not yet reviewed by a person."} Researched {shortDate(data.report.as_of)}.
-            </p>
+            </Typography>
             <SampleReport report={data.report} heading={`Local market report: ${data.report.place}`} />
-            <p className="mt-3 text-xs text-gray-500 leading-relaxed">
+            <Typography variant="caption" component="p" sx={{ mt: 1.5, ...smallPrintSx }}>
                 This report summarizes what published sources say; it is not a forecast or investment advice. Open a source before relying on a specific number.
-            </p>
+            </Typography>
         </>
     );
 }
 
 function LocalMarketReport({ metro, county }) {
     return (
-        <section className="mt-6 border-t border-gray-100 pt-5" aria-labelledby="market-report-title">
-            <div className="flex flex-wrap items-center gap-2">
-                <h3 id="market-report-title" className="text-lg font-bold text-gray-900">Local market report for {county}</h3>
+        <Box component="section" sx={{ mt: 3, borderTop: 1, borderColor: "gray.100", pt: 2.5 }} aria-labelledby="market-report-title">
+            <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 1 }}>
+                <Typography variant="h3" id="market-report-title" sx={{ fontSize: "1.125rem", fontWeight: 700, color: "gray.900" }}>Local market report for {county}</Typography>
                 {!REPORTS_LIVE && (
-                    <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-800">
+                    <Box component="span" sx={{ ...chipSx, borderRadius: 999, fontWeight: 600, bgcolor: "blue.50", color: "blue.800" }}>
                         Preview · Coming soon
-                    </span>
+                    </Box>
                 )}
-            </div>
+            </Box>
             <AiNote>
                 <b>Researched with AI.</b> We use AI (Claude, by Anthropic) to search the web for local news, apartment market
                 reports and public announcements and find what is driving rents in each county. Every point links to its source.
@@ -670,7 +677,7 @@ function LocalMarketReport({ metro, county }) {
             {REPORTS_LIVE
                 ? <LiveMarketReport metro={metro} county={county} />
                 : <PendingWithSamples metro={metro} county={county} />}
-        </section>
+        </Box>
     );
 }
 
@@ -745,66 +752,64 @@ export default function RentDriversSection({ metro = DFW_METRO, areaName = "DFW"
     const areaLabel = current;
 
     return (
-        <section className="mb-6 bg-white border border-gray-200 rounded-lg" aria-labelledby={asPage ? undefined : "drivers-title"}
+        <Paper component="section" variant="outlined" sx={{ mb: 3, borderColor: "gray.200", borderRadius: 2 }} aria-labelledby={asPage ? undefined : "drivers-title"}
             aria-label={asPage ? `What drives rents in ${areaName}` : undefined}>
             {/* Header (card mode only): the title or the button opens and closes the details */}
             {!asPage && (
-                <div className={`flex items-center justify-between gap-3 flex-wrap px-6 py-4 ${open ? "border-b border-gray-100" : ""}`}>
-                    <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                            <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls={bodyId}
-                                className="text-left rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
-                                <span id="drivers-title" className="block text-xl font-bold text-gray-900">What drives rents {open && 'in ' + areaLabel}?</span>
-                            </button>
-                            <InfoTip text={UPDATE_NOTE} className="text-blue-700 hover:text-blue-900" />
-                        </div>
-                        <p className="mt-0.5 text-sm text-gray-600">
+                <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1.5, flexWrap: "wrap", px: 3, py: 2, ...(open && { borderBottom: 1, borderColor: "gray.100" }) }}>
+                    <Box sx={{ minWidth: 0, flex: 1 }}>
+                        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                            <Box component="button" type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls={bodyId}
+                                sx={{ textAlign: "left", borderRadius: 1.5, border: 0, p: 0, bgcolor: "transparent", cursor: "pointer", ...focusRing }}>
+                                <Box component="span" id="drivers-title" sx={{ display: "block", fontSize: "1.25rem", fontWeight: 700, color: "gray.900" }}>What drives rents {open && 'in ' + areaLabel}?</Box>
+                            </Box>
+                            <InfoTip text={UPDATE_NOTE} />
+                        </Box>
+                        <Typography variant="body2" sx={{ mt: 0.25, color: "gray.600" }}>
                             {open
                                 ? "Compare a county with the metro on factors that published research links to rents."
                                 : `${DRIVERS.length + 1} drivers from published research, compared by county.`}
-                        </p>
-                    </div>
-                    <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls={bodyId}
-                        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-blue-600 bg-blue-50 text-blue-800 text-base font-semibold hover:bg-blue-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 shrink-0">
+                        </Typography>
+                    </Box>
+                    <Button variant="outlined" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls={bodyId}
+                        endIcon={<KeyboardArrowDownIcon sx={{ transition: "transform 150ms", transform: open ? "rotate(180deg)" : "none" }} />}
+                        sx={{ flexShrink: 0, px: 2, py: 1, borderRadius: 2, border: 2, borderColor: "blue.600", bgcolor: "blue.50", color: "blue.800", fontSize: "1rem", fontWeight: 600, "&:hover": { border: 2, borderColor: "blue.600", bgcolor: "blue.100" } }}>
                         {open ? "Hide drivers" : "Show drivers"}
-                        <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"
-                            className={`w-5 h-5 transition-transform ${open ? "rotate-180" : ""}`}>
-                            <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.06l3.71-3.83a.75.75 0 1 1 1.08 1.04l-4.25 4.39a.75.75 0 0 1-1.08 0L5.21 8.27a.75.75 0 0 1 .02-1.06z" clipRule="evenodd" />
-                        </svg>
-                    </button>
-                </div>
+                    </Button>
+                </Box>
             )}
 
             {open && (
-                <div id={bodyId} className="px-6 py-5">
-                    <div className={`flex flex-wrap items-center gap-2 ${asPage ? "justify-between" : "justify-end"}`}>
+                <Box id={bodyId} sx={{ px: 3, py: 2.5 }}>
+                    <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 1, justifyContent: asPage ? "space-between" : "flex-end" }}>
                         {asPage && (
-                            <div className="flex items-center gap-1.5">
-                                <p className="text-sm text-gray-600">Compare a county with the metro on factors that published research links to rents.</p>
+                            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+                                <Typography variant="body2" sx={{ color: "gray.600" }}>Compare a county with the metro on factors that published research links to rents.</Typography>
                                 <InfoTip text={UPDATE_NOTE} />
-                            </div>
+                            </Box>
                         )}
-                        <div className="flex items-center gap-2">
-                            <label htmlFor="drivers-county" className="text-sm font-semibold text-gray-600">County</label>
-                            <select id="drivers-county" value={current} onChange={(e) => setChoice(e.target.value)}
-                                className="border border-gray-300 bg-white rounded-md px-3 py-1.5 text-sm font-medium max-w-[16rem]">
+                        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                            <Typography component="label" htmlFor="drivers-county" variant="body2" sx={{ fontWeight: 600, color: "gray.600" }}>County</Typography>
+                            <NativeSelect id="drivers-county" value={current} onChange={(e) => setChoice(e.target.value)}
+                                input={<OutlinedInput size="small" />}
+                                sx={{ bgcolor: "common.white", fontSize: "0.875rem", fontWeight: 500, maxWidth: 256, "& .MuiNativeSelect-select": { py: 0.75, pl: 1.5 } }}>
                                 {options.map((o) => (
                                     <option key={o} value={o}>{o}</option>
                                 ))}
-                            </select>
-                        </div>
-                    </div>
+                            </NativeSelect>
+                        </Box>
+                    </Box>
 
 
                     {/* First section: neighborhood factors vs. the metro. Same layout as the Local market report:
                         heading, summary, then a "More details" link that opens the cards (closed by default). */}
-                    <section className="mt-5" aria-labelledby="factors-title">
-                        <h3 id="factors-title" className="text-lg font-bold text-gray-900">Neighborhood factors compared with the metro</h3>
+                    <Box component="section" sx={{ mt: 2.5 }} aria-labelledby="factors-title">
+                        <Typography variant="h3" id="factors-title" sx={{ fontSize: "1.125rem", fontWeight: 700, color: "gray.900" }}>Neighborhood factors compared with the metro</Typography>
                         <AiNote>
                             <b>Researched with AI.</b> We used AI (Claude, by Anthropic) to search the web for what drives rental
                             prices and the published research behind each factor.
                         </AiNote>
-                        <p className="mt-1 text-sm text-gray-700 leading-relaxed">
+                        <Typography variant="body2" sx={{ mt: 0.5, color: "gray.700", lineHeight: 1.625 }}>
                             {context?.rent != null && (
                                 <>
                                     Typical rent in {areaLabel}: <b>{usd(context.rent)}</b> a month
@@ -813,76 +818,74 @@ export default function RentDriversSection({ metro = DFW_METRO, areaName = "DFW"
                             )}
                             How {areaLabel} compares with the rest of the metro on {DRIVERS.length + 1} factors that published research links to
                             rents: income, new housing, rental growth, distance to downtown, density and mortgage rates.
-                        </p>
-                        <button type="button" onClick={() => setFactorsOpen((o) => !o)} aria-expanded={factorsOpen} aria-controls={factorsId}
-                            className="mt-3 inline-flex items-center gap-1 rounded-md text-sm font-semibold text-blue-700 hover:text-blue-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
-                            <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className={`w-4 h-4 transition-transform ${factorsOpen ? "rotate-90" : ""}`}>
-                                <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 0 1 .02-1.06L11.17 10 7.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 0 1-1.06-.02Z" clipRule="evenodd" />
-                            </svg>
+                        </Typography>
+                        <Box component="button" type="button" onClick={() => setFactorsOpen((o) => !o)} aria-expanded={factorsOpen} aria-controls={factorsId}
+                            sx={{ mt: 1.5, display: "inline-flex", alignItems: "center", gap: 0.5, borderRadius: 1.5, border: 0, p: 0, bgcolor: "transparent", cursor: "pointer", fontSize: "0.875rem", ...blueLinkSx, ...focusRing }}>
+                            <ChevronRightIcon aria-hidden="true" sx={{ fontSize: 16, transition: "transform 150ms", transform: factorsOpen ? "rotate(90deg)" : "none" }} />
                             More details: see the {DRIVERS.length + 1} factors for {areaLabel}
-                        </button>
+                        </Box>
                         {factorsOpen && (
-                            <div id={factorsId} className="mt-3">
+                            <Box id={factorsId} sx={{ mt: 1.5 }}>
 
-                                {cov.loading && !covRows && <p className="mt-2 text-sm text-blue-700 animate-pulse" role="status">Loading neighborhood data…</p>}
+                                {cov.loading && !covRows && <Typography variant="body2" sx={{ mt: 1, color: "blue.700", ...pulse }} role="status">Loading neighborhood data…</Typography>}
                                 {cov.error && !covRows && (
-                                    <p className="mt-4 text-sm text-gray-500">
+                                    <Typography variant="body2" sx={{ mt: 2, color: "gray.500" }}>
                                         Neighborhood data isn't available right now.{" "}
-                                        <button onClick={() => cov.handleFetch("data/dfw-zip-covariates", { metro })} className="font-semibold underline text-gray-700">Try again</button>
-                                    </p>
+                                        <Link component="button" underline="always" onClick={() => cov.handleFetch("data/dfw-zip-covariates", { metro })} sx={{ fontSize: "inherit", fontWeight: 600, color: "gray.700", verticalAlign: "baseline" }}>Try again</Link>
+                                    </Typography>
                                 )}
 
-                                <ul className="mt-2 grid gap-4 md:grid-cols-2">
+                                <Box component="ul" sx={{ mt: 1, display: "grid", gap: 2, gridTemplateColumns: { md: "repeat(2, minmax(0, 1fr))" } }}>
                                     {drivers.map((d) => {
                                         const c = compare(d.area, d.metro);
                                         const chip = c === "higher" ? d.higher : c === "lower" ? d.lower : "About the same as the metro";
                                         return (
-                                            <li key={d.key} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
-                                                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                                                    <h4 className="text-base font-semibold text-gray-900">{d.name}</h4>
-                                                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${c === "same" ? "bg-gray-200 text-gray-700" : "bg-blue-100 text-blue-800"}`}>{chip}</span>
-                                                </div>
-                                                <p className="mt-1 text-sm text-gray-700 tabular-nums">
+                                            <Box component="li" key={d.key} sx={{ ...cardSx, p: 2 }}>
+                                                <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", justifyContent: "space-between", gap: 1 }}>
+                                                    <Typography variant="h4" sx={driverTitleSx}>{d.name}</Typography>
+                                                    <Box component="span" sx={{ ...chipSx, ...(c === "same" ? { bgcolor: "gray.200", color: "gray.700" } : { bgcolor: "blue.100", color: "blue.800" }) }}>{chip}</Box>
+                                                </Box>
+                                                <Typography variant="body2" sx={driverFigureSx}>
                                                     This county: <b>{d.format(d.area)}</b>
-                                                    <span className="text-gray-400"> · </span>Metro typical: {d.format(d.metro)}
-                                                </p>
-                                                <p className="mt-2 text-sm text-gray-600 leading-relaxed">{d.research}</p>
+                                                    <Box component="span" sx={{ color: "gray.400" }}> · </Box>Metro typical: {d.format(d.metro)}
+                                                </Typography>
+                                                <Typography variant="body2" sx={driverResearchSx}>{d.research}</Typography>
                                                 <SourceLink source={d.source} />
-                                            </li>
+                                            </Box>
                                         );
                                     })}
                                     {context?.rate != null && (
-                                        <li className="border border-gray-200 rounded-lg p-4 bg-gray-50">
-                                            <div className="flex flex-wrap items-baseline justify-between gap-2">
-                                                <h4 className="text-base font-semibold text-gray-900">{MORTGAGE.name}</h4>
+                                        <Box component="li" sx={{ ...cardSx, p: 2 }}>
+                                            <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", justifyContent: "space-between", gap: 1 }}>
+                                                <Typography variant="h4" sx={driverTitleSx}>{MORTGAGE.name}</Typography>
                                                 {context.rateBefore != null && (
-                                                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-200 text-gray-700">
+                                                    <Box component="span" sx={{ ...chipSx, bgcolor: "gray.200", color: "gray.700" }}>
                                                         {context.rate > context.rateBefore + 0.1 ? "Up from a year ago" : context.rate < context.rateBefore - 0.1 ? "Down from a year ago" : "Similar to a year ago"}
-                                                    </span>
+                                                    </Box>
                                                 )}
-                                            </div>
-                                            <p className="mt-1 text-sm text-gray-700 tabular-nums">
+                                            </Box>
+                                            <Typography variant="body2" sx={driverFigureSx}>
                                                 Latest: <b>{context.rate.toFixed(2)}%</b>
-                                                {context.rateBefore != null && <><span className="text-gray-400"> · </span>A year earlier: {context.rateBefore.toFixed(2)}%</>}
-                                            </p>
-                                            <p className="mt-2 text-sm text-gray-600 leading-relaxed">{MORTGAGE.research}</p>
+                                                {context.rateBefore != null && <><Box component="span" sx={{ color: "gray.400" }}> · </Box>A year earlier: {context.rateBefore.toFixed(2)}%</>}
+                                            </Typography>
+                                            <Typography variant="body2" sx={driverResearchSx}>{MORTGAGE.research}</Typography>
                                             <SourceLink source={MORTGAGE.source} />
-                                        </li>
+                                        </Box>
                                     )}
-                                </ul>
+                                </Box>
 
-                                <p className="mt-4 text-xs text-gray-500 leading-relaxed">
+                                <Typography variant="caption" component="p" sx={{ mt: 2, ...smallPrintSx }}>
                                     Neighborhood values are from the U.S. Census American Community Survey; rents are from Zillow. "Metro typical" is the median
                                     across the metro's ZIP codes, and a county's value is the median of its ZIP codes. Research findings describe patterns across
                                     many places; they explain what tends to matter, not the exact cause of rent changes in one area.
-                                </p>
-                            </div>
+                                </Typography>
+                            </Box>
                         )}
-                    </section>
+                    </Box>
 
                     {current && <LocalMarketReport metro={metro} county={current} />}
-                </div>
+                </Box>
             )}
-        </section>
+        </Paper>
     );
 }
