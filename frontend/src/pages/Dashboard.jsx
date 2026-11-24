@@ -109,7 +109,7 @@ const Dashboard = () => {
 
             <Box component="main" sx={{ display: "flex", flexDirection: "column", alignItems: "center", pt: "88px", pb: 14, px: 2 }}>
                 {/* Welcome */}
-                <Box sx={{ textAlign: "center", mb: 5 }}>
+                <Box sx={{ textAlign: "center", mb: 2 }}>
                     <Typography variant="h1" sx={{ fontSize: { xs: "1.875rem", sm: "2.25rem" }, fontWeight: 700, color: "gray.900" }}>
                         Welcome to your dashboard
                     </Typography>
