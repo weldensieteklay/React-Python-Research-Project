@@ -576,17 +576,39 @@ async def get_extended_macro_by_year() -> dict:
 #   interest_rate_change       12-month change, percentage points
 #   mortgage_rate_30y          MORTGAGE30US, weekly -> monthly average
 #   inflation_rate             PCEPI, 12-month % change
+#
+# Also joined as monthly LEVELS (same FRED series the /macro-indicators endpoint uses;
+# national, not metro-specific). Daily series are averaged to the month; quarterly
+# series are carried across the 3 months of their quarter:
+#   avg_hourly_earnings, building_permits (US total, SAAR thousands), construction_spending,
+#   consumer_sentiment_umcsent, jolts_job_openings, population (US, thousands),
+#   rental_vacancy_rate (quarterly), treasury_10y (daily)
+# These are levels that trend like rents do; take growth rates before using them as regressors.
+
+MONTHLY_LEVEL_SERIES = {
+    "avg_hourly_earnings":        FRED_SERIES["avg_hourly_earnings"][0],         # CES0500000003
+    "building_permits":           "PERMIT",
+    "construction_spending":      FRED_SERIES["construction_spending"][0],       # TTLCONS
+    "consumer_sentiment_umcsent": FRED_SERIES["consumer_sentiment_umcsent"][0],  # UMCSENT
+    "jolts_job_openings":         FRED_SERIES["jolts_job_openings"][0],          # JTSJOL
+    "population":                 "POP",
+    "rental_vacancy_rate":        FRED_SERIES["rental_vacancy_rate"][0],         # RRVRUSQ156N
+    "treasury_10y":               FRED_SERIES["treasury_10y"][0],                # DGS10
+}
+QUARTERLY_LEVEL_COLUMNS = {"rental_vacancy_rate"}   # forward-filled across the quarter's months
 
 MONTHLY_MACRO_SERIES = {
     "unemployment_rate": "UNRATE",
     "interest_rate": "FEDFUNDS",
     "mortgage_rate_30y": "MORTGAGE30US",
     "pce_price_index": "PCEPI",
+    **MONTHLY_LEVEL_SERIES,
 }
 MONTHLY_MACRO_COLUMNS = (
     "unemployment_rate", "unemployment_rate_change", "unemployment_rate_lag_6m",
     "interest_rate", "interest_rate_change",
     "mortgage_rate_30y", "inflation_rate",
+    *MONTHLY_LEVEL_SERIES,
 )
 NO_MONTHLY_MACRO = {c: None for c in MONTHLY_MACRO_COLUMNS}
 
@@ -619,6 +641,11 @@ def process_monthly_macro(series: dict[str, pd.DataFrame]) -> dict:
         out["mortgage_rate_30y"] = m["mortgage_rate_30y"]
     if "pce_price_index" in m:
         out["inflation_rate"] = m["pce_price_index"].pct_change(12, fill_method=None) * 100
+    for col in MONTHLY_LEVEL_SERIES:
+        if col in m:
+            # quarterly values are dated the first day of the quarter: fill that quarter's
+            # other two months, but never beyond it
+            out[col] = m[col].ffill(limit=2) if col in QUARTERLY_LEVEL_COLUMNS else m[col]
 
     out = out.round(4).astype(object).where(out.notna(), None)
     return {str(p): row for p, row in out.to_dict(orient="index").items()}
